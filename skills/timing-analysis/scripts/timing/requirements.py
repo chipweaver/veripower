@@ -12,35 +12,31 @@ import operator
 from pathlib import Path
 
 STAGE = "timing-analysis"
-_OPS = {"<": operator.lt, "<=": operator.le, ">": operator.gt, ">=": operator.ge}
+COMPARISONS = {"<": operator.lt, "<=": operator.le, ">": operator.gt, ">=": operator.ge}
 
 
-def load(workdir) -> list[dict]:
-    """Every row, from the specification root the kernel injected into dispatch.json."""
+def load_requirements(workdir) -> list[dict]:
+    """Read and select the requirements judged by this stage."""
     inputs = json.loads((Path(workdir) / "dispatch.json").read_text(encoding="utf-8"))[
         "inputs"
     ]
-    return json.loads(
+    rows = json.loads(
         (Path(inputs["requirements"]) / "requirements.json").read_text(encoding="utf-8")
     )
-
-
-def mine(rows: list[dict]) -> list[dict]:
-    """Select this stage's rows and reject unsupported numeric targets."""
-    ours = [r for r in rows if r["judge"] == STAGE]
+    ours = [row for row in rows if row["judge"] == STAGE]
     for row in ours:
         if "target" not in row:
             continue
-        t = row["target"]
-        value = t.get("value")
+        target = row["target"]
+        value = target.get("value")
         if (
-            t.get("dim") != "timing_slack_ns"
-            or t.get("op") not in _OPS
+            target.get("dim") != "timing_slack_ns"
+            or target.get("op") not in COMPARISONS
             or isinstance(value, bool)
-            or not isinstance(value, (int, float))
-            or not math.isfinite(value)
+            or (not isinstance(value, (int, float)))
+            or (not math.isfinite(value))
         ):
-            raise ValueError(f"{row['id']}: unsupported timing target {t}")
+            raise ValueError(f"{row['id']}: unsupported timing target {target}")
     return ours
 
 
@@ -51,17 +47,17 @@ def compare(rows: list[dict], timing: dict) -> list[dict]:
     rounded_violation = actual == 0 and not (setup["met"] and hold["met"])
     return [
         {
-            "id": r["id"],
+            "id": row["id"],
             "actual": actual,
             # VIOLATED supplies the sign lost when the report rounds slack to zero.
-            "met": r["target"]["op"] in ("<", "<=")
-            if rounded_violation and r["target"]["value"] == 0
-            else _OPS[r["target"]["op"]](actual, r["target"]["value"]),
+            "met": row["target"]["op"] in ("<", "<=")
+            if rounded_violation and row["target"]["value"] == 0
+            else COMPARISONS[row["target"]["op"]](actual, row["target"]["value"]),
             "measured": "timing-report.txt: minimum worst setup/hold slack (ns); "
             "VIOLATED disambiguates the sign of rounded zero",
         }
-        for r in rows
-        if "target" in r
+        for row in rows
+        if "target" in row
     ]
 
 
@@ -72,15 +68,17 @@ def parse_declared(text: str | None) -> list[dict]:
     verdict that reaches reap without it costs the round a blocked outcome instead of a
     routable one."""
     declared = json.loads(text) if text else []
-    for e in declared:
-        if not isinstance(e.get("id"), str) or not isinstance(e.get("met"), bool):
+    for entry in declared:
+        if not isinstance(entry.get("id"), str) or not isinstance(
+            entry.get("met"), bool
+        ):
             raise ValueError(
-                f"--requirements entry needs a string id and a boolean met: {e}"
+                f"--requirements entry needs a string id and a boolean met: {entry}"
             )
-        if not isinstance(e.get("measured"), str) or not e["measured"].strip():
+        if not isinstance(entry.get("measured"), str) or not entry["measured"].strip():
             raise ValueError(
                 f"--requirements entry needs `measured` — what you read, and where, so the "
-                f"verdict can be checked against the row's own words: {e}"
+                f"verdict can be checked against the row's own words: {entry}"
             )
     return declared
 
@@ -88,23 +86,19 @@ def parse_declared(text: str | None) -> list[dict]:
 def merge(rows: list[dict], computed: list[dict], declared: list[dict]) -> list[dict]:
     """One entry per row this stage judges, in ledger order. Raises when a row has no entry or
     an entry names a row this stage does not judge."""
-    ids = [r["id"] for r in rows]
-    computed_ids = {e["id"] for e in computed}
-    if computed_ids & {e["id"] for e in declared}:
+    requirement_ids = [row["id"] for row in rows]
+    computed_ids = {entry["id"] for entry in computed}
+    if computed_ids & {entry["id"] for entry in declared}:
         raise ValueError("numeric timing targets cannot be overridden by declarations")
-    if len({e["id"] for e in declared}) != len(declared):
+    if len({entry["id"] for entry in declared}) != len(declared):
         raise ValueError("duplicate requirement declarations")
-    entries = {e["id"]: e for e in computed + declared}
-    missing = [i for i in ids if i not in entries]
-    extra = sorted(set(entries) - set(ids))
+    entries = {entry["id"]: entry for entry in computed + declared}
+    missing = [i for i in requirement_ids if i not in entries]
+    extra = sorted(set(entries) - set(requirement_ids))
     if missing or extra:
         raise ValueError(
-            f"requirements judged by {STAGE} are {ids}; "
+            f"requirements judged by {STAGE} are {requirement_ids}; "
             + (f"no verdict for {missing}; " if missing else "")
             + (f"verdicts for rows this stage does not judge: {extra}" if extra else "")
         )
-    return [entries[i] for i in ids]
-
-
-def unmet(entries: list[dict]) -> list[str]:
-    return [e["id"] for e in entries if not e["met"]]
+    return [entries[i] for i in requirement_ids]

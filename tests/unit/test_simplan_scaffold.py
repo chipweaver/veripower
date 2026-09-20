@@ -53,7 +53,7 @@ GOOD = {
 }
 
 
-_TOP_IO = [
+TOP_IO = [
     {
         "name": "clk",
         "direction": "input",
@@ -91,7 +91,7 @@ _TOP_IO = [
 ]
 
 
-_ROWS = [
+ROWS = [
     {
         "id": "R-0",
         "verbatim": "the register reads back what was written",
@@ -100,13 +100,13 @@ _ROWS = [
 ]
 
 
-def _spec(tmp_path, hints=None, top_io=None, rows=None):
+def spec(tmp_path, hints=None, top_io=None, rows=None):
     """tmp_path doubles as the spec workdir: manifest + check-hints.json + top-io.json + ledger."""
     (tmp_path / "top-io.json").write_text(
-        json.dumps(_TOP_IO if top_io is None else top_io)
+        json.dumps(TOP_IO if top_io is None else top_io)
     )
     (tmp_path / "requirements.json").write_text(
-        json.dumps(_ROWS if rows is None else rows)
+        json.dumps(ROWS if rows is None else rows)
     )
     (tmp_path / "manifest.json").write_text(json.dumps({"module": "m"}))
     (tmp_path / "check-hints.json").write_text(
@@ -115,7 +115,7 @@ def _spec(tmp_path, hints=None, top_io=None, rows=None):
     return tmp_path
 
 
-def _split(tmp_path, scaffold):
+def split(tmp_path, scaffold):
     """Project one in-memory plan dict onto the three on-disk sidecars the gate reads.
     The tests keep authoring one dict because that is the shape the cross-array checks are
     about; the split is a property of the files, not of the checks."""
@@ -128,9 +128,9 @@ def _split(tmp_path, scaffold):
     (tmp_path / "tb-scaffold.json").write_text(json.dumps(doc))
 
 
-def _run(tmp_path, scaffold, check=True, hints=None, top_io=None, rows=None):
-    _split(tmp_path, scaffold)
-    _spec(tmp_path, hints, top_io, rows)
+def run(tmp_path, scaffold, check=True, hints=None, top_io=None, rows=None):
+    split(tmp_path, scaffold)
+    spec(tmp_path, hints, top_io, rows)
     return subprocess.run(
         [
             "python3",
@@ -148,16 +148,16 @@ def _run(tmp_path, scaffold, check=True, hints=None, top_io=None, rows=None):
 
 
 def test_good_scaffold_passes(tmp_path):
-    proc = _run(tmp_path, GOOD)
+    proc = run(tmp_path, GOOD)
     assert proc.returncode == 0 and "OK" in proc.stdout
 
 
 def test_malformed_scaffold_json_fails_loud(tmp_path):
     # A JSON syntax error in a sidecar must fail loud with a fix-oriented message,
     # not a raw traceback.
-    _split(tmp_path, GOOD)
+    split(tmp_path, GOOD)
     (tmp_path / "tb-scaffold.json").write_text("{ oops ]")
-    _spec(tmp_path, [])
+    spec(tmp_path, [])
     proc = subprocess.run(
         [
             "python3",
@@ -177,56 +177,56 @@ def test_malformed_scaffold_json_fails_loud(tmp_path):
 
 def test_injected_interface_transaction_tolerated(tmp_path):
     # The current authored plan must satisfy its closed per-agent schema.
-    assert _run(tmp_path, GOOD).returncode == 0
+    assert run(tmp_path, GOOD).returncode == 0
 
 
 # ---- structural ----
 def test_observer_list_fails(tmp_path):
     s = copy.deepcopy(GOOD)
     s["scoreboard"]["observer"] = ["a", "b"]
-    proc = _run(tmp_path, s, check=False)
+    proc = run(tmp_path, s, check=False)
     assert proc.returncode != 0 and "observer" in proc.stderr
 
 
 def test_inports_string_fails(tmp_path):
     s = copy.deepcopy(GOOD)
     s["rm"]["inports"] = "drv"
-    proc = _run(tmp_path, s, check=False)
+    proc = run(tmp_path, s, check=False)
     assert proc.returncode != 0 and "inports" in proc.stderr
 
 
 def test_seqs_string_fails(tmp_path):
     s = copy.deepcopy(GOOD)
     s["tests"][0]["seqs"] = "smoke"
-    proc = _run(tmp_path, s, check=False)
+    proc = run(tmp_path, s, check=False)
     assert proc.returncode != 0 and "seqs" in proc.stderr
 
 
 def test_mode_non_enum_fails(tmp_path):
     s = copy.deepcopy(GOOD)
     s["agents"][0]["mode"] = "master"
-    proc = _run(tmp_path, s, check=False)
+    proc = run(tmp_path, s, check=False)
     assert proc.returncode != 0 and "mode" in proc.stderr
 
 
 def test_mode_missing_fails(tmp_path):
     s = copy.deepcopy(GOOD)
     del s["agents"][0]["mode"]
-    proc = _run(tmp_path, s, check=False)
+    proc = run(tmp_path, s, check=False)
     assert proc.returncode != 0 and "mode" in proc.stderr
 
 
 def test_missing_interface_groups_fails(tmp_path):
     s = copy.deepcopy(GOOD)
     del s["agents"][0]["interface_groups"]
-    proc = _run(tmp_path, s, check=False)
+    proc = run(tmp_path, s, check=False)
     assert proc.returncode != 0 and "interface_groups" in proc.stderr
 
 
 def test_agent_extra_key_fails(tmp_path):
     s = copy.deepcopy(GOOD)
     s["agents"][0]["drive_signals"] = ["wdata"]
-    proc = _run(tmp_path, s, check=False)
+    proc = run(tmp_path, s, check=False)
     assert proc.returncode != 0  # additionalProperties:false on agents[]
 
 
@@ -237,7 +237,7 @@ def test_unclaimed_data_port_group_fails(tmp_path):
     s = copy.deepcopy(GOOD)
     s["agents"] = [a for a in s["agents"] if a["name"] != "obs"]
     s["scoreboard"]["observer"] = "drv"
-    proc = _run(tmp_path, s, check=False)
+    proc = run(tmp_path, s, check=False)
     assert proc.returncode != 0
     assert "stat" in proc.stderr and "no agent claims" in proc.stderr
 
@@ -245,25 +245,25 @@ def test_unclaimed_data_port_group_fails(tmp_path):
 def test_group_claimed_twice_fails(tmp_path):
     s = copy.deepcopy(GOOD)
     s["agents"][1]["interface_groups"] = ["cfg", "stat"]
-    proc = _run(tmp_path, s, check=False)
+    proc = run(tmp_path, s, check=False)
     assert proc.returncode != 0 and "claimed by both" in proc.stderr
 
 
 def test_clock_and_reset_groups_need_no_agent(tmp_path):
     """clk/rst carry an interface_group like every other row, but the bench drives them, so
     a group holding only clock/reset is not one an agent has to claim."""
-    top_io = [dict(p) for p in _TOP_IO]
+    top_io = [dict(p) for p in TOP_IO]
     for p_ in top_io:
         if p_["role"] in ("clock", "reset"):
             p_["interface_group"] = "clkrst"
-    assert _run(tmp_path, GOOD, top_io=top_io).returncode == 0
+    assert run(tmp_path, GOOD, top_io=top_io).returncode == 0
 
 
 # ---- semantic ----
 def test_observer_unknown_agent_fails(tmp_path):
     s = copy.deepcopy(GOOD)
     s["scoreboard"]["observer"] = "nope"
-    proc = _run(tmp_path, s, check=False)
+    proc = run(tmp_path, s, check=False)
     assert proc.returncode != 0 and "observer" in proc.stderr
 
 
@@ -274,34 +274,34 @@ def test_observer_omitted_single_agent_passes(tmp_path):
     s["rm"]["inports"] = ["drv"]
     del s["scoreboard"]["observer"]
     s["agents"][0]["interface_groups"] = ["cfg", "stat"]  # one agent, so it owns both
-    assert _run(tmp_path, s).returncode == 0
+    assert run(tmp_path, s).returncode == 0
 
 
 def test_observer_omitted_multi_agent_fails(tmp_path):
     s = copy.deepcopy(GOOD)
     del s["scoreboard"]["observer"]
-    proc = _run(tmp_path, s, check=False)
+    proc = run(tmp_path, s, check=False)
     assert proc.returncode != 0 and "observer" in proc.stderr  # option-c
 
 
 def test_inports_unknown_agent_fails(tmp_path):
     s = copy.deepcopy(GOOD)
     s["rm"]["inports"] = ["ghost"]
-    proc = _run(tmp_path, s, check=False)
+    proc = run(tmp_path, s, check=False)
     assert proc.returncode != 0 and "inports" in proc.stderr
 
 
 def test_seqs_unknown_sequence_fails(tmp_path):
     s = copy.deepcopy(GOOD)
     s["tests"][0]["seqs"] = ["ghost"]
-    proc = _run(tmp_path, s, check=False)
+    proc = run(tmp_path, s, check=False)
     assert proc.returncode != 0 and "seqs" in proc.stderr
 
 
 def test_sequence_agent_unknown_fails(tmp_path):
     s = copy.deepcopy(GOOD)
     s["sequences"][0]["agent"] = "ghost"
-    proc = _run(tmp_path, s, check=False)
+    proc = run(tmp_path, s, check=False)
     assert proc.returncode != 0 and "agent" in proc.stderr
 
 
@@ -309,14 +309,14 @@ def test_sequence_without_agent_fails(tmp_path):
     # Functional sequences need the agent they drive.
     s = copy.deepcopy(GOOD)
     del s["sequences"][0]["agent"]
-    proc = _run(tmp_path, s, check=False)
+    proc = run(tmp_path, s, check=False)
     assert proc.returncode != 0 and "agent" in proc.stderr
 
 
 def test_sequence_ref_unknown_fails(tmp_path):
     s = copy.deepcopy(GOOD)
     s["power_scenarios"][0]["sequence_ref"] = "ghost"
-    proc = _run(tmp_path, s, check=False)
+    proc = run(tmp_path, s, check=False)
     assert proc.returncode != 0 and "sequence_ref" in proc.stderr
 
 
@@ -325,7 +325,7 @@ def test_sequence_ref_non_string_fails(tmp_path):
     # TypeError in the semantic membership check (power_scenarios items are addP:true).
     s = copy.deepcopy(GOOD)
     s["power_scenarios"][0]["sequence_ref"] = ["smoke"]
-    proc = _run(tmp_path, s, check=False)
+    proc = run(tmp_path, s, check=False)
     assert proc.returncode != 0 and "sequence_ref" in proc.stderr
 
 
@@ -333,7 +333,7 @@ def test_duplicate_agent_name_fails(tmp_path):
     s = copy.deepcopy(GOOD)
     s["agents"][1]["name"] = "drv"  # both agents now named "drv"
     s["scoreboard"]["observer"] = "drv"  # keep refs resolving so only the dup fires
-    proc = _run(tmp_path, s, check=False)
+    proc = run(tmp_path, s, check=False)
     assert proc.returncode != 0 and "duplicated" in proc.stderr
 
 
@@ -341,14 +341,14 @@ def test_skipped_checks_shape_validated(tmp_path):
     """skipped_checks[] entries require check_id + reason; a malformed entry fails structurally."""
     s = copy.deepcopy(GOOD)
     s["skipped_checks"] = [{"check_id": "CHK-9"}]  # missing 'reason'
-    proc = _run(tmp_path, s, check=False)
+    proc = run(tmp_path, s, check=False)
     assert proc.returncode != 0 and "reason" in proc.stderr
 
 
 # ---- power scenarios the requirements name ----
 def test_power_bound_naming_an_undefined_scenario_fails(tmp_path):
     rows = [
-        *_ROWS,
+        *ROWS,
         {
             "id": "R-9",
             "verbatim": "idle power below 2 mW",
@@ -356,13 +356,13 @@ def test_power_bound_naming_an_undefined_scenario_fails(tmp_path):
             "target": {"dim": "power_mw", "op": "<", "value": 2, "scenario": "idle"},
         },
     ]
-    proc = _run(tmp_path, GOOD, check=False, rows=rows)
+    proc = run(tmp_path, GOOD, check=False, rows=rows)
     assert proc.returncode != 0 and "R-9" in proc.stderr and "'idle'" in proc.stderr
 
 
 def test_power_bound_naming_a_defined_scenario_passes(tmp_path):
     rows = [
-        *_ROWS,
+        *ROWS,
         {
             "id": "R-9",
             "verbatim": "S1 power below 2 mW",
@@ -370,7 +370,7 @@ def test_power_bound_naming_a_defined_scenario_passes(tmp_path):
             "target": {"dim": "power_mw", "op": "<", "value": 2, "scenario": "S1"},
         },
     ]
-    assert _run(tmp_path, GOOD, rows=rows).returncode == 0
+    assert run(tmp_path, GOOD, rows=rows).returncode == 0
 
 
 # ---- coverage matrix ----
@@ -384,7 +384,7 @@ def test_coverage_uncovered_check_fails(tmp_path):
             "covers": ["CHK-00"],
         }
     ]
-    proc = _run(
+    proc = run(
         tmp_path,
         s,
         check=False,
@@ -406,7 +406,7 @@ def test_coverage_skip_passes(tmp_path):
         }
     ]
     s["skipped_checks"] = [{"check_id": "CHK-01", "reason": "lint-only gate"}]
-    proc = _run(
+    proc = run(
         tmp_path,
         s,
         hints=[{"check_id": "CHK-00"}, {"check_id": "CHK-01"}],
@@ -424,7 +424,7 @@ def test_coverage_dangling_covers_fails(tmp_path):
             "covers": ["CHK-00", "CHK-99"],
         }
     ]
-    proc = _run(tmp_path, s, check=False, hints=[{"check_id": "CHK-00"}])
+    proc = run(tmp_path, s, check=False, hints=[{"check_id": "CHK-00"}])
     assert (
         proc.returncode != 0
         and "unknown check_id" in proc.stderr
@@ -442,7 +442,7 @@ def test_coverage_fully_covered_passes(tmp_path):
             "covers": ["CHK-00", "CHK-01"],
         }
     ]
-    proc = _run(
+    proc = run(
         tmp_path,
         s,
         hints=[{"check_id": "CHK-00"}, {"check_id": "CHK-01"}],
@@ -476,11 +476,11 @@ def test_agent_name_needs_no_unwrapping():
 
 
 def test_every_sidecar_schema_resolves():
-    # the package is scripts/simplan/, so _REFERENCES needs one extra parent (SC6)
-    from simplan import _plan
+    # the package is scripts/simplan/, so REFERENCES needs one extra parent (SC6)
+    from simplan import plan
 
-    for _, schema_name, _ in _plan._FILES:
-        assert (_plan._REFERENCES / schema_name).is_file(), schema_name
+    for unused, schema_name, unused in plan.FILES:
+        assert (plan.REFERENCES / schema_name).is_file(), schema_name
 
 
 @pytest.mark.parametrize(
@@ -497,7 +497,7 @@ def test_every_sidecar_schema_resolves():
 )
 def test_boundary_defects_are_rejected_by_check_and_finalize(tmp_path, fault, fragment):
     plan = copy.deepcopy(GOOD)
-    ports = copy.deepcopy(_TOP_IO)
+    ports = copy.deepcopy(TOP_IO)
     if fault == "unknown":
         plan["agents"][0]["interface_groups"].append("not-declared")
     elif fault == "clock-only":
@@ -513,8 +513,8 @@ def test_boundary_defects_are_rejected_by_check_and_finalize(tmp_path, fault, fr
         ports.append(dict(ports[2]))
     elif fault == "missing-groups":
         del plan["agents"][0]["interface_groups"]
-    _split(tmp_path, plan)
-    _spec(tmp_path, top_io=ports)
+    split(tmp_path, plan)
+    spec(tmp_path, top_io=ports)
     if fault == "missing-boundary":
         (tmp_path / "top-io.json").unlink()
     elif fault == "malformed-boundary":
@@ -538,8 +538,8 @@ def test_boundary_defects_are_rejected_by_check_and_finalize(tmp_path, fault, fr
 
 
 def test_plan_check_keeps_authored_inputs_unchanged(tmp_path):
-    _split(tmp_path, GOOD)
-    _spec(tmp_path)
+    split(tmp_path, GOOD)
+    spec(tmp_path)
     before = {p.name: p.read_bytes() for p in tmp_path.iterdir()}
     p = subprocess.run(
         [

@@ -3,7 +3,7 @@
 # Workdir:    {workdir}
 # RTL path:   the absolute rtl-design stage root injected via dispatch.json's
 #             "rtl" key; scripts/filelist.txt is regenerated from it every
-#             round by the bootstrap verb's _sync_filelist (no relpath climb).
+#             round by the bootstrap verb's sync_filelist (no relpath climb).
 # Top module: the lint-cdc bootstrap verb substitutes MY_TOP at deploy time.
 # Targets:
 #   make lint         lint/lint_rtl goal only → lint-report.txt

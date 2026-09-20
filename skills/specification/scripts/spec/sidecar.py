@@ -22,8 +22,8 @@ from pathlib import Path
 
 from jsonschema import Draft202012Validator
 
-_REFERENCES = Path(__file__).resolve().parent.parent.parent / "references"
-_BIT_RANGE_RE = re.compile(r"\[(\d+):(\d+)\]$")
+REFERENCES = Path(__file__).resolve().parent.parent.parent / "references"
+BIT_RANGE_RE = re.compile(r"\[(\d+):(\d+)\]$")
 
 
 class SidecarError(Exception):
@@ -38,7 +38,7 @@ class SidecarError(Exception):
         super().__init__(f"{name}: {detail}")
 
 
-def _base_name_rule(doc) -> list[dict]:
+def base_name_rule(doc) -> list[dict]:
     """A top-IO `name` is the base identifier alone; `width` carries the width.
 
     The string reaches `get_ports` and `abstract_port` verbatim, and the TB signal and
@@ -70,7 +70,7 @@ def _base_name_rule(doc) -> list[dict]:
 
 
 # The dims a judging stage's script compares; every other judge takes no target.
-def _requirements_rule(doc) -> list[dict]:
+def requirements_rule(doc) -> list[dict]:
     """What the ledger's schema cannot say: ids are unique; a scenario only qualifies
     power_mw; a value is finite (which dim a judge can compare is the judge's own fact, refused
     by the stage that would have to measure it) (`json.loads` accepts NaN / Infinity and `type: number` admits them, and a NaN
@@ -106,11 +106,11 @@ def _requirements_rule(doc) -> list[dict]:
     return out
 
 
-_CONTENT_RULES = {
+CONTENT_RULES = {
     # A top-io name reaches three tools verbatim, so a range in it is banned outright rather
     # than cross-checked against `width`.
-    "top-io.json": _base_name_rule,
-    "requirements.json": _requirements_rule,
+    "top-io.json": base_name_rule,
+    "requirements.json": requirements_rule,
 }
 
 
@@ -118,13 +118,9 @@ def validate_doc(name: str, doc) -> list[dict]:
     """Every violation in an already-parsed sidecar doc — schema first, then the content
     rules JSON Schema cannot carry.
 
-    An unreadable schema is itself a violation, so a caller can never wave a doc through
-    because the schema went missing."""
-    schema_path = _REFERENCES / f"{Path(name).stem}.schema.json"
-    try:
-        schema_doc = json.loads(schema_path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as exc:
-        return [{"error": f"{schema_path.name} unreadable: {exc}"}]
+    Schema files belong to the plugin; loading errors propagate."""
+    schema_path = REFERENCES / f"{Path(name).stem}.schema.json"
+    schema_doc = json.loads(schema_path.read_text(encoding="utf-8"))
     violations = [
         {
             "at": "$"
@@ -138,7 +134,7 @@ def validate_doc(name: str, doc) -> list[dict]:
             key=lambda e: list(e.absolute_path),
         )
     ]
-    return violations + _CONTENT_RULES.get(name, lambda _doc: [])(doc)
+    return violations + CONTENT_RULES.get(name, lambda document: [])(doc)
 
 
 def read_sidecar(workdir, name: str) -> list[dict]:

@@ -1,16 +1,5 @@
 #!/usr/bin/env python3
-"""simtriage — simulation-triage-stage CLI.
-
-Verbs (one stage = one tool):
-  finalize   schema-gate the analysis judgment, then atomically write result.json
-             (exit 0 written / 1 schema violation / 2 BLOCKED)
-
-Thin dispatcher: the subcommand parses its own flags and calls into the simtriage.*
-library. The library import is deferred into the handler (NOT top-level) so --help and
-verb dispatch keep working even when a sibling library module is missing or fails to
-import. (The library module itself uses top-level absolute imports; only this thin
-dispatcher defers.)
-"""
+"""Command-line operations for the simtriage stage."""
 
 import argparse
 import os
@@ -25,33 +14,32 @@ from pathlib import Path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 
-def _cmd_finalize(a: argparse.Namespace) -> int:
-    from simtriage import result
-
-    return result.finalize(a.workdir, a.json_file, a.json_stdin)
-
-
 def build_parser() -> argparse.ArgumentParser:
-    p = argparse.ArgumentParser(
+    parser = argparse.ArgumentParser(
         prog="simtriage", description="simulation-triage-stage CLI"
     )
-    sub = p.add_subparsers(dest="cmd", required=True)
+    subcommands = parser.add_subparsers(dest="cmd", required=True)
 
-    sp = sub.add_parser(
+    command_parser = subcommands.add_parser(
         "finalize", help="schema-gate the analysis judgment, then write result.json"
     )
-    sp.add_argument("--workdir", required=True, type=Path)
-    g = sp.add_mutually_exclusive_group(required=True)
+    command_parser.add_argument("--workdir", required=True, type=Path)
+    g = command_parser.add_mutually_exclusive_group(required=True)
     g.add_argument("--json-file", type=Path)
     g.add_argument("--json-stdin", action="store_true")
-    sp.set_defaults(func=_cmd_finalize)
 
-    return p
+    return parser
 
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
-    return args.func(args)
+    try:
+        from simtriage import result
+
+        return result.finalize(args.workdir, args.json_file, args.json_stdin)
+    except (OSError, ValueError) as error:
+        print(f"[simtriage {args.cmd}] BLOCKED: {error}", file=sys.stderr)
+        return 2
 
 
 if __name__ == "__main__":

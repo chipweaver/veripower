@@ -13,7 +13,7 @@ import collect_report as cr  # noqa: E402
 
 
 # ── fixtures: faithful real SpyGlass vL-2016.06 moresimple.rpt format ─────────
-def _hdr(generated, waived, reported, overlimit):
+def hdr(generated, waived, reported, overlimit):
     return (
         "################################################################################\n"
         "#     Report Name      : moresimple\n"
@@ -29,10 +29,10 @@ def _hdr(generated, waived, reported, overlimit):
     )
 
 
-CLEAN = _hdr(0, 0, 0, 0) + "(no reported messages)\n"
+CLEAN = hdr(0, 0, 0, 0) + "(no reported messages)\n"
 
 # 4 reported rows: Error, SynthesisError, Warning(multi-word alias), Info(empty alias)
-MIXED = _hdr(4, 0, 4, 0) + (
+MIXED = hdr(4, 0, 4, 0) + (
     "[4F]     STARC05-1.3.1.3   AsyncResetOtherUse         Error           ../../../rtl-design/a.v    171     10    Async reset used as non-reset\n"
     "[2]      SYNTH_133         SYNTH_133                  SynthesisError  ../../../rtl-design/b.v    120     1000  Asynchronous set/reset on data\n"
     "[F8]     Ac_conv04         Control Bus Gray Encoding  Warning         ../../../rtl-design/c.v    90      10    Gray-encoding convergence\n"
@@ -48,23 +48,23 @@ NO_HEADER = (
 )
 
 # reported=2 but one bracket row lacks the File/Line/Wt structure -> parse gap
-PARSE_GAP = _hdr(2, 0, 2, 0) + (
+PARSE_GAP = hdr(2, 0, 2, 0) + (
     "[4F]     STARC05   AsyncResetOtherUse   Warning   ../../../rtl-design/a.v   171   10   ok row\n"
     "[XX]     BadRow    truncated line with no numeric columns\n"
 )
 
 # a row whose severity token is not error/warning/info
-UNKNOWN_SEV = _hdr(1, 0, 1, 0) + (
+UNKNOWN_SEV = hdr(1, 0, 1, 0) + (
     "[4F]     SomeRule   SomeAlias   Note   ../../../rtl-design/a.v   10   5   unexpected severity\n"
 )
 
 # reported says 5 but only 1 bracket row present
-COUNT_MISMATCH = _hdr(5, 0, 5, 0) + (
+COUNT_MISMATCH = hdr(5, 0, 5, 0) + (
     "[4F]     R   A   Warning   ../../../rtl-design/a.v   1   1   m\n"
 )
 
 # generated(10) != waived(2) + reported(4)
-INTEGRITY = _hdr(10, 2, 4, 0) + (
+INTEGRITY = hdr(10, 2, 4, 0) + (
     "[1]   R   A   Warning   ../../../rtl-design/a.v   1   1   m\n"
     "[2]   R   A   Warning   ../../../rtl-design/b.v   2   1   m\n"
     "[3]   R   A   Info      ../../../rtl-design/c.v   3   1   m\n"
@@ -72,7 +72,7 @@ INTEGRITY = _hdr(10, 2, 4, 0) + (
 )
 
 # overlimit > 0 (other checks pass)
-OVERLIMIT = _hdr(4, 0, 4, 3) + (
+OVERLIMIT = hdr(4, 0, 4, 3) + (
     "[1]   R   A   Warning   ../../../rtl-design/a.v   1   1   m\n"
     "[2]   R   A   Warning   ../../../rtl-design/b.v   2   1   m\n"
     "[3]   R   A   Info      ../../../rtl-design/c.v   3   1   m\n"
@@ -80,13 +80,13 @@ OVERLIMIT = _hdr(4, 0, 4, 3) + (
 )
 
 # two rows colliding on rule:file:line
-COLLISION = _hdr(2, 0, 2, 0) + (
+COLLISION = hdr(2, 0, 2, 0) + (
     "[A1]   W123   AliasX   Warning   ../../../rtl-design/x.v   42   10   net alpha undriven\n"
     "[A2]   W123   AliasX   Warning   ../../../rtl-design/x.v   42   10   net beta undriven\n"
 )
 
 
-def _stage(root, body, stage_path="cdc/cdc_verify_struct/spyglass"):
+def stage(root, body, stage_path="cdc/cdc_verify_struct/spyglass"):
     d = root / "spyglass_work" / stage_path
     d.mkdir(parents=True, exist_ok=True)
     (d / "moresimple.rpt").write_text(body)
@@ -97,10 +97,10 @@ def _stage(root, body, stage_path="cdc/cdc_verify_struct/spyglass"):
 def test_waived_messages_and_reasons_travel_in_the_existing_report(
     tmp_path, duplicates
 ):
-    _stage(tmp_path, _hdr(1, 1, 0, 0))
+    stage(tmp_path, hdr(1, 1, 0, 0))
     source = cr.locate("cdc", tmp_path / "spyglass_work")
     row = "[4] W240 Warning work with spaces/core.v 1 10 Input is unused\n"
-    waiver = _hdr(1, 1, 0, 0) + "Waiver comment : See design rationale.\n" + row
+    waiver = hdr(1, 1, 0, 0) + "Waiver comment : See design rationale.\n" + row
     if duplicates:
         waiver += "Waiver comment : Overlapping waiver.\n" + row
     source.with_name("waiver.rpt").write_text(waiver)
@@ -115,12 +115,12 @@ def test_waived_messages_and_reasons_travel_in_the_existing_report(
 def test_incomplete_waiver_evidence_does_not_publish_a_clean_summary(
     tmp_path, evidence
 ):
-    _stage(tmp_path, _hdr(1, 1, 0, 0))
+    stage(tmp_path, hdr(1, 1, 0, 0))
     source = cr.locate("cdc", tmp_path / "spyglass_work")
     for name in ("cdc-report.txt", "cdc-violations.json"):
         (tmp_path / name).write_text("old success")
     if evidence is not None:
-        body = _hdr(1, 1, 0, 0) if evidence == "truncated" else _hdr(0, 0, 0, 0)
+        body = hdr(1, 1, 0, 0) if evidence == "truncated" else hdr(0, 0, 0, 0)
         source.with_name("waiver.rpt").write_text(body)
     assert cr.run("cdc", tmp_path) != 0
     assert not (tmp_path / "cdc-report.txt").exists()
@@ -128,7 +128,7 @@ def test_incomplete_waiver_evidence_does_not_publish_a_clean_summary(
 
 
 def test_zero_waived_messages_do_not_require_a_waiver_report(tmp_path):
-    _stage(tmp_path, CLEAN)
+    stage(tmp_path, CLEAN)
     assert cr.run("cdc", tmp_path) == 0
 
 
@@ -148,16 +148,17 @@ def test_parse_header_absent_anchor_returns_none():
 
 def test_sev_substring_classifies_compound_tokens():
     assert [
-        cr._sev(t) for t in ("Fatal", "Error", "SynthesisError", "Warning", "Info")
+        cr.normalize_severity(t)
+        for t in ("Fatal", "Error", "SynthesisError", "Warning", "Info")
     ] == ["error", "error", "error", "warning", "info"]
-    assert cr._sev("Note") is None
+    assert cr.normalize_severity("Note") is None
 
 
 def test_sev_maps_the_starc_mandatory_token():
     # STARC rules report their policy level in the severity column: a violation of a
     # Mandatory rule reads "Mandatory", not "Error". Left unmapped it returns None and the
     # whole report is rejected as unparseable, which blocks the stage on a clean run.
-    assert cr._sev("Mandatory") == "error"
+    assert cr.normalize_severity("Mandatory") == "error"
 
 
 def test_sev_maps_the_syntax_token_this_stage_exists_to_report():
@@ -172,7 +173,7 @@ def test_sev_maps_the_syntax_token_this_stage_exists_to_report():
     (parsed,) = cr.parse_rows(row)
     assert parsed["sev_token"] == "Syntax"
     # SpyGlass registers it FATAL, so it gates.
-    assert cr._sev("Syntax") == "error"
+    assert cr.normalize_severity("Syntax") == "error"
 
 
 def test_parse_rows_alias_variants_and_native_id():
@@ -210,7 +211,7 @@ def test_main_rejects_bad_arg_exit2():
 
 # ── run() exit-code contract ─────────────────────────────────────────────────
 def test_run_clean_exit0(tmp_path):
-    _stage(tmp_path, CLEAN)
+    stage(tmp_path, CLEAN)
     assert cr.run("cdc", tmp_path) == 0
     data = json.loads((tmp_path / "cdc-violations.json").read_text())
     assert data["counts"] == {"error": 0, "warning": 0, "info": 0}
@@ -220,7 +221,7 @@ def test_run_clean_exit0(tmp_path):
 
 
 def test_run_mixed_exit0(tmp_path):
-    _stage(tmp_path, MIXED)
+    stage(tmp_path, MIXED)
     assert cr.run("cdc", tmp_path) == 0
     data = json.loads((tmp_path / "cdc-violations.json").read_text())
     assert data["counts"] == {"error": 2, "warning": 1, "info": 1}
@@ -241,43 +242,43 @@ def test_run_missing_exit1(tmp_path):
 
 
 def test_run_no_header_exit3(tmp_path):
-    _stage(tmp_path, NO_HEADER)
+    stage(tmp_path, NO_HEADER)
     assert cr.run("cdc", tmp_path) == 3
     assert not (tmp_path / "cdc-violations.json").exists()
 
 
 def test_run_parse_gap_exit3(tmp_path):
-    _stage(tmp_path, PARSE_GAP)
+    stage(tmp_path, PARSE_GAP)
     assert cr.run("cdc", tmp_path) == 3
     assert not (tmp_path / "cdc-violations.json").exists()
 
 
 def test_run_unknown_severity_exit3(tmp_path):
-    _stage(tmp_path, UNKNOWN_SEV)
+    stage(tmp_path, UNKNOWN_SEV)
     assert cr.run("cdc", tmp_path) == 3
     assert not (tmp_path / "cdc-violations.json").exists()
 
 
 def test_run_count_mismatch_exit3(tmp_path):
-    _stage(tmp_path, COUNT_MISMATCH)
+    stage(tmp_path, COUNT_MISMATCH)
     assert cr.run("cdc", tmp_path) == 3
     assert not (tmp_path / "cdc-violations.json").exists()
 
 
 def test_run_header_integrity_exit3(tmp_path):
-    _stage(tmp_path, INTEGRITY)
+    stage(tmp_path, INTEGRITY)
     assert cr.run("cdc", tmp_path) == 3
     assert not (tmp_path / "cdc-violations.json").exists()
 
 
 def test_run_overlimit_exit3(tmp_path):
-    _stage(tmp_path, OVERLIMIT)
+    stage(tmp_path, OVERLIMIT)
     assert cr.run("cdc", tmp_path) == 3
     assert not (tmp_path / "cdc-violations.json").exists()
 
 
 def test_run_removes_stale_on_failure(tmp_path):
-    _stage(tmp_path, CLEAN)
+    stage(tmp_path, CLEAN)
     assert cr.run("cdc", tmp_path) == 0
     src = tmp_path / "spyglass_work/cdc/cdc_verify_struct/spyglass/moresimple.rpt"
     src.write_text(NO_HEADER)
@@ -286,7 +287,7 @@ def test_run_removes_stale_on_failure(tmp_path):
 
 
 def test_run_location_precedence_verify_struct_wins(tmp_path):
-    _stage(tmp_path, MIXED, "cdc/cdc_verify_struct/spyglass")
+    stage(tmp_path, MIXED, "cdc/cdc_verify_struct/spyglass")
     setup = tmp_path / "spyglass_work/cdc/cdc_setup/spyglass"
     setup.mkdir(parents=True)
     (setup / "cdc_setup.rpt").write_text(CLEAN)
@@ -296,7 +297,7 @@ def test_run_location_precedence_verify_struct_wins(tmp_path):
 
 @pytest.mark.parametrize("goal", ["cdc_setup", "cdc_setup_check"])
 def test_setup_only_cannot_publish_cdc_verdict_inputs(tmp_path, goal):
-    _stage(tmp_path, CLEAN, f"top/cdc/{goal}/spyglass_reports")
+    stage(tmp_path, CLEAN, f"top/cdc/{goal}/spyglass_reports")
     source = tmp_path / f"spyglass_work/top/cdc/{goal}/spyglass_reports/moresimple.rpt"
     for name in ("cdc-report.txt", "cdc-violations.json"):
         (tmp_path / name).write_text("previous result")
@@ -315,8 +316,8 @@ def test_structural_report_and_waivers_survive_both_native_locations(
     report_dir = work / "project/consolidated_reports/core_cdc_cdc_verify_struct"
     report_dir.mkdir(parents=True)
     source = report_dir / "moresimple.rpt"
-    source.write_text(_hdr(1, 1, 0, 0))
-    waiver = _hdr(1, 1, 0, 0) + (
+    source.write_text(hdr(1, 1, 0, 0))
+    waiver = hdr(1, 1, 0, 0) + (
         "Waiver comment : See design rationale.\n"
         "[4] Ac_unsync01 Warning core.v 1 10 Crossing uses a reviewed protocol\n"
     )
@@ -326,7 +327,7 @@ def test_structural_report_and_waivers_survive_both_native_locations(
         aliases.mkdir(parents=True)
         for name in ("moresimple.rpt", "waiver.rpt"):
             (aliases / name).symlink_to(report_dir / name)
-    _stage(tmp_path, MIXED, "project/core/cdc/cdc_setup/spyglass_reports")
+    stage(tmp_path, MIXED, "project/core/cdc/cdc_setup/spyglass_reports")
 
     assert cr.run("cdc", tmp_path) == 0
     data = json.loads((tmp_path / "cdc-violations.json").read_text())

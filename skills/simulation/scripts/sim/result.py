@@ -13,67 +13,42 @@ import json
 import sys
 from pathlib import Path
 
-from sim._gate import (
+from sim.checks import (
     check_review_flagged,
     coverage_gate,
     coverage_rows,
     materialization_errors,
 )
-from sim._plan import load_plan
+from sim.plan import load_plan
 
 STAGE = "simulation"
 
 
-def _now_iso() -> str:
-    return datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-
-
-def _envelope(*, status, stage_specific, artifacts, fix_owner=None) -> dict:
-    """fix_owner rides on a failure only, and only when the caller named one: its ABSENCE is
-    what decide reads as "this stage cannot tell", so it must never serialize empty."""
-    if status == "fail" and fix_owner:
-        stage_specific = {**stage_specific, "fix_owner": fix_owner}
-    return {
-        "stage": STAGE,
-        "produced_at": _now_iso(),
-        "status": status,
-        "artifacts": artifacts,
-        "stage_specific": stage_specific,
-    }
-
-
-def _write_result(workdir: Path, env: dict) -> None:
-    tmp = workdir / "result.json.tmp"
-    tmp.write_text(json.dumps(env, indent=2) + "\n")
-    tmp.replace(workdir / "result.json")  # atomic: never observed half-written
-    sys.stdout.write(
-        f"[sim finalize] Written: {workdir / 'result.json'} (status={env['status']})\n"
-    )
-
-
-def _final_gate(workdir: Path, plan_dir: Path, requirements: Path, check_review):
-    """Re-derive the exit verdict in-process from the three primitives in sim._gate.
+def final_gate(workdir: Path, plan_dir: Path, requirements: Path, check_review):
+    """Re-derive the exit verdict in-process from the three primitives in sim.checks.
     Returns (ok, verdict, phase, fail_reason); the earliest wave to fail wins, in the
     order the waves ran: materialization, check-adequacy review, coverage.
 
     Unresolved review markers are retained as a closure barrier. The stage owner also
     assesses unmarked findings against their evidence before invoking final closure."""
     scaffold_doc = load_plan(plan_dir)
-    d1_errs = materialization_errors(Path(workdir), scaffold_doc)
+    materialization_issues = materialization_errors(Path(workdir), scaffold_doc)
     rows = coverage_rows(Path(requirements))
-    cov_path = Path(workdir) / "structural-coverage.json"
-    cov = (
-        json.loads(cov_path.read_text(encoding="utf-8")) if cov_path.is_file() else None
+    coverage_path = Path(workdir) / "structural-coverage.json"
+    coverage = (
+        json.loads(coverage_path.read_text(encoding="utf-8"))
+        if coverage_path.is_file()
+        else None
     )
-    dut = f"{scaffold_doc['top']}_tb_top.u_dut"
-    cov_errs, judged = coverage_gate(cov, rows, dut)
+    dut_instance = f"{scaffold_doc['top']}_tb_top.u_dut"
+    coverage_issues, judged = coverage_gate(coverage, rows, dut_instance)
     verdict = {
-        "coverage_extractable": not cov_errs or bool(judged),
+        "coverage_extractable": not coverage_issues or bool(judged),
         "requirements": judged,
-        "scope": dut,
+        "scope": dut_instance,
     }
-    if d1_errs:
-        return (False, verdict, "compile", "; ".join(d1_errs)[:300])
+    if materialization_issues:
+        return (False, verdict, "compile", "; ".join(materialization_issues)[:300])
     flagged = check_review_flagged(check_review)
     if flagged:
         return (
@@ -82,93 +57,9 @@ def _final_gate(workdir: Path, plan_dir: Path, requirements: Path, check_review)
             "check-review",
             f"check-adequacy gate tripped on {', '.join(flagged)}"[:300],
         )
-    if cov_errs:
-        return (False, verdict, "coverage", "; ".join(cov_errs)[:300])
+    if coverage_issues:
+        return (False, verdict, "coverage", "; ".join(coverage_issues)[:300])
     return (True, verdict, None, None)
-
-
-def build_result(
-    workdir,
-    *,
-    phase,
-    scaffold=None,
-    requirements=None,
-    check_review=None,
-    fail_reason=None,
-    fix_owner=None,
-) -> int:
-    """Assemble the lean simulation result.json for the given exit phase.
-    final -> judge materialization, review, coverage and case results on disk.
-    fail  -> record the unresolved cause; logs and reports remain the case evidence.
-    Returns 0 (result.json written). A raise -> main() exit 2 (BLOCKED)."""
-    workdir = Path(workdir)
-    artifacts = enumerate_artifacts(workdir)
-
-    if phase != "final" or fail_reason is not None:
-        _write_result(
-            workdir,
-            _envelope(
-                status="fail",
-                stage_specific={"fail_reason": fail_reason},
-                artifacts=artifacts,
-                fix_owner=fix_owner,
-            ),
-        )
-        return 0
-
-    ok, gate, fphase, freason = _final_gate(
-        workdir, scaffold, requirements, check_review
-    )
-    if not ok:
-        ss = {"fail_reason": freason}
-        if fphase == "coverage":
-            ss["coverage_extractable"] = gate["coverage_extractable"]
-            ss["requirements"] = gate["requirements"]
-        _write_result(
-            workdir,
-            _envelope(
-                status="fail",
-                stage_specific=ss,
-                artifacts=artifacts,
-                fix_owner=fix_owner,
-            ),
-        )
-        return 0
-    cases = read_case_counts(workdir)
-    if cases["not_run"] or cases["failed"]:
-        reasons = []
-        if cases["failed"]:
-            reasons.append(f"{cases['failed']} tests failed")
-        if cases["not_run"]:
-            reasons.append(f"{cases['not_run']} declared tests produced no result")
-        ss = {
-            "total_cases": cases["total"],
-            "passed": cases["passed"],
-            "failed": cases["failed"],
-            "fail_reason": "; ".join(reasons),
-        }
-        _write_result(
-            workdir,
-            _envelope(
-                status="fail",
-                stage_specific=ss,
-                artifacts=artifacts,
-                fix_owner=fix_owner,
-            ),
-        )
-        return 0
-    ss = {
-        "total_cases": cases["total"],
-        "passed": cases["passed"],
-        "failed": cases["failed"],
-        "coverage_summary": read_coverage_summary(workdir, gate["scope"]),
-        "requirements": gate["requirements"],
-    }
-    _write_result(
-        workdir,
-        _envelope(status="pass", stage_specific=ss, artifacts=artifacts),
-    )
-    return 0
 
 
 def read_case_counts(workdir: Path) -> dict:
@@ -240,26 +131,81 @@ def finalize(
     fail_reason=None,
     fix_owner=None,
 ) -> int:
-    """Assemble the lean simulation result.json. exit 0 = result.json written (pass or fail);
-    exit 2 = BLOCKED, any internal raise, never conflated with status=fail. The --phase final
-    argument precondition is checked in __main__.py, which maps it to exit 2 before calling
-    here."""
+    """Assess the stage and write its result. Input or I/O errors leave no current result."""
     (Path(workdir) / "result.json").unlink(missing_ok=True)
-    if (phase != "final" and not fail_reason) or (
-        fail_reason is not None and not fail_reason.strip()
+    if (
+        phase != "final"
+        and (not fail_reason)
+        or (fail_reason is not None and (not fail_reason.strip()))
     ):
         print("[sim finalize] BLOCKED: empty --fail-reason", file=sys.stderr)
         return 2
+
+    def _write_result(*, status, stage_specific, artifacts):
+        if status == "fail" and fix_owner:
+            stage_specific = {**stage_specific, "fix_owner": fix_owner}
+        result = {
+            "stage": STAGE,
+            "produced_at": datetime.datetime.now(datetime.timezone.utc).strftime(
+                "%Y-%m-%dT%H:%M:%SZ"
+            ),
+            "status": status,
+            "artifacts": artifacts,
+            "stage_specific": stage_specific,
+        }
+        result_path = Path(workdir) / "result.json"
+        temporary_path = result_path.with_suffix(".json.tmp")
+        temporary_path.write_text(json.dumps(result, indent=2) + "\n")
+        temporary_path.replace(result_path)
+        print(f"[sim finalize] Written: {result_path} (status={status})")
+        return 0
+
     try:
-        return build_result(
-            workdir,
-            phase=phase,
-            scaffold=scaffold,
-            requirements=requirements,
-            check_review=check_review,
-            fail_reason=fail_reason,
-            fix_owner=fix_owner,
+        workdir = Path(workdir)
+        artifacts = enumerate_artifacts(workdir)
+        if phase != "final" or fail_reason is not None:
+            return _write_result(
+                status="fail",
+                stage_specific={"fail_reason": fail_reason},
+                artifacts=artifacts,
+            )
+        ok, gate, failed_phase, failure_reason = final_gate(
+            workdir, scaffold, requirements, check_review
         )
-    except Exception as exc:  # noqa: BLE001 — any failure to operate is BLOCKED
+        if not ok:
+            stage_specific = {"fail_reason": failure_reason}
+            if failed_phase == "coverage":
+                stage_specific["coverage_extractable"] = gate["coverage_extractable"]
+                stage_specific["requirements"] = gate["requirements"]
+            return _write_result(
+                status="fail", stage_specific=stage_specific, artifacts=artifacts
+            )
+        cases = read_case_counts(workdir)
+        if cases["not_run"] or cases["failed"]:
+            reasons = []
+            if cases["failed"]:
+                reasons.append(f"{cases['failed']} tests failed")
+            if cases["not_run"]:
+                reasons.append(f"{cases['not_run']} declared tests produced no result")
+            stage_specific = {
+                "total_cases": cases["total"],
+                "passed": cases["passed"],
+                "failed": cases["failed"],
+                "fail_reason": "; ".join(reasons),
+            }
+            return _write_result(
+                status="fail", stage_specific=stage_specific, artifacts=artifacts
+            )
+        stage_specific = {
+            "total_cases": cases["total"],
+            "passed": cases["passed"],
+            "failed": cases["failed"],
+            "coverage_summary": read_coverage_summary(workdir, gate["scope"]),
+            "requirements": gate["requirements"],
+        }
+        return _write_result(
+            status="pass", stage_specific=stage_specific, artifacts=artifacts
+        )
+    except (OSError, ValueError) as exc:
         print(f"[sim finalize] BLOCKED: {exc}", file=sys.stderr)
         return 2

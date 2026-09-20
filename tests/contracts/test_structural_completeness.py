@@ -22,18 +22,18 @@ presence contract.
 """
 
 import pytest
-from _skills_sot import PLUGIN_ROOT, SKILL_DIRS
+from skills_source import PLUGIN_ROOT, SKILL_DIRS
 
 from framework.scripts.rules import FORWARD_PRIORITY
 
-_NON_STAGE_SKILLS: list[str] = sorted(set(SKILL_DIRS) - set(FORWARD_PRIORITY))
+NON_STAGE_SKILLS: list[str] = sorted(set(SKILL_DIRS) - set(FORWARD_PRIORITY))
 
 
 def test_skill_dirs_is_superset_of_forward_priority() -> None:
     """A stage cannot enter the pipeline without a corresponding skill dir."""
     missing = set(FORWARD_PRIORITY) - set(SKILL_DIRS)
     assert not missing, (
-        f"rules.FORWARD_PRIORITY contains {sorted(missing)} but _skills_sot."
+        f"rules.FORWARD_PRIORITY contains {sorted(missing)} but skills_source."
         f"SKILL_DIRS does not. Add the stage(s) to SKILL_DIRS so the contract "
         f"lints in tests/contracts/ cover them."
     )
@@ -63,7 +63,7 @@ def test_stage_has_result_schema(stage: str) -> None:
 # ── non-stage skills (design-flow, simulation-triage): SKILL.md required ──
 
 
-@pytest.mark.parametrize("skill", _NON_STAGE_SKILLS)
+@pytest.mark.parametrize("skill", NON_STAGE_SKILLS)
 def test_non_stage_skill_has_skill_md(skill: str) -> None:
     p = PLUGIN_ROOT / "skills" / skill / "SKILL.md"
     assert p.is_file(), (

@@ -1,0 +1,9 @@
+Report : Averaged Power
+Version: M-2016.12-SP1
+Power-specific unit information :
+    Dynamic Power Units = 1 W
+    Leakage Power Units = 1 W
+  Net Switching Power  = 1.134e-05   ( 0.69%)
+  Cell Internal Power  = 1.370e-03   (82.88%)
+  Cell Leakage Power   = 2.716e-04   (16.43%)
+Total Power            = 1.653e-03  (100.00%)

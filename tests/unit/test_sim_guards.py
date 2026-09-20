@@ -14,8 +14,7 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "skills" / "simulation" / "scripts"))
-from sim._boundary import Boundary  # noqa: E402
-from sim._guards import dut_port_map  # noqa: E402
+from sim.boundary import Boundary, dut_port_map  # noqa: E402
 
 TOP_IO = [
     {
@@ -58,7 +57,7 @@ CLOCKS = [
 ]
 
 
-def _boundary(tmp_path, top_io=None, clocks=None):
+def boundary(tmp_path, top_io=None, clocks=None):
     (tmp_path / "top-io.json").write_text(json.dumps(top_io or TOP_IO))
     (tmp_path / "clocks.json").write_text(json.dumps(clocks or CLOCKS))
     return Boundary(tmp_path)
@@ -71,7 +70,7 @@ AGENTS = [
 
 
 def test_port_map_binds_every_data_port_and_no_bench_port(tmp_path):
-    out = dut_port_map(AGENTS, _boundary(tmp_path))
+    out = dut_port_map(AGENTS, boundary(tmp_path))
     assert out.startswith(",\n")
     assert ".req(d_if.req)" in out and ".ack(o_if.ack)" in out
     # the bench drives these itself; tb_top emits them, not the port map
@@ -80,7 +79,7 @@ def test_port_map_binds_every_data_port_and_no_bench_port(tmp_path):
 
 def test_port_map_follows_top_io_order(tmp_path):
     """The walk is over the boundary, which is what makes an omission impossible."""
-    out = dut_port_map(AGENTS, _boundary(tmp_path))
+    out = dut_port_map(AGENTS, boundary(tmp_path))
     assert out.index(".req(") < out.index(".ack(")
 
 
@@ -96,7 +95,7 @@ def test_unclaimed_data_port_exits(tmp_path):
         }
     ]
     with pytest.raises(SystemExit) as e:
-        dut_port_map(AGENTS, _boundary(tmp_path, top_io))
+        dut_port_map(AGENTS, boundary(tmp_path, top_io))
     assert "orphan" in str(e.value) and "no agent claims" in str(e.value)
 
 
@@ -106,7 +105,7 @@ def test_group_claimed_twice_exits(tmp_path):
         {"name": "o", "mode": "passive", "interface_groups": ["b"]},
     ]
     with pytest.raises(SystemExit) as e:
-        dut_port_map(agents, _boundary(tmp_path))
+        dut_port_map(agents, boundary(tmp_path))
     assert "claimed by both" in str(e.value)
 
 
@@ -116,5 +115,5 @@ def test_agent_with_only_bench_ports_exits(tmp_path):
         {"name": "o", "mode": "passive", "interface_groups": ["b"]},
     ]
     with pytest.raises(SystemExit) as e:
-        dut_port_map(agents, _boundary(tmp_path))
+        dut_port_map(agents, boundary(tmp_path))
     assert "no data ports" in str(e.value)

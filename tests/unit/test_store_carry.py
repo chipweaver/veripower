@@ -9,7 +9,7 @@ sys.path.insert(0, str(ROOT / "framework" / "scripts"))
 import store  # noqa: E402
 
 
-def _canon(tmp_path, rule_root):
+def canon(tmp_path, rule_root):
     c = tmp_path / "m" / rule_root
     c.mkdir(parents=True, exist_ok=True)
     return c
@@ -17,7 +17,7 @@ def _canon(tmp_path, rule_root):
 
 def test_author_carry_brings_products_drops_review_and_internals(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
-    c = _canon(tmp_path, "Design/specification")
+    c = canon(tmp_path, "Design/specification")
     (c / "design.md").write_text("D")
     (c / "manifest.json").write_text("{}")
     (c / "constraints").mkdir()
@@ -32,7 +32,7 @@ def test_author_carry_brings_products_drops_review_and_internals(tmp_path, monke
     (c / "runs" / "1" / "junk").write_text("j")  # excluded (runs/)
     wd = c / "runs" / "2"
     wd.mkdir()
-    store.carry_self(store.module_root("m"), "specification", wd)
+    store.carry_self(Path("m"), "specification", wd)
     assert (wd / "design.md").read_text() == "D"
     assert (wd / "manifest.json").exists()
     assert (wd / "constraints" / "top.sdc").exists()
@@ -47,13 +47,13 @@ def test_author_carry_brings_products_drops_review_and_internals(tmp_path, monke
 
 def test_carry_is_copy_not_hardlink_and_writable(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
-    c = _canon(tmp_path, "Design/rtl-design")
+    c = canon(tmp_path, "Design/rtl-design")
     src = c / "top.v"
     src.write_text("module top; endmodule")
     wd = c / "runs" / "1"
     wd.mkdir(parents=True)
     wd.chmod(0o750)
-    store.carry_self(store.module_root("m"), "rtl-design", wd)
+    store.carry_self(Path("m"), "rtl-design", wd)
     dst = wd / "top.v"
     assert os.stat(dst).st_ino != os.stat(src).st_ino  # copy, not hardlink
     assert os.access(dst, os.W_OK)  # 0644 writable
@@ -68,7 +68,7 @@ def test_tool_carry_preserves_published_setup_and_measurements(
 ):
     monkeypatch.chdir(tmp_path)
     directory = "Verification" if stage == "power-analysis" else "Design"
-    c = _canon(tmp_path, f"{directory}/{stage}")
+    c = canon(tmp_path, f"{directory}/{stage}")
     files = {
         "scripts/helper.tcl": "authored helper",
         "config.tcl": "source scripts/helper.tcl",
@@ -83,7 +83,7 @@ def test_tool_carry_preserves_published_setup_and_measurements(
     (c / "dispatch.json").write_text("{}")
     wd = c / "runs" / "2"
     wd.mkdir(parents=True)
-    store.carry_self(store.module_root("m"), stage, wd)
+    store.carry_self(Path("m"), stage, wd)
     for name, content in files.items():
         assert (wd / name).read_text() == content
         (wd / name).write_text("changed")
@@ -96,9 +96,7 @@ def test_first_run_no_canonical_is_noop(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     wd = tmp_path / "m" / "Design" / "specification" / "runs" / "1"
     wd.mkdir(parents=True)
-    store.carry_self(
-        store.module_root("m"), "specification", wd
-    )  # canonical parent has only runs/
+    store.carry_self(Path("m"), "specification", wd)  # canonical parent has only runs/
     assert list(wd.iterdir()) == []
 
 
@@ -108,21 +106,21 @@ def test_no_canonical_stage_dir_is_noop(tmp_path, monkeypatch):
     wd = tmp_path / "wd"
     wd.mkdir()
     store.carry_self(
-        store.module_root("m"), "specification", wd
+        Path("m"), "specification", wd
     )  # drives `not stage_dir.is_dir()` early return
     assert list(wd.iterdir()) == []
 
 
 def test_external_file_link_becomes_writable_content(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
-    c = _canon(tmp_path, "Design/specification")
+    c = canon(tmp_path, "Design/specification")
     real = tmp_path / "external.md"
     real.write_text("external content")
     real.chmod(0o444)
     os.symlink(real, c / "linked.md")
     wd = c / "runs" / "1"
     wd.mkdir(parents=True)
-    store.carry_self(store.module_root("m"), "specification", wd)
+    store.carry_self(Path("m"), "specification", wd)
     assert not (wd / "linked.md").is_symlink()
     assert (wd / "linked.md").read_text() == "external content"
     (wd / "linked.md").write_text("new round")
@@ -139,7 +137,7 @@ def test_internal_aliases_survive_carry_and_edit_only_new_copy(
     tmp_path, rule, absolute
 ):
     root = tmp_path / "module with spaces"
-    stage = root.joinpath(*store.rules.workdir_root(rule))
+    stage = root.joinpath(*store.rules.RULES[rule].workdir_root)
     real = stage / "products/data.txt"
     real.parent.mkdir(parents=True)
     real.write_text("before")
@@ -249,7 +247,7 @@ def test_rtl_carry_starstar_includes_nested_and_sidecar_files(tmp_path, monkeypa
     (c / "semantic-review" / "leaf.md").write_text("review")  # no_carry
     wd = c / "runs" / "1"
     wd.mkdir(parents=True)
-    store.carry_self(store.module_root("m"), "rtl-design", wd)
+    store.carry_self(Path("m"), "rtl-design", wd)
     assert (wd / "rtl" / "core.sv").exists()
     assert (wd / "rtl-files.json").exists()
     assert (wd / "constraint-annotations.json").exists()
@@ -258,17 +256,17 @@ def test_rtl_carry_starstar_includes_nested_and_sidecar_files(tmp_path, monkeypa
 
 
 def test_carry_does_not_walk_run_history(tmp_path, monkeypatch):
-    c = _canon(tmp_path, "Design/synthesis")
+    c = canon(tmp_path, "Design/synthesis")
     (c / "reports").mkdir()
     (c / "reports/area.rpt").write_text("measurement")
     wd = c / "runs/2"
     wd.mkdir(parents=True)
     rglob = Path.rglob
 
-    def traverse(path, pattern):
+    def _traverse(path, pattern):
         assert path != c / "runs", "history is not a carry source"
         return rglob(path, pattern)
 
-    monkeypatch.setattr(Path, "rglob", traverse)
+    monkeypatch.setattr(Path, "rglob", _traverse)
     store.carry_self(tmp_path / "m", "synthesis", wd)
     assert (wd / "reports/area.rpt").read_text() == "measurement"

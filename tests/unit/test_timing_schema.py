@@ -2,13 +2,13 @@
 
 from framework.scripts import store
 
-_TIMING_OK = {
+TIMING_OK = {
     "setup": {"worst_slack_ns": 2.93, "met": True, "worst_path": "a -> b"},
     "hold": {"worst_slack_ns": 0.20, "met": True, "worst_path": "c -> d"},
 }
 
 
-def _validate(stage_specific, status="pass"):
+def validate(stage_specific, status="pass"):
     result = {
         "stage": "timing-analysis",
         "module": "M",
@@ -22,24 +22,24 @@ def _validate(stage_specific, status="pass"):
 
 
 def test_pass_with_timing_and_requirements_validates():
-    valid, err = _validate({"timing": _TIMING_OK, "requirements": []})
+    valid, err = validate({"timing": TIMING_OK, "requirements": []})
     assert valid, err
 
 
 def test_pass_without_timing_rejected():
-    valid, _ = _validate({"requirements": []})
+    valid, unused = validate({"requirements": []})
     assert not valid
 
 
 def test_pass_without_requirements_rejected():
     # A pass that judged no row is not a pass: the rows timing-analysis judges are its
     # obligations, and an empty list is the explicit statement that there were none.
-    valid, _ = _validate({"timing": _TIMING_OK})
+    valid, unused = validate({"timing": TIMING_OK})
     assert not valid
 
 
 def test_infra_fail_without_timing_validates():
-    valid, err = _validate(
+    valid, err = validate(
         {"fail_reason": "PT license missing"},
         status="fail",
     )
@@ -47,15 +47,15 @@ def test_infra_fail_without_timing_validates():
 
 
 def test_ppa_fail_with_timing_validates():
-    valid, err = _validate(
-        {"fail_reason": "setup/hold timing not met", "timing": _TIMING_OK},
+    valid, err = validate(
+        {"fail_reason": "setup/hold timing not met", "timing": TIMING_OK},
         status="fail",
     )
     assert valid, err
 
 
 def test_tooling_fail_without_timing_validates():
-    valid, err = _validate(
+    valid, err = validate(
         {"fail_reason": "timing-report.txt unparseable"},
         status="fail",
     )

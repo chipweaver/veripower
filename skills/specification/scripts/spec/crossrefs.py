@@ -7,10 +7,8 @@ Finalize repeats this check on the artifacts being delivered. Structural consist
 alone does not establish that a requirement or observation is correct.
 """
 
-import json
 from pathlib import Path
 
-from spec import ledger
 from spec.sidecar import read_sidecar
 
 
@@ -20,13 +18,17 @@ def violations(workdir: Path) -> list[dict]:
     clock_names = {
         c["name"] for c in read_sidecar(workdir, "clocks.json") if c.get("name")
     }
-    rows = ledger.load(workdir)
+    rows = read_sidecar(workdir, "requirements.json")
     row_ids = {r["id"] for r in rows}
-    hintable = ledger.hintable_ids(rows)
+    hintable = {
+        row["id"]
+        for row in rows
+        if row["judge"] == "simulation" and "target" not in row
+    }
 
     out: list[dict] = []
 
-    def say(where, what):
+    def _record_violation(where, what):
         out.append({"where": where, "what": what})
 
     # Validate the declared simulation-check references. If an assignment omits required
@@ -36,16 +38,18 @@ def violations(workdir: Path) -> list[dict]:
     for h in read_sidecar(workdir, "check-hints.json"):
         cid = h["check_id"]
         if cid in check_ids:
-            say(f"check-hints.json {cid}", "check_id already used in this file")
+            _record_violation(
+                f"check-hints.json {cid}", "check_id already used in this file"
+            )
         check_ids.add(cid)
         for rid in h["requirements"]:
             if rid not in row_ids:
-                say(
+                _record_violation(
                     f"check-hints.json {cid}",
                     f"names {rid!r}, which requirements.json does not have",
                 )
             elif rid not in hintable:
-                say(
+                _record_violation(
                     f"check-hints.json {cid}",
                     f"names {rid!r}, which is not a simulation row without a target; "
                     f"only those take hints",
@@ -54,7 +58,7 @@ def violations(workdir: Path) -> list[dict]:
 
     # Orphans. Nothing else asks whether every row simulation judges has an observation.
     for rid in sorted(hintable - named):
-        say(
+        _record_violation(
             f"requirements.json {rid}",
             "no check-hints entry names it, so nothing verifies it",
         )
@@ -62,7 +66,7 @@ def violations(workdir: Path) -> list[dict]:
     # A phantom clock domain would render `abstract_port -clock <phantom>` and hide a CDC path.
     for e in ports:
         if e.get("clock_domain") and e["clock_domain"] not in clock_names:
-            say(
+            _record_violation(
                 f"top-io.json {e.get('name')}",
                 f"clock_domain {e['clock_domain']!r} is not in clocks.json",
             )
@@ -75,9 +79,3 @@ def verdict(workdir) -> dict:
     gate verdict stays true unless an artifact was edited after the gate."""
     found = violations(Path(workdir))
     return {"status": "fail" if found else "pass", "violations": found}
-
-
-def run(workdir: str) -> int:
-    v = verdict(workdir)
-    print(json.dumps(v, ensure_ascii=False, indent=2))
-    return 0 if v["status"] == "pass" else 1

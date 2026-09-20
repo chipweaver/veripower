@@ -143,3 +143,34 @@ def test_summary_reuses_evidence_without_a_simulation_environment(tmp_path):
     assert json.loads((tmp_path / "case-results.json").read_text())["passed_tests"] == 1
     assert (tmp_path / "structural-coverage.json").read_text() == "previous evidence"
     assert not (tmp_path / "compiler-called").exists()
+
+
+@pytest.mark.parametrize("mode", ["smoke", "regress", "coverage"])
+def test_make_entrypoint_invokes_coverage_for_the_requested_operation(tmp_path, mode):
+    env = setup(tmp_path)
+    process = run(tmp_path, env, mode)
+    if mode == "smoke":
+        assert process.returncode == 0, process.stderr
+        assert not (tmp_path / "urg-args").exists()
+    else:
+        # The controlled tool records its invocation and returns an error.
+        assert process.returncode != 0
+        arguments = (tmp_path / "urg-args").read_text().splitlines()
+        assert arguments[-4:] == ["-report", "cov_merge", "-format", "text"]
+        assert not (tmp_path / "structural-coverage.json").exists()
+
+
+def test_compile_receives_the_tb_include_and_dpi_flags(tmp_path):
+    env = setup(tmp_path)
+    with (tmp_path / "env.sh").open("a") as stream:
+        stream.write('vcs() { printf "%s\\n" "$@" > compiler-args; return 7; }\n')
+    assert run(tmp_path, env, "simv").returncode != 0
+    arguments = (tmp_path / "compiler-args").read_text().splitlines()
+    cflags = [
+        value
+        for index, value in enumerate(arguments)
+        if index and arguments[index - 1] == "-CFLAGS"
+    ]
+    assert cflags == [f"-I{tmp_path}/tb/uvm/refmodel", "-std=gnu99", "-DVCS"]
+    assert "+vpi" in arguments
+    assert str(tmp_path / "src/dpi/uvm_dpi.cc") in arguments

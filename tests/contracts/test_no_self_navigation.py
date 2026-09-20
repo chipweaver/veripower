@@ -33,7 +33,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 
 
-def _grep(pattern, *paths, fixed=True):
+def grep(pattern, *paths, fixed=True):
     """Fixed-string (`-F`) grep by default — critical for a pattern like
     `parents[3]`: an UNESCAPED regex grep would treat `[3]` as a bracket
     expression (matching a lone '3', not the literal brackets) and silently
@@ -56,17 +56,17 @@ def test_self_navigation_tokens_gone():
         "../../../rtl-design",
         "MY_MODULE_ROOT",
     ):
-        r = _grep(pat, "skills", "framework")
+        r = grep(pat, "skills", "framework")
         assert r.returncode == 1, f"leftover self-navigation ({pat}):\n{r.stdout}"
 
 
 # ── (b) no cross-stage parents[3] climb in skills/ ────────────────────────────
 def test_no_cross_stage_parents3_climb():
     # Same-stage self-location (a script resolving its OWN templates/ dir, e.g.
-    # `_HERE.parents[2] / "templates"`, or collect_report.py's `parent.parent`)
+    # `SCRIPT_PATH.parents[2] / "templates"`, or collect_report.py's `parent.parent`)
     # is a DIFFERENT token than the literal 3-deep climb checked here, so it is
     # never matched and needs no exclusion.
-    r = _grep("parents[3]", "skills")
+    r = grep("parents[3]", "skills")
     assert r.returncode == 1, f"leftover cross-stage parents[3] climb:\n{r.stdout}"
 
 
@@ -80,7 +80,7 @@ def test_no_cross_stage_parents3_climb():
 # DECLARATIVE data, not procedural path construction — if a future edit adds a
 # procedural `"Design"` build (e.g. a helper that joins the segment itself)
 # inside rules.py, this exclusion needs revisiting.
-_RULES_PY = "framework/scripts/rules.py"
+RULES_PY = "framework/scripts/rules.py"
 
 
 def test_no_code_cross_stage_path_construction():
@@ -94,9 +94,9 @@ def test_no_code_cross_stage_path_construction():
     against every such string in the corpus (see report)."""
     hits = []
     for tok in ('"Design"', "'Design'", '"Verification"', "'Verification'"):
-        r = _grep(tok, "skills", "framework")
+        r = grep(tok, "skills", "framework")
         for line in r.stdout.splitlines():
-            if line.startswith(_RULES_PY + ":"):
+            if line.startswith(RULES_PY + ":"):
                 continue  # SSoT registry — see module docstring
             hits.append(line)
     assert not hits, (
@@ -108,7 +108,7 @@ def test_no_code_cross_stage_path_construction():
 # ── (d) no cross-stage Design/<stage>/ or Verification/<stage>/ prefix in
 #        skills/*/SKILL.md, outside a small justified allowlist ─────────────
 # (file, 1-based line number) -> justification. Each entry inspected by hand.
-_SKILL_MD_ALLOWLIST = {
+SKILL_MD_ALLOWLIST = {
     # advisory prose FORBIDDING the anti-pattern, not an instance of it.
     ("skills/simulation-triage/SKILL.md", 24): (
         "prose instructing the skill to NEVER construct such a path itself — "
@@ -127,8 +127,8 @@ def test_no_skill_md_cross_stage_path_prefix():
             cwd=ROOT,
         )
         for line in r.stdout.splitlines():
-            path, lineno, _rest = line.split(":", 2)
-            if (path, int(lineno)) in _SKILL_MD_ALLOWLIST:
+            path, lineno, rest = line.split(":", 2)
+            if (path, int(lineno)) in SKILL_MD_ALLOWLIST:
                 continue
             hits.append(line)
     assert not hits, (

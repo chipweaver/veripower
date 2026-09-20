@@ -31,7 +31,7 @@ def prepare(tmp_path, stage, mode):
             (wd / name).write_text("# constraints\n")
         product = "reports/qor.rpt"
         body = (
-            f"source = Path({str(ROOT / 'tests/unit/fixtures/synthesis-golden')!r})\n"
+            f"source = Path({str(ROOT / 'tests/unit/fixtures/synthesis-reports')!r})\n"
             "assert not Path('work/stale').exists()\n"
             "shutil.copytree(source/'reports', Path('reports'))\n"
             "shutil.copytree(source/'out', Path('out'))\n"
@@ -41,10 +41,7 @@ def prepare(tmp_path, stage, mode):
     else:
         (wd / "run_sta.tcl").write_text("# stage calculation\n")
         product = "timing-report.txt"
-        source = (
-            ROOT
-            / "tests/unit/fixtures/timing-golden/Design/timing-analysis/runs/3/timing-report.txt"
-        )
+        source = ROOT / "tests/unit/fixtures/timing-reports/timing-report.txt"
         body = (
             f"shutil.copy2({str(source)!r}, 'timing-report.txt')\n"
             "Path('reports').mkdir()\nPath('reports/constraints.rpt').write_text('new constraints')\n"
@@ -127,19 +124,19 @@ def test_interruption_does_not_publish_partial_outputs(tmp_path, stage):
 def test_publication_failure_cannot_expose_a_truncated_report(
     tmp_path, monkeypatch, stage
 ):
-    wd, product, _, env = prepare(tmp_path, stage, "success")
+    wd, product, unused, env = prepare(tmp_path, stage, "success")
     monkeypatch.setenv("PATH", env["PATH"])
     pkg = "synthesis" if stage == "synthesis" else "timing"
     monkeypatch.syspath_prepend(str(ROOT / f"skills/{stage}/scripts"))
     module = importlib.import_module(pkg + ".execute")
     replace = Path.replace
 
-    def interrupted(source, destination):
+    def _interrupted(source, destination):
         if source.name == ("reports" if stage == "synthesis" else "timing-report.txt"):
             raise OSError("publication interrupted")
         return replace(source, destination)
 
-    monkeypatch.setattr(Path, "replace", interrupted)
+    monkeypatch.setattr(Path, "replace", _interrupted)
     with pytest.raises(OSError, match="publication interrupted"):
         module.run(wd)
     assert not (wd / product).exists()

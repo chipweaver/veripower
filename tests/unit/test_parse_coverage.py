@@ -20,11 +20,12 @@ def test_instance_subtrees_include_children_and_keep_peer_instances_separate():
     rows = {
         r["name"]: r for r in pc.parse_instances((FIX / "instances.txt").read_text())
     }
-    dut = "microgpt_core_tb_top.u_dut"
-    assert rows[dut]["cond"] == 89.69  # module self is 94.03
-    assert rows[dut]["toggle"] == 88.77  # module self is 94.21
-    assert rows[dut + ".u_attn.u_divs0"]["toggle"] == 77.73
-    assert rows[dut + ".u_attn.u_divs1"]["toggle"] == 77.94
+    dut = "tb.dut"
+    assert rows[dut]["cond"] == 80
+    assert rows[dut]["toggle"] == 70
+    assert rows[dut]["fsm"] is None
+    assert rows[dut + ".channel_a"]["toggle"] == 75
+    assert rows[dut + ".channel_b"]["toggle"] == 50
 
 
 def test_instance_subtrees_follow_report_columns():
@@ -62,10 +63,7 @@ def test_parse_aggregate_dims():
 
 
 def test_columns_come_from_the_header_not_from_an_assumed_set():
-    # Verbatim urg L-2016.06 output from an OpenTitan DV run whose -metric left out
-    # branch: five dim columns, not six. Assuming six walked past this row, latched onto
-    # the next block's (Hierarchical coverage, which appends an instance NAME) and tried
-    # to read that name as a number. The columns are printed above every table.
+    # A five-column table must not borrow the next table's instance-name column.
     agg = pc.parse_aggregate((FIX5 / "dashboard.txt").read_text())
     assert agg == pytest.approx(
         {"score": 48.00, "line": 82.42, "cond": 41.17, "toggle": 50.25, "fsm": 18.18},
@@ -91,24 +89,28 @@ def test_build_writes_structural_coverage_json(tmp_path):
 
     data = json.loads(out.read_text())
     assert data["aggregate"]["fsm"] == pytest.approx(31.25)
-    assert any(m["name"] == "microgpt_core_tb_top.u_dut" for m in data["per_instance"])
+    assert any(m["name"] == "tb.dut" for m in data["per_instance"])
     assert "L-2016.06" in data.get("urg_version", "")
 
 
 def test_parse_uncovered_names_branch_cond_and_fsm_items():
     items = pc.parse_uncovered((FIX / "modinfo.txt").read_text())
-    # every "Not Covered" row in the fixture becomes exactly one named item
-    assert len(items) == 11
-    assert {i["kind"] for i in items} == {"branch", "cond", "fsm"}
-    assert {i["module"] for i in items} == {"mgpt_rmsnorm"}
-    # the branch a percentage cannot name: the QMAX clamp's taken side, with its source line
-    qmax = [i for i in items if i["line"] == 160 and i["kind"] == "branch"]
-    assert len(qmax) == 1
-    assert "QMAX" in qmax[0]["detail"]
-    # SUB-EXPRESSION blocks carry their own LINE and must not be dropped
-    assert any(i["kind"] == "cond" and i["line"] == 150 for i in items)
-    # FSM rows carry the transition name, not source text
-    assert any(i["kind"] == "fsm" and "->" in i["detail"] for i in items)
+    assert items == [
+        {
+            "module": "controller",
+            "kind": "branch",
+            "line": 11,
+            "detail": "if (ready) transfer <= 1'b1;",
+        },
+        {
+            "module": "controller",
+            "kind": "cond",
+            "line": 20,
+            "detail": "(enable && ready)",
+        },
+        {"module": "controller", "kind": "cond", "line": 21, "detail": "ready"},
+        {"module": "controller", "kind": "fsm", "line": 31, "detail": "BUSY->IDLE"},
+    ]
 
 
 def test_parse_uncovered_tolerates_unknown_format():
@@ -137,7 +139,7 @@ def test_build_includes_uncovered_when_modinfo_present(tmp_path):
     import json
 
     data = json.loads(out.read_text())
-    assert len(data["uncovered"]) == 11
+    assert len(data["uncovered"]) == 4
     assert data["aggregate"]["fsm"] == pytest.approx(31.25)  # unchanged by the addition
 
 
@@ -170,7 +172,7 @@ def test_report_without_line_coverage_is_judged_by_requested_metric(tmp_path, me
     import json
 
     sys.path.insert(0, str(ROOT / "skills/simulation/scripts"))
-    from sim._gate import coverage_gate
+    from sim.checks import coverage_gate
 
     table = f"SCORE {metric}\n84.5 84.5\n"
     (tmp_path / "dashboard.txt").write_text("Total Coverage Summary\n" + table)

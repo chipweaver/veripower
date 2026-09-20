@@ -14,13 +14,13 @@ from pathlib import Path
 # The kernel hands this verb an ABSOLUTE workdir, so nothing here depends on where it
 # was launched from. A relative --workdir is still resolved against the CWD, for a
 # human running the verb by hand from inside the module.
-_HERE = Path(__file__).resolve()
-_TEMPLATE_DIR = _HERE.parents[2] / "templates"
+SCRIPT_PATH = Path(__file__).resolve()
+TEMPLATE_DIR = SCRIPT_PATH.parents[2] / "templates"
 
-_IDENT_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+IDENT_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
 
-def _err(msg: str) -> None:
+def report_error(msg: str) -> None:
     print(f"[lintcdc bootstrap] {msg}", file=sys.stderr)
 
 
@@ -34,15 +34,10 @@ def top_from_manifest(manifest_dir: Path) -> str | None:
         top = json.loads(f.read_text(encoding="utf-8")).get("module")
     except json.JSONDecodeError:
         return None
-    return top if isinstance(top, str) and _IDENT_RE.match(top) else None
+    return top if isinstance(top, str) and IDENT_RE.match(top) else None
 
 
-def _sub(path: Path, placeholder: str, value: str) -> None:
-    """In-place placeholder substitution (str.replace — no sed-delimiter hazard)."""
-    path.write_text(path.read_text().replace(placeholder, value))
-
-
-def _sync_filelist(dest: Path, rtl_dir: Path) -> int:
+def sync_filelist(dest: Path, rtl_dir: Path) -> int:
     """Generate scripts/filelist.txt from rtl-files.json, anchoring every RTL path at the
     ABSOLUTE injected rtl_dir (no relpath climb). Fail-closed (return 1) when the file is
     missing, unreadable, or lists nothing. Not because the round would otherwise pass — an
@@ -55,19 +50,19 @@ def _sync_filelist(dest: Path, rtl_dir: Path) -> int:
     """
     src = rtl_dir / "rtl-files.json"
     if not src.is_file():
-        _err(f"{src} not found")
-        _err("  Re-run rtl-design: it authors this sidecar.")
+        report_error(f"{src} not found")
+        report_error("  Re-run rtl-design: it authors this sidecar.")
         return 1
     try:
         rtl_files = json.loads(src.read_text(encoding="utf-8"))
     except json.JSONDecodeError as e:
-        _err(f"{src} is not valid JSON: {e}")
+        report_error(f"{src} is not valid JSON: {e}")
         return 1
     entries = rtl_files["files"]
     incdirs = rtl_files.get("incdirs", [])
     if not entries:
-        _err(f"{src} lists no RTL files")
-        _err("  Re-run rtl-design: it authors this sidecar.")
+        report_error(f"{src} lists no RTL files")
+        report_error("  Re-run rtl-design: it authors this sidecar.")
         return 1
     header = [
         "# ==============================================================================",
@@ -89,7 +84,7 @@ def _sync_filelist(dest: Path, rtl_dir: Path) -> int:
     return 0
 
 
-def _deploy_no_clobber(src_root: Path, dest: Path) -> set[str]:
+def deploy_no_clobber(src_root: Path, dest: Path) -> set[str]:
     """Copy every template file into dest UNLESS dest already has one at that path —
     a carried human-audited file (brought forward by kernel.py's carry_self before
     this verb runs) always wins over the pristine template."""
@@ -106,14 +101,14 @@ def _deploy_no_clobber(src_root: Path, dest: Path) -> set[str]:
     return installed
 
 
-_SGDC_ROW = {
+SGDC_ROW = {
     "sync_cell": "sync_cell -name {}",
     "reset_synchronizer": "reset_synchronizer -name {}",
     "quasi_static": "quasi_static -name {}",
 }
 
 
-def _annotation_lines(rtl_dir: Path) -> list[str] | None:
+def annotation_lines(rtl_dir: Path) -> list[str] | None:
     """The `sgdc` block of every child of constraint-annotations.json, as SGDC lines.
 
     Generated rather than transcribed by hand. The sidecar carries exact names and the
@@ -123,19 +118,19 @@ def _annotation_lines(rtl_dir: Path) -> list[str] | None:
     """
     src = rtl_dir / "constraint-annotations.json"
     if not src.is_file():
-        _err(f"{src} not found")
-        _err("  Re-run rtl-design: it authors this sidecar.")
+        report_error(f"{src} not found")
+        report_error("  Re-run rtl-design: it authors this sidecar.")
         return None
     try:
         ann = json.loads(src.read_text(encoding="utf-8"))
     except json.JSONDecodeError as e:
-        _err(f"{src} is not valid JSON: {e}")
+        report_error(f"{src} is not valid JSON: {e}")
         return None
     out: list[str] = []
     for child in sorted(ann):
         block = (ann[child] or {}).get("sgdc") or {}
         rows: list[str] = []
-        for key, form in _SGDC_ROW.items():
+        for key, form in SGDC_ROW.items():
             rows += [form.format(v) for v in block.get(key) or []]
         rows += [
             f"set_case_analysis -name {e['port']} -value {e['value']}"
@@ -148,12 +143,12 @@ def _annotation_lines(rtl_dir: Path) -> list[str] | None:
     return out
 
 
-def _assemble_sgdc(dest: Path, seed: Path, rtl_dir: Path) -> int:
+def assemble_sgdc(dest: Path, seed: Path, rtl_dir: Path) -> int:
     """Write the current specification seed and RTL annotations for SpyGlass.
 
     The project reads the stage's local.sgdc separately, after this file.
     """
-    annotations = _annotation_lines(rtl_dir)
+    annotations = annotation_lines(rtl_dir)
     if annotations is None:
         return 1
     body = [
@@ -179,8 +174,8 @@ def _assemble_sgdc(dest: Path, seed: Path, rtl_dir: Path) -> int:
 
 def run(workdir, top: str | None = None) -> int:
     (Path(workdir) / "result.json").unlink(missing_ok=True)
-    if not _TEMPLATE_DIR.is_dir():
-        _err(f"missing template directory: {_TEMPLATE_DIR}")
+    if not TEMPLATE_DIR.is_dir():
+        report_error(f"missing template directory: {TEMPLATE_DIR}")
         return 1
 
     # The design tree is the CWD (kernel.py + stage-subagent contract). Resolve a
@@ -200,8 +195,8 @@ def run(workdir, top: str | None = None) -> int:
     if not top:
         top = top_from_manifest(inputs["manifest"])
     if not top:
-        _err("cannot read top-module name; pass --top <name>")
-        _err("  Design/specification/manifest.json must carry a 'module' name.")
+        report_error("cannot read top-module name; pass --top <name>")
+        report_error("  Design/specification/manifest.json must carry a 'module' name.")
         return 1
 
     dest.mkdir(parents=True, exist_ok=True)
@@ -209,14 +204,14 @@ def run(workdir, top: str | None = None) -> int:
     # fall back from: SpyGlass reading a design with no clock declared reports a clean run.
     seed = Path(inputs["sgdc_seed"]) / "constraints" / f"{top}.sgdc"
     if not seed.is_file():
-        _err(f"SGDC source of truth not found: {seed}")
-        _err(
+        report_error(f"SGDC source of truth not found: {seed}")
+        report_error(
             "  specification's derive-constraints writes constraints/<TOP>.sgdc; check that "
             "it ran and that --top matches manifest.module."
         )
         return 1
 
-    installed = _deploy_no_clobber(_TEMPLATE_DIR, dest)
+    installed = deploy_no_clobber(TEMPLATE_DIR, dest)
     for rel in (
         "env.sh",
         "scripts/spyglass_lint.prj",
@@ -224,17 +219,18 @@ def run(workdir, top: str | None = None) -> int:
         "scripts/local.sgdc",
     ):
         if rel in installed:
-            _sub(dest / rel, "MY_TOP", top)
+            setup_file = dest / rel
+            setup_file.write_text(setup_file.read_text().replace("MY_TOP", top))
 
-    if _assemble_sgdc(dest, seed, rtl_dir) != 0:
+    if assemble_sgdc(dest, seed, rtl_dir) != 0:
         return 1
 
     for sh in (dest / "scripts").glob("*.sh"):
         sh.chmod(sh.stat().st_mode | 0o111)
 
-    rc = _sync_filelist(dest, rtl_dir)
-    if rc != 0:
-        return rc
+    exit_code = sync_filelist(dest, rtl_dir)
+    if exit_code != 0:
+        return exit_code
 
     print(f"[lintcdc bootstrap] deployed {dest}")
     print(f"  TOP={top}")

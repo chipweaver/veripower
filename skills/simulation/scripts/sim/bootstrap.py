@@ -2,7 +2,7 @@
 """sim bootstrap — deploy the simulation templates into a run workdir, then optionally render the UVM scaffold.
 
 Deploy the infra templates without clobbering anything already there, substitute the MY_TOP
-and MY_MODULE placeholders, generate rtl_filelist.f (sim._filelist) from the injected
+and MY_MODULE placeholders, generate rtl_filelist.f (sim.rtl_sources) from the injected
 absolute rtl-design root, and when --plan is given render the full UVM scaffold via
 sim.scaffold.render.
 
@@ -23,18 +23,16 @@ import shutil
 import sys
 from pathlib import Path
 
-from sim._plan import SCAFFOLD_NAME
-
 # This file: skills/simulation/scripts/sim/bootstrap.py
 #   parents[2] = skills/simulation   (-> templates/, ships with the skill)
 # The kernel hands this verb an ABSOLUTE workdir, so nothing here depends on where it
 # was launched from. A relative --workdir is still resolved against the CWD, for a
 # human running the verb by hand from inside the module.
-_HERE = Path(__file__).resolve()
-_TEMPLATE_DIR = _HERE.parents[2] / "templates"
+SCRIPT_PATH = Path(__file__).resolve()
+TEMPLATE_DIR = SCRIPT_PATH.parents[2] / "templates"
 
-_IDENT_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
-_UVM_SUBDIRS = (
+IDENT_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+UVM_SUBDIRS = (
     "interface",
     "transaction",
     "agent",
@@ -46,27 +44,17 @@ _UVM_SUBDIRS = (
     "pkg",
     "top",
 )
-_PLACEHOLDERS = ("MY_TOP", "MY_MODULE")
+PLACEHOLDERS = ("MY_TOP", "MY_MODULE")
 
 
-def _err(msg: str) -> None:
+SCAFFOLD_NAME = "tb-scaffold.json"
+
+
+def report_error(msg: str) -> None:
     print(f"[sim bootstrap] {msg}", file=sys.stderr)
 
 
-def read_names(scaffold_dir) -> tuple[str, str]:
-    """(top, module) — both indexed out of the `scaffold` input's tb-scaffold.json.
-
-    Indexed rather than taken from the caller: both are required fields of
-    tb-scaffold.schema.json, validated by simulation-plan when it writes the file, and
-    sim.scaffold indexes the same two a moment later to name <top>_tb_top.sv and the
-    <module>_* classes. A second source would let what is substituted across the deployed
-    infra disagree with what the renderer emitted — which is a TB that does not compile,
-    since base_test.sv names the env the renderer wrote."""
-    spec = json.loads((Path(scaffold_dir) / SCAFFOLD_NAME).read_text())
-    return spec["top"], spec["module"]
-
-
-def _deploy_no_clobber(src_root: Path, dest: Path) -> list[Path]:
+def deploy_no_clobber(src_root: Path, dest: Path) -> list[Path]:
     """Copy every template file into dest unless dest already has one at that path: a file
     carried from the prior round always wins over the pristine template. Returns the files
     actually written."""
@@ -84,9 +72,9 @@ def _deploy_no_clobber(src_root: Path, dest: Path) -> list[Path]:
 
 
 def run(workdir, scaffold=None) -> int:
-    infra = _TEMPLATE_DIR / "infra"
+    infra = TEMPLATE_DIR / "infra"
     if not infra.is_dir():
-        _err(f"missing infra template directory: {infra}")
+        report_error(f"missing infra template directory: {infra}")
         return 1
 
     # The design tree is the CWD (kernel.py + stage-subagent contract). Resolve a
@@ -102,13 +90,16 @@ def run(workdir, scaffold=None) -> int:
     inputs = json.loads((dest / "dispatch.json").read_text(encoding="utf-8"))["inputs"]
     rtl_dir = Path(inputs["rtl"])
 
-    top, prefix = read_names(inputs["scaffold"])
+    plan = json.loads((Path(inputs["scaffold"]) / SCAFFOLD_NAME).read_text())
+    top, prefix = plan["top"], plan["module"]
     for field, name in (("top", top), ("module", prefix)):
-        if not _IDENT_RE.match(name):
+        if not IDENT_RE.match(name):
             # The schema types both as plain strings without pinning their shape, so this is
             # the one place a name that cannot be a Verilog identifier is reported. Left
             # through, it reaches VCS as a syntax error in generated code nobody wrote by hand.
-            _err(f"{SCAFFOLD_NAME} `{field}` is not a Verilog identifier: {name!r}")
+            report_error(
+                f"{SCAFFOLD_NAME} `{field}` is not a Verilog identifier: {name!r}"
+            )
             return 1
 
     # A Makefile present means the prior round's TB was carried in before this verb ran:
@@ -118,8 +109,8 @@ def run(workdir, scaffold=None) -> int:
         print(f"[sim bootstrap] rework — carried TB detected ({dest / 'Makefile'})")
 
     # Step 1: deploy infra, never over a file already there.
-    deployed = _deploy_no_clobber(infra, dest)
-    for d in _UVM_SUBDIRS:
+    deployed = deploy_no_clobber(infra, dest)
+    for d in UVM_SUBDIRS:
         (dest / "tb" / "uvm" / d).mkdir(parents=True, exist_ok=True)
     (dest / "tests").mkdir(parents=True, exist_ok=True)
 
@@ -132,7 +123,7 @@ def run(workdir, scaffold=None) -> int:
     repl = {"MY_TOP": top, "MY_MODULE": prefix}
     for path in deployed:
         text = path.read_text()
-        if any(ph in text for ph in _PLACEHOLDERS):
+        if any(ph in text for ph in PLACEHOLDERS):
             for ph, val in repl.items():
                 text = text.replace(ph, val)
             path.write_text(text)
@@ -147,7 +138,7 @@ def run(workdir, scaffold=None) -> int:
     # Step 2: generate rtl_filelist.f from the injected rtl-files.json (paths anchored at
     # the ABSOLUTE rtl root). ALWAYS overwrites — a cross-stage-derived filelist must
     # re-anchor every round, so this is never no-clobbered.
-    from sim._filelist import load_rtl_files, write_rtl_filelist
+    from sim.rtl_sources import load_rtl_files, write_rtl_filelist
 
     write_rtl_filelist(load_rtl_files(rtl_dir), dest / "rtl_filelist.f", str(rtl_dir))
 

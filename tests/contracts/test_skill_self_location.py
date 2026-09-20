@@ -17,12 +17,12 @@ that needs it.
 import re
 
 import pytest
-from _skills_sot import PLUGIN_ROOT, SKILL_DIRS
+from skills_source import PLUGIN_ROOT, SKILL_DIRS
 
-_HARNESS_VAR_RE = re.compile(r"\$\{?CLAUDE_[A-Z_]+")
+HARNESS_VAR_RE = re.compile(r"\$\{?CLAUDE_[A-Z_]+")
 
 # `<skill>/` and its path, up to the delimiters the corpus uses around one.
-_SELF_REF_RE = re.compile(r"<skill>/([^\s`),]+)")
+SELF_REF_RE = re.compile(r"<skill>/([^\s`),]+)")
 
 
 @pytest.mark.parametrize("skill_name", SKILL_DIRS)
@@ -34,7 +34,7 @@ def test_no_harness_variable_in_skill_tree(skill_name: str) -> None:
         for line_no, line in enumerate(
             path.read_text(encoding="utf-8").splitlines(), 1
         ):
-            if _HARNESS_VAR_RE.search(line):
+            if HARNESS_VAR_RE.search(line):
                 offenders.append(f"{path.relative_to(PLUGIN_ROOT)}:{line_no}")
 
     assert not offenders, (
@@ -58,7 +58,7 @@ def test_self_references_resolve(skill_name: str) -> None:
         for line_no, line in enumerate(
             path.read_text(encoding="utf-8").splitlines(), 1
         ):
-            for m in _SELF_REF_RE.finditer(line):
+            for m in SELF_REF_RE.finditer(line):
                 cited = m.group(1).rstrip(".")
                 # A second placeholder (`<skill>/../<stage>/templates/`) stands
                 # for a set of paths, not one.

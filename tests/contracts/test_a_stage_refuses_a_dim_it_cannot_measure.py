@@ -22,7 +22,7 @@ import pytest
 ROOT = Path(__file__).resolve().parents[2]
 
 
-def _rq(stage: str, pkg: str):
+def load_requirements_module(stage: str, pkg: str):
     sys.path.insert(0, str(ROOT / "skills" / stage / "scripts"))
     return __import__(f"{pkg}.requirements", fromlist=["requirements"])
 
@@ -30,15 +30,19 @@ def _rq(stage: str, pkg: str):
 @pytest.mark.parametrize(
     "stage,pkg", [("timing-analysis", "timing"), ("lint-cdc", "lintcdc")]
 )
-def test_stages_refuse_an_unsupported_bounded_dimension(stage, pkg):
-    rq = _rq(stage, pkg)
+def test_stages_refuse_an_unsupported_bounded_dimension(tmp_path, stage, pkg):
+    rq = load_requirements_module(stage, pkg)
     row = {
         "id": "R-X",
         "judge": stage,
         "target": {"dim": "power_mw", "op": "<=", "value": 5},
     }
+    (tmp_path / "requirements.json").write_text(json.dumps([row]))
+    (tmp_path / "dispatch.json").write_text(
+        json.dumps({"inputs": {"requirements": str(tmp_path)}})
+    )
     with pytest.raises(ValueError) as exc:
-        rq.mine([row])
+        rq.load_requirements(tmp_path)
     assert "R-X" in str(exc.value)
 
 
@@ -46,7 +50,7 @@ def test_synthesis_refuses_a_dim_it_does_not_measure():
     sys.path.insert(0, str(ROOT / "skills" / "synthesis" / "scripts"))
     from synthesis import result
 
-    reports = ROOT / "tests/unit/fixtures/synthesis-golden/reports"
+    reports = ROOT / "tests/unit/fixtures/synthesis-reports/reports"
     row = {"id": "R-X", "target": {"dim": "power_mw", "op": "<=", "value": 5}}
     with pytest.raises(ValueError) as exc:
         result.run(reports, [row])
@@ -57,17 +61,19 @@ def test_power_refuses_a_dim_it_does_not_measure(tmp_path):
     sys.path.insert(0, str(ROOT / "skills" / "power-analysis" / "scripts"))
     from power import result
 
-    golden = ROOT / "tests/unit/fixtures/power-golden"
-    wd = tmp_path / "wd"
-    shutil.copytree(golden / "real", wd)
-    # One PASS token per scenario: the gate-level verdict base_test writes, absent from the
-    # fixture. Without it the run fails before it ever reaches a verdict.
-    for saif in (wd / "saif").glob("*.saif"):
-        saif.with_suffix(".status").write_text("PASS\n")
-        saif.write_bytes((golden / "saif-excerpts/active.saif").read_bytes())
+    reports = ROOT / "tests/unit/fixtures/power-reports"
+    wd = tmp_path / "measurement"
+    (wd / "saif").mkdir(parents=True)
+    shutil.copy2(reports / "active.saif", wd / "saif/workload.saif")
+    (wd / "saif/workload.status").write_text("PASS\n")
+    destination = wd / "reports_ptpx/workload"
+    destination.mkdir(parents=True)
+    shutil.copy2(reports / "rounded-power.rpt", destination / "power_flat.rpt")
+    (destination / "switching_activity.rpt").write_text(" Nets 4(100.00%) 0(0.00%) 4\n")
+    (tmp_path / "power-scenarios.json").write_text('[{"id":"workload"}]')
     row = {"id": "R-X", "target": {"dim": "area_um2", "op": "<=", "value": 5}}
     with pytest.raises(ValueError) as exc:
-        result.run(golden / "plan", wd, [row])
+        result.run(tmp_path, wd, [row])
     assert "area_um2" in str(exc.value) and "does not measure" in str(exc.value)
 
 

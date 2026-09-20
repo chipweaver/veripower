@@ -1,8 +1,0 @@
-{
-  "files": [
-    "src/fifo.v",
-    "src/mac.v",
-    "src/systolic_reg.v",
-    "src/tpu_top.v"
-  ]
-}

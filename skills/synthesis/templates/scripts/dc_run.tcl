@@ -11,9 +11,9 @@
 
 # --- Calculation settings ---
 source [file join [pwd] config.tcl]
-foreach _var {TOP LIB_DB WIRE_LOAD_MODEL} {
-    if {![info exists $_var] || [set $_var] eq ""} {
-        puts stderr "ERROR: setting $_var not set in config.tcl"
+foreach setting_name {TOP LIB_DB WIRE_LOAD_MODEL} {
+    if {![info exists $setting_name] || [set $setting_name] eq ""} {
+        puts stderr "ERROR: setting $setting_name not set in config.tcl"
         exit 1
     }
 }
@@ -61,16 +61,16 @@ if {![link]} {
     exit 1
 }
 
-set _check_rpt [file join $reports_dir "check_design.rpt"]
-check_design > $_check_rpt
+set design_check_report [file join $reports_dir "check_design.rpt"]
+check_design > $design_check_report
 
 # Abort if check_design reported any errors — otherwise compile failure log
 # obscures the real upstream cause.
-set _fh [open $_check_rpt r]
-set _check_content [read $_fh]
-close $_fh
-if {[regexp -line {^Error:} $_check_content]} {
-    puts stderr "ERROR: check_design reported errors - see $_check_rpt"
+set report_handle [open $design_check_report r]
+set design_check_text [read $report_handle]
+close $report_handle
+if {[regexp -line {^Error:} $design_check_text]} {
+    puts stderr "ERROR: check_design reported errors - see $design_check_report"
     exit 1
 }
 
@@ -94,20 +94,20 @@ if {![compile_ultra]} {
 
 # --- Reports ---
 report_qor                                       > [file join $reports_dir "qor.rpt"]
-set _area_rpt [file join $reports_dir "area.rpt"]
-report_area   -hierarchy                         > $_area_rpt
+set area_report [file join $reports_dir "area.rpt"]
+report_area   -hierarchy                         > $area_report
 
 # set_wire_load_model can return success for an absent model. Check the effective setting.
-set _fh [open $_area_rpt r]
-set _area_content [read $_fh]
-close $_fh
-set _no_wlm [regexp {No wire load specified} $_area_content]
-if {$wlm ne "none" && $_no_wlm} {
+set report_handle [open $area_report r]
+set area_report_text [read $report_handle]
+close $report_handle
+set wire_load_missing [regexp {No wire load specified} $area_report_text]
+if {$wlm ne "none" && $wire_load_missing} {
     puts stderr "ERROR: wire load model '$wlm' is not in $lib_db (report_lib lists what is)"
     exit 1
 }
-if {$wlm eq "none" && !$_no_wlm} {
-    puts stderr "ERROR: WIRE_LOAD_MODEL=none, but $_area_rpt reports an interconnect estimate"
+if {$wlm eq "none" && !$wire_load_missing} {
+    puts stderr "ERROR: WIRE_LOAD_MODEL=none, but $area_report reports an interconnect estimate"
     exit 1
 }
 redirect [file join $reports_dir "timing_setup.rpt"] {

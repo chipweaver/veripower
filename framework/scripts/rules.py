@@ -267,7 +267,3 @@ def input_closure(rule_name: str) -> set[str]:
 def repair_owners(rule_name: str) -> set[str]:
     """A stage can repair its own work or ask an input producer to repair theirs."""
     return {rule_name} | input_closure(rule_name)
-
-
-def workdir_root(rule_name: str) -> tuple[str, ...]:
-    return RULES[rule_name].workdir_root

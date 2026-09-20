@@ -9,29 +9,20 @@ agent never read cannot pass as silence.
 from __future__ import annotations
 
 import json
-import operator
 from pathlib import Path
 
 STAGE = "power-analysis"
-_OPS = {"<": operator.lt, "<=": operator.le, ">": operator.gt, ">=": operator.ge}
 
 
-def load(workdir) -> list[dict]:
-    """Every row, from the specification root the kernel injected into dispatch.json."""
+def load_requirements(workdir) -> list[dict]:
+    """Read and select the requirements judged by this stage."""
     inputs = json.loads((Path(workdir) / "dispatch.json").read_text(encoding="utf-8"))[
         "inputs"
     ]
-    return json.loads(
+    rows = json.loads(
         (Path(inputs["requirements"]) / "requirements.json").read_text(encoding="utf-8")
     )
-
-
-def mine(rows: list[dict]) -> list[dict]:
-    return [r for r in rows if r["judge"] == STAGE]
-
-
-def met(actual: float, target: dict) -> bool:
-    return _OPS[target["op"]](actual, target["value"])
+    return [row for row in rows if row["judge"] == STAGE]
 
 
 def parse_declared(text: str | None) -> list[dict]:
@@ -41,15 +32,17 @@ def parse_declared(text: str | None) -> list[dict]:
     verdict that reaches reap without it costs the round a blocked outcome instead of a
     routable one."""
     declared = json.loads(text) if text else []
-    for e in declared:
-        if not isinstance(e.get("id"), str) or not isinstance(e.get("met"), bool):
+    for entry in declared:
+        if not isinstance(entry.get("id"), str) or not isinstance(
+            entry.get("met"), bool
+        ):
             raise ValueError(
-                f"--requirements entry needs a string id and a boolean met: {e}"
+                f"--requirements entry needs a string id and a boolean met: {entry}"
             )
-        if not isinstance(e.get("measured"), str) or not e["measured"].strip():
+        if not isinstance(entry.get("measured"), str) or not entry["measured"].strip():
             raise ValueError(
                 f"--requirements entry needs `measured` — what you read, and where, so the "
-                f"verdict can be checked against the row's own words: {e}"
+                f"verdict can be checked against the row's own words: {entry}"
             )
     return declared
 
@@ -57,23 +50,19 @@ def parse_declared(text: str | None) -> list[dict]:
 def merge(rows: list[dict], computed: list[dict], declared: list[dict]) -> list[dict]:
     """One entry per row this stage judges, in ledger order. Raises when a row has no entry or
     an entry names a row this stage does not judge."""
-    ids = [r["id"] for r in rows]
-    targeted = {r["id"] for r in rows if "target" in r}
-    if targeted & {e["id"] for e in declared}:
+    requirement_ids = [row["id"] for row in rows]
+    targeted = {row["id"] for row in rows if "target" in row}
+    if targeted & {entry["id"] for entry in declared}:
         raise ValueError("numeric power targets cannot be overridden by declarations")
-    if len({e["id"] for e in declared}) != len(declared):
+    if len({entry["id"] for entry in declared}) != len(declared):
         raise ValueError("duplicate requirement declarations")
-    entries = {e["id"]: e for e in computed + declared}
-    missing = [i for i in ids if i not in entries]
-    extra = sorted(set(entries) - set(ids))
+    entries = {entry["id"]: entry for entry in computed + declared}
+    missing = [i for i in requirement_ids if i not in entries]
+    extra = sorted(set(entries) - set(requirement_ids))
     if missing or extra:
         raise ValueError(
-            f"requirements judged by {STAGE} are {ids}; "
+            f"requirements judged by {STAGE} are {requirement_ids}; "
             + (f"no verdict for {missing}; " if missing else "")
             + (f"verdicts for rows this stage does not judge: {extra}" if extra else "")
         )
-    return [entries[i] for i in ids]
-
-
-def unmet(entries: list[dict]) -> list[str]:
-    return [e["id"] for e in entries if not e["met"]]
+    return [entries[i] for i in requirement_ids]

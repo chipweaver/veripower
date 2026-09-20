@@ -7,7 +7,7 @@ from pathlib import Path
 
 from power.scenarios import load
 
-_TEMPLATE_DIR = Path(__file__).resolve().parents[2] / "templates"
+TEMPLATE_DIR = Path(__file__).resolve().parents[2] / "templates"
 
 
 def run(workdir, top=None):
@@ -35,10 +35,10 @@ def run(workdir, top=None):
         "@SDC@": shlex.quote(str(syn / f"{top}_syn.sdc")),
         "@SDF@": shlex.quote(str(syn / f"{top}_syn.sdf")),
     }
-    for src in _TEMPLATE_DIR.rglob("*"):
+    for src in TEMPLATE_DIR.rglob("*"):
         if not src.is_file() or "__pycache__" in src.parts:
             continue
-        target = dest / src.relative_to(_TEMPLATE_DIR)
+        target = dest / src.relative_to(TEMPLATE_DIR)
         if target.exists():
             continue  # Authored setup and repairs survive bootstrap.
         target.parent.mkdir(parents=True, exist_ok=True)

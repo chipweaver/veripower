@@ -1,6 +1,6 @@
 """Tests for skills/power-analysis/scripts/power/result.py"""
 
-import json as _json
+import json
 import subprocess
 import sys
 import textwrap
@@ -73,14 +73,14 @@ def test_parse_nonexistent_file_returns_none(tmp_path):
     assert parse_total_power_mw(f) is None
 
 
-def _write_rpt(tmp_path, content):
+def write_rpt(tmp_path, content):
     rpt = tmp_path / "power_hier.rpt"
     rpt.write_text(textwrap.dedent(content))
     return rpt
 
 
 def test_parse_three_components(tmp_path):
-    rpt = _write_rpt(
+    rpt = write_rpt(
         tmp_path,
         """
         ...
@@ -103,26 +103,19 @@ def test_parse_three_components(tmp_path):
 
 
 def test_parse_three_components_missing(tmp_path):
-    rpt = _write_rpt(tmp_path, "no power data here")
+    rpt = write_rpt(tmp_path, "no power data here")
     assert p.parse_three_components(rpt) is None
 
 
 # ── annotation rate ──
-# A parser of vendor output is only tested once it has met vendor output — hand-written text
-# can be invented to match whatever the regex happens to want. Hence the first test below runs
-# on the committed real report.
-
-_SAIF_IDLE = REPO_ROOT / "tests/unit/fixtures/power-golden/saif-excerpts/idle.saif"
-_SAIF_ACTIVE = REPO_ROOT / "tests/unit/fixtures/power-golden/saif-excerpts/active.saif"
+SAIF_IDLE = REPO_ROOT / "tests/unit/fixtures/power-reports/idle.saif"
+SAIF_ACTIVE = REPO_ROOT / "tests/unit/fixtures/power-reports/active.saif"
 
 
 def test_toggled_fraction_separates_a_run_that_moved_from_one_that_did_not():
-    # Both excerpts are verbatim VCS $toggle_report output from the same design and the
-    # same testbench, 40 nets each: one scenario drove it, the other left it sitting.
-    # Neither PT report distinguishes them — report_switching_activity is byte-identical
-    # for the two, because 0% and 100% of nothing both annotate perfectly.
-    assert p.parse_toggled_net_fraction(_SAIF_IDLE) == 0.0
-    assert p.parse_toggled_net_fraction(_SAIF_ACTIVE) == pytest.approx(35 / 40)
+    # TC measures transitions; annotation alone does not establish activity.
+    assert p.parse_toggled_net_fraction(SAIF_IDLE) == 0.0
+    assert p.parse_toggled_net_fraction(SAIF_ACTIVE) == pytest.approx(3 / 4)
 
 
 def test_toggled_fraction_none_when_absent_or_carrying_no_counts(tmp_path):
@@ -134,7 +127,7 @@ def test_toggled_fraction_none_when_absent_or_carrying_no_counts(tmp_path):
     assert p.parse_toggled_net_fraction(stub) is None
 
 
-def _flat_rpt(total_mw, internal=None, switching=None, leakage=None):
+def flat_rpt(total_mw, internal=None, switching=None, leakage=None):
     lines = []
     if internal is not None:
         lines += [
@@ -148,25 +141,25 @@ def _flat_rpt(total_mw, internal=None, switching=None, leakage=None):
 
 # ptpx.tcl writes this per scenario and its own in-run 0%-annotation gate reads it; the
 # whole reports_ptpx/ tree is promoted, so a workdir without it is not shaped like a run.
-_SA_RPT = (
+SA_RPT = (
     ' Switching Activity Overview Statistics for "top"\n'
     " Nets             95(95.00%)   5(5.00%)   100\n"
 )
-_VCS_LOG = "Chronologic VCS simulator copyright ...\nVersion L-2016.06_Full64\n"
+VCS_LOG = "Chronologic VCS simulator copyright ...\nVersion L-2016.06_Full64\n"
 
 
-def _make_workdir(tmp_path, scenarios, sizes, flats, statuses=None):
-    """sizes: {id: 0 to omit the SAIF, non-zero to write one}. A written SAIF is the real
-    excerpt whose 40 nets carry 35 toggles, so the scenario table's toggled_net_fraction
+def make_workdir(tmp_path, scenarios, sizes, flats, statuses=None):
+    """sizes: {id: 0 to omit the SAIF, non-zero to write one}. A written SAIF is a
+    SAIF fragment with three toggling nets out of four, so the scenario table's toggled_net_fraction
     comes out of the same parser a run uses.  flats: {id: power_flat text, or None to omit
     the file}.  statuses: {id: token, or None to omit the file}; unnamed scenarios pass."""
     wd = tmp_path / "wd"
     (wd / "saif").mkdir(parents=True)
-    (wd / "gls-compile-log.txt").write_text(_VCS_LOG)
+    (wd / "gls-compile-log.txt").write_text(VCS_LOG)
     for s in scenarios:
         sid = s["id"]
         if sizes.get(sid, 0) > 0:
-            (wd / "saif" / f"{sid}.saif").write_bytes(_SAIF_ACTIVE.read_bytes())
+            (wd / "saif" / f"{sid}.saif").write_bytes(SAIF_ACTIVE.read_bytes())
         token = (statuses or {}).get(sid, "PASS")
         if token is not None:
             (wd / "saif" / f"{sid}.status").write_text(token + "\n")
@@ -174,14 +167,14 @@ def _make_workdir(tmp_path, scenarios, sizes, flats, statuses=None):
         rdir.mkdir(parents=True)
         if flats.get(sid) is not None:
             (rdir / "power_flat.rpt").write_text(flats[sid])
-        (rdir / "switching_activity.rpt").write_text(_SA_RPT)
+        (rdir / "switching_activity.rpt").write_text(SA_RPT)
     plan = tmp_path / "plan"  # the simulation-plan workdir, as injected
     plan.mkdir(exist_ok=True)
-    (plan / "power-scenarios.json").write_text(_json.dumps(scenarios))
+    (plan / "power-scenarios.json").write_text(json.dumps(scenarios))
     return wd, plan
 
 
-def _bound(rid, op, value, scenario=None, judge="power-analysis"):
+def bound(rid, op, value, scenario=None, judge="power-analysis"):
     t = {"dim": "power_mw", "op": op, "value": value}
     if scenario:
         t["scenario"] = scenario
@@ -193,14 +186,14 @@ def _bound(rid, op, value, scenario=None, judge="power-analysis"):
     }
 
 
-def _spec(tmp_path, rows):
+def write_specification(tmp_path, rows):
     sd = tmp_path / "spec"
     sd.mkdir(exist_ok=True)
-    (sd / "requirements.json").write_text(_json.dumps(rows))
+    (sd / "requirements.json").write_text(json.dumps(rows))
     return sd
 
 
-_SCEN = [
+SCEN = [
     {
         "id": "S1",
     },
@@ -211,16 +204,16 @@ _SCEN = [
 
 
 def test_run_pass_within_targets(tmp_path):
-    wd, plan = _make_workdir(
+    wd, plan = make_workdir(
         tmp_path,
-        _SCEN,
+        SCEN,
         sizes={"S1": 2000, "S2": 4000},
         flats={
-            "S1": _flat_rpt(0.42, 0.05, 0.02, 0.35),
-            "S2": _flat_rpt(1.10, 0.45, 0.55, 0.10),
+            "S1": flat_rpt(0.42, 0.05, 0.02, 0.35),
+            "S2": flat_rpt(1.10, 0.45, 0.55, 0.10),
         },
     )
-    rc, data = p.run(plan, wd, [_bound("R-P", "<=", 1.2)])
+    rc, data = p.run(plan, wd, [bound("R-P", "<=", 1.2)])
     assert rc == 0
     # no scenario named: the bound holds for every scenario, and actual is the worst of them
     assert data["requirements"] == [
@@ -241,22 +234,22 @@ def test_run_pass_within_targets(tmp_path):
     assert data["compile_info"] == {"vcs_version": "L-2016.06_Full64"}
     # The field that qualifies power_mw must survive the whole run, not just the parser.
     assert [c["toggled_net_fraction"] for c in data["power_by_scenario"]] == [
-        pytest.approx(35 / 40),
-        pytest.approx(35 / 40),
+        pytest.approx(3 / 4),
+        pytest.approx(3 / 4),
     ]
 
 
 def test_run_ppa_miss_is_exit0_fail(tmp_path):
-    wd, plan = _make_workdir(
+    wd, plan = make_workdir(
         tmp_path,
-        _SCEN,
+        SCEN,
         sizes={"S1": 2000, "S2": 4000},
         flats={
-            "S1": _flat_rpt(0.42, 0.05, 0.02, 0.35),
-            "S2": _flat_rpt(1.85, 0.62, 0.95, 0.28),
+            "S1": flat_rpt(0.42, 0.05, 0.02, 0.35),
+            "S2": flat_rpt(1.85, 0.62, 0.95, 0.28),
         },
     )
-    rc, data = p.run(plan, wd, [_bound("R-P", "<=", 1.2, scenario="S2")])
+    rc, data = p.run(plan, wd, [bound("R-P", "<=", 1.2, scenario="S2")])
     assert rc == 0  # a miss is a verdict, not a tooling failure
     assert data["requirements"] == [
         {
@@ -269,22 +262,22 @@ def test_run_ppa_miss_is_exit0_fail(tmp_path):
 
 
 def test_run_a_bound_naming_an_unmeasured_scenario_cannot_be_judged(tmp_path):
-    wd, plan = _make_workdir(
+    wd, plan = make_workdir(
         tmp_path,
-        _SCEN[:1],
+        SCEN[:1],
         sizes={"S1": 2000},
-        flats={"S1": _flat_rpt(0.42, 0.05, 0.02, 0.35)},
+        flats={"S1": flat_rpt(0.42, 0.05, 0.02, 0.35)},
     )
     with pytest.raises(ValueError, match="S9"):
-        p.run(plan, wd, [_bound("R-P", "<=", 1.2, scenario="S9")])
+        p.run(plan, wd, [bound("R-P", "<=", 1.2, scenario="S9")])
 
 
 def test_run_no_targeted_rows_judges_nothing_but_still_measures(tmp_path):
-    wd, plan = _make_workdir(
+    wd, plan = make_workdir(
         tmp_path,
-        _SCEN[:1],
+        SCEN[:1],
         sizes={"S1": 2000},
-        flats={"S1": _flat_rpt(0.42, 0.05, 0.02, 0.35)},
+        flats={"S1": flat_rpt(0.42, 0.05, 0.02, 0.35)},
     )
     rc, data = p.run(plan, wd, [])
     assert rc == 0
@@ -293,11 +286,11 @@ def test_run_no_targeted_rows_judges_nothing_but_still_measures(tmp_path):
 
 
 def test_run_saif_empty_nulls_value_and_excludes(tmp_path, capsys):
-    wd, plan = _make_workdir(
+    wd, plan = make_workdir(
         tmp_path,
-        _SCEN[:1],
+        SCEN[:1],
         sizes={"S1": 0},  # no saif file
-        flats={"S1": _flat_rpt(0.42, 0.05, 0.02, 0.35)},
+        flats={"S1": flat_rpt(0.42, 0.05, 0.02, 0.35)},
     )  # flat parses fine
     rc, data = p.run(plan, wd, [])
     assert rc != 0
@@ -315,17 +308,17 @@ def test_run_experiment_failure_nulls_the_power_number(tmp_path, capsys):
     """The gate-level run is the only functional evidence this stage produces, and it is also
     what the SAIF is a recording of: activity dumped from a run whose stimulus reported errors
     does not qualify a power number, however cleanly PT-PX parses."""
-    wd, plan = _make_workdir(
+    wd, plan = make_workdir(
         tmp_path,
-        _SCEN,
+        SCEN,
         sizes={"S1": 2000, "S2": 4000},
         flats={
-            "S1": _flat_rpt(0.42, 0.05, 0.02, 0.35),
-            "S2": _flat_rpt(1.10, 0.45, 0.55, 0.10),
+            "S1": flat_rpt(0.42, 0.05, 0.02, 0.35),
+            "S2": flat_rpt(1.10, 0.45, 0.55, 0.10),
         },
         statuses={"S1": "FAIL"},  # S2 passes
     )
-    rc, data = p.run(plan, wd, [_bound("R-P", "<=", 1.2)])
+    rc, data = p.run(plan, wd, [bound("R-P", "<=", 1.2)])
     assert rc != 0
     assert "FAIL=experiment:S1" in capsys.readouterr().err
     f0 = data["failures"][0]
@@ -340,11 +333,11 @@ def test_run_experiment_failure_nulls_the_power_number(tmp_path, capsys):
 def test_run_missing_gls_status_is_not_a_pass(tmp_path):
     """A run that hit $fatal or died never reached report_phase, so it leaves no verdict — and
     the simulator's exit code cannot fill that in. Absence fails the scenario."""
-    wd, plan = _make_workdir(
+    wd, plan = make_workdir(
         tmp_path,
-        _SCEN[:1],
+        SCEN[:1],
         sizes={"S1": 2000},
-        flats={"S1": _flat_rpt(0.42, 0.05, 0.02, 0.35)},
+        flats={"S1": flat_rpt(0.42, 0.05, 0.02, 0.35)},
         statuses={"S1": None},  # never written
     )
     rc, data = p.run(plan, wd, [])
@@ -355,8 +348,8 @@ def test_run_missing_gls_status_is_not_a_pass(tmp_path):
 
 
 def test_run_report_missing_token(tmp_path, capsys):
-    wd, plan = _make_workdir(
-        tmp_path, _SCEN[:1], sizes={"S1": 2000}, flats={"S1": None}
+    wd, plan = make_workdir(
+        tmp_path, SCEN[:1], sizes={"S1": 2000}, flats={"S1": None}
     )  # power_flat.rpt absent
     rc, data = p.run(plan, wd, [])
     assert rc != 0
@@ -365,8 +358,8 @@ def test_run_report_missing_token(tmp_path, capsys):
 
 
 def test_run_unparseable_total_token(tmp_path, capsys):
-    wd, plan = _make_workdir(
-        tmp_path, _SCEN[:1], sizes={"S1": 2000}, flats={"S1": "no power numbers here\n"}
+    wd, plan = make_workdir(
+        tmp_path, SCEN[:1], sizes={"S1": 2000}, flats={"S1": "no power numbers here\n"}
     )
     rc, data = p.run(plan, wd, [])
     assert rc != 0
@@ -375,11 +368,11 @@ def test_run_unparseable_total_token(tmp_path, capsys):
 
 
 def test_run_three_component_invariant_break(tmp_path, capsys):
-    wd, plan = _make_workdir(
+    wd, plan = make_workdir(
         tmp_path,
-        _SCEN[:1],
+        SCEN[:1],
         sizes={"S1": 2000},
-        flats={"S1": _flat_rpt(9.99, 0.05, 0.02, 0.35)},
+        flats={"S1": flat_rpt(9.99, 0.05, 0.02, 0.35)},
     )  # total != sum
     rc, data = p.run(plan, wd, [])
     assert rc != 0
@@ -387,18 +380,18 @@ def test_run_three_component_invariant_break(tmp_path, capsys):
 
 
 def test_run_returns_a_payload_on_both_exit_paths(tmp_path):
-    # was "unlinks the stale sidecar". There is no file to go stale; what build_result needs is
+    # was "unlinks the stale sidecar". There is no file to go stale; what finalize needs is
     # that the payload comes back on the data-failure path too, since it folds either way.
-    wd, plan = _make_workdir(
+    wd, plan = make_workdir(
         tmp_path,
-        _SCEN[:1],
+        SCEN[:1],
         sizes={"S1": 2000},
-        flats={"S1": _flat_rpt(0.42, 0.05, 0.02, 0.35)},
+        flats={"S1": flat_rpt(0.42, 0.05, 0.02, 0.35)},
     )
     rc, data = p.run(plan, wd, [])
     assert rc == 0 and data["requirements"] == []
-    wd_bad, plan_bad = _make_workdir(
-        tmp_path / "bad", _SCEN[:1], sizes={"S1": 0}, flats={}
+    wd_bad, plan_bad = make_workdir(
+        tmp_path / "bad", SCEN[:1], sizes={"S1": 0}, flats={}
     )
     rc, data = p.run(plan_bad, wd_bad, "[]")
     assert rc != 0 and data["failures"]  # the fold source exists on the failure path
@@ -409,12 +402,12 @@ def test_run_returns_a_payload_on_both_exit_paths(tmp_path):
 
 def test_invariant_tolerates_4sigfig_rounding(tmp_path):
     # Real PrimeTime PX format: "Dynamic Power Units = 1 W" (no inline unit on summary lines).
-    # Values are in W; _resolve_mw converts to mW (multiply by 1000).
+    # Values are in W; resolve_mw converts to mW (multiply by 1000).
     # After conversion: Total=1.653 mW, sum=1.652940 mW, diff=6.0e-5 mW.
-    # 6.0e-5 > _EPS_MW (1e-6) → trips the invariant AS-IS, but << 1% of total → must NOT flag.
+    # 6.0e-5 > POWER_SUM_TOLERANCE_MW (1e-6) → trips the invariant AS-IS, but << 1% of total → must NOT flag.
     wd = tmp_path / "wd"
     (wd / "saif").mkdir(parents=True)
-    (wd / "saif" / "S1.saif").write_bytes(_SAIF_ACTIVE.read_bytes())
+    (wd / "saif" / "S1.saif").write_bytes(SAIF_ACTIVE.read_bytes())
     (wd / "saif" / "S1.status").write_text("PASS\n")
     rdir = wd / "reports_ptpx" / "S1"
     rdir.mkdir(parents=True)
@@ -426,12 +419,12 @@ def test_invariant_tolerates_4sigfig_rounding(tmp_path):
         "Cell Leakage Power   = 5.000e-05\n"  # 5.000e-05 W = 0.05000 mW
         "Total Power          = 1.653e-03\n"  # 1.653e-03 W = 1.653 mW; sum=1.65290 mW, diff=6.0e-5
     )
-    (rdir / "switching_activity.rpt").write_text(_SA_RPT)
+    (rdir / "switching_activity.rpt").write_text(SA_RPT)
     (wd / "gls-compile-log.txt").write_text("VCS L-2016.06_Full64\n")
     plan = tmp_path / "plan"
     plan.mkdir()
     (plan / "power-scenarios.json").write_text(
-        _json.dumps(
+        json.dumps(
             [
                 {
                     "id": "S1",
@@ -448,18 +441,18 @@ def test_invariant_tolerates_4sigfig_rounding(tmp_path):
     assert data["failures"] == []
 
 
-# ── build_result + finalize subcommand ────────────────────────────────────────
+# ── finalize + finalize subcommand ────────────────────────────────────────
 
 
-def test_build_result_pass_lean_shape(tmp_path):
-    wd, plan = _make_workdir(
+def test_finalize_pass_lean_shape(tmp_path):
+    wd, plan = make_workdir(
         tmp_path,
-        _SCEN[:1],
+        SCEN[:1],
         sizes={"S1": 2000},
-        flats={"S1": _flat_rpt(0.42, 0.05, 0.02, 0.35)},
+        flats={"S1": flat_rpt(0.42, 0.05, 0.02, 0.35)},
     )
-    assert p.build_result(wd, str(plan), [], []) == 0
-    env = _json.loads((wd / "result.json").read_text())
+    assert p.finalize(wd, str(plan), [], []) == 0
+    env = json.loads((wd / "result.json").read_text())
     assert env["stage"] == "power-analysis"
     assert env["status"] == "pass" and env["produced_at"].endswith("Z")
     ss = env["stage_specific"]
@@ -471,37 +464,34 @@ def test_build_result_pass_lean_shape(tmp_path):
     assert "notes" not in ss  # lean shape: dropped field absent
 
 
-def test_build_result_tooling_fail_on_invariant(tmp_path):
+def test_finalize_tooling_fail_on_invariant(tmp_path):
     # A report whose Total != sum(components) by >> 1% (the parser's invariant)
-    # -> parser exit 1 -> build_result writes fail_reason + failures[].
-    wd, plan = _make_workdir(
+    # -> parser exit 1 -> finalize writes fail_reason + failures[].
+    wd, plan = make_workdir(
         tmp_path,
-        _SCEN[:1],
+        SCEN[:1],
         sizes={"S1": 2000},
-        flats={"S1": _flat_rpt(9.99, 0.05, 0.02, 0.35)},
+        flats={"S1": flat_rpt(9.99, 0.05, 0.02, 0.35)},
     )  # deliberately off
-    assert p.build_result(wd, str(plan), [], []) == 0
-    ss = _json.loads((wd / "result.json").read_text())["stage_specific"]
+    assert p.finalize(wd, str(plan), [], []) == 0
+    ss = json.loads((wd / "result.json").read_text())["stage_specific"]
     assert ss["failures"] and ss["failures"][0]["category"] == "ptpx_data"
     assert isinstance(ss["fail_reason"], str) and ss["fail_reason"]
 
 
-def test_build_result_missed_row(tmp_path):
+def test_finalize_missed_row(tmp_path):
     # a scenario over the engineer's bound -> status=fail + requirements
-    wd, plan = _make_workdir(
+    wd, plan = make_workdir(
         tmp_path,
-        _SCEN,
+        SCEN,
         sizes={"S1": 2000, "S2": 4000},
         flats={
-            "S1": _flat_rpt(0.42, 0.05, 0.02, 0.35),
-            "S2": _flat_rpt(1.85, 0.62, 0.95, 0.28),
+            "S1": flat_rpt(0.42, 0.05, 0.02, 0.35),
+            "S2": flat_rpt(1.85, 0.62, 0.95, 0.28),
         },
     )
-    assert (
-        p.build_result(wd, str(plan), [_bound("R-P", "<=", 1.2, scenario="S2")], [])
-        == 0
-    )
-    ss = _json.loads((wd / "result.json").read_text())["stage_specific"]
+    assert p.finalize(wd, str(plan), [bound("R-P", "<=", 1.2, scenario="S2")], []) == 0
+    ss = json.loads((wd / "result.json").read_text())["stage_specific"]
     assert ss["requirements"] == [
         {
             "id": "R-P",
@@ -510,18 +500,7 @@ def test_build_result_missed_row(tmp_path):
             "measured": "power_mw from reports_ptpx/S2/power_flat.rpt",
         }
     ]
-    assert all(v["measured"] for v in ss["requirements"])  # each names its own
     assert ss["fail_reason"] == "requirement(s) not met: R-P"
-
-
-def test_finalize_blocked_on_internal_raise(tmp_path, monkeypatch):
-    # finalize() wraps build_result: any internal raise -> exit 2 (BLOCKED), never
-    # status=fail. (The old main() finalize branch had this except; it moves to finalize().)
-    def boom(*a, **k):
-        raise RuntimeError("synthetic")
-
-    monkeypatch.setattr(p, "build_result", boom)
-    assert p.finalize(tmp_path, "scaffold.json", [], []) == 2
 
 
 def test_finalize_missing_required_flag_is_blocked(tmp_path):
@@ -538,19 +517,19 @@ def test_finalize_missing_required_flag_is_blocked(tmp_path):
 
 
 def test_finalize_cli_happy_path(tmp_path):
-    # End-to-end through _cmd_finalize (lazy handler import + the dispatch.json read
-    # + the ledger read), not just in-process build_result. A handler typo
-    # would pass every other test (which call build_result directly) but fail here.
+    # End-to-end through the finalize CLI (lazy handler import + the dispatch.json read
+    # + the ledger read), not just in-process finalize. A handler typo
+    # would pass every other test (which call finalize directly) but fail here.
     # finalize reads the ledger via the injected dispatch.json "requirements" key.
-    wd, plan = _make_workdir(
+    wd, plan = make_workdir(
         tmp_path,
-        _SCEN[:1],
+        SCEN[:1],
         sizes={"S1": 2000},
-        flats={"S1": _flat_rpt(0.42, 0.05, 0.02, 0.35)},
+        flats={"S1": flat_rpt(0.42, 0.05, 0.02, 0.35)},
     )
-    spec = _spec(tmp_path, [])
+    spec = write_specification(tmp_path, [])
     (wd / "dispatch.json").write_text(
-        _json.dumps({"inputs": {"requirements": str(spec), "plan": str(plan)}})
+        json.dumps({"inputs": {"requirements": str(spec), "plan": str(plan)}})
     )
     MAIN = REPO_ROOT / "skills/power-analysis/scripts/power/__main__.py"
     r = subprocess.run(
@@ -559,7 +538,7 @@ def test_finalize_cli_happy_path(tmp_path):
         text=True,
     )
     assert r.returncode == 0, r.stderr
-    env = _json.loads((wd / "result.json").read_text())
+    env = json.loads((wd / "result.json").read_text())
     assert (env["stage"], env["status"]) == ("power-analysis", "pass")
 
 
@@ -568,18 +547,18 @@ def test_finalize_cli_reads_the_ledger(tmp_path):
     # finalize reads the rows power-analysis judges straight from the specification
     # stage root's requirements.json, whose location comes from the injected dispatch.json.
     module_root = tmp_path / "asic" / "dut_top"
-    wd, plan = _make_workdir(
+    wd, plan = make_workdir(
         module_root / "Verification" / "power-analysis" / "runs",
-        _SCEN[:1],
+        SCEN[:1],
         sizes={"S1": 2000},
-        flats={"S1": _flat_rpt(0.42, 0.05, 0.02, 0.35)},
+        flats={"S1": flat_rpt(0.42, 0.05, 0.02, 0.35)},
     )
     spec_dir = module_root / "Design" / "specification"
     spec_dir.mkdir(parents=True)
     (spec_dir / "requirements.json").write_text(
-        _json.dumps(
+        json.dumps(
             [
-                _bound("R-P", "<", 0.1, scenario="S1"),  # unreachable -> forces a fail
+                bound("R-P", "<", 0.1, scenario="S1"),  # unreachable -> forces a fail
                 {  # synthesis judges this one -> not ours
                     "id": "R-A",
                     "verbatim": "area",
@@ -595,10 +574,10 @@ def test_finalize_cli_reads_the_ledger(tmp_path):
         )
     )
     (wd / "dispatch.json").write_text(
-        _json.dumps({"inputs": {"requirements": str(spec_dir), "plan": str(plan)}})
+        json.dumps({"inputs": {"requirements": str(spec_dir), "plan": str(plan)}})
     )
     MAIN = REPO_ROOT / "skills/power-analysis/scripts/power/__main__.py"
-    declared = _json.dumps(
+    declared = json.dumps(
         [
             {
                 "id": "R-R",
@@ -622,7 +601,7 @@ def test_finalize_cli_reads_the_ledger(tmp_path):
         text=True,
     )
     assert r.returncode == 0, r.stderr
-    env = _json.loads((wd / "result.json").read_text())
+    env = json.loads((wd / "result.json").read_text())
     ss = env["stage_specific"]
     assert env["status"] == "fail"
     assert ss["requirements"] == [
@@ -682,31 +661,19 @@ def test_publication_preserves_authored_helpers_and_reusable_products(tmp_path):
     assert paths == {name.split("/")[0] for name in files}
 
 
-# ── Golden test against a real run ────────────────────────────────────────────
+# Report rounding and envelope validation.
 
 
-def _copy_golden(tmp_path, root):
-    """The captured workdir plus the per-scenario verdicts. The capture predates the file
-    base_test writes, and a run's own output is not something to hand-author into the
-    fixture, so the passing token is supplied here."""
-    import shutil
-
-    wd = tmp_path / "wd"
-    shutil.copytree(root / "real", wd)
-    for saif in (wd / "saif").glob("*.saif"):
-        saif.with_suffix(".status").write_text("PASS\n")
-        saif.write_bytes(
-            _SAIF_ACTIVE.read_bytes()
-        )  # activity excerpt, not the capture's size placeholder
-    return wd
-
-
-def test_golden_real_reports_lean_pass(tmp_path):
-    ROOT = Path(__file__).resolve().parent / "fixtures" / "power-golden"
-    wd = _copy_golden(tmp_path, ROOT)
-    rc = p.build_result(wd, str(ROOT / "plan"), [], [])
+def test_rounded_report_components_produce_valid_measurements(tmp_path):
+    report = (
+        Path(__file__).parent / "fixtures/power-reports/rounded-power.rpt"
+    ).read_text()
+    wd, plan = make_workdir(
+        tmp_path, [{"id": "workload"}], {"workload": 1}, {"workload": report}
+    )
+    rc = p.finalize(wd, plan, [], [])
     assert rc == 0
-    env = _json.loads((wd / "result.json").read_text())
+    env = json.loads((wd / "result.json").read_text())
     ss = env["stage_specific"]
     # With the invariant tolerance in place, the gate parses the real 4-sig-fig reports clean -> pass.
     assert env["stage"] == "power-analysis"
@@ -724,27 +691,33 @@ def test_golden_real_reports_lean_pass(tmp_path):
     assert ss["failures"] == []  # clean parse — no ptpx_data failures
     assert ss["requirements"] == []  # no row judged by this stage
     assert ss["compile_info"]["vcs_version"] == "L-2016.06_Full64"
-    assert all(v.get("measured") for v in ss["requirements"])  # every scenario parsed
+    assert len(ss["power_by_scenario"]) == 1
+    assert ss["power_by_scenario"][0]["scenario_id"] == "workload"
+    assert ss["power_by_scenario"][0]["power_mw"] == pytest.approx(1.653)
     assert "notes" not in ss  # lean: dropped
     paths = [a["path"] for a in env["artifacts"]]
     assert "reports_ptpx" in paths
     assert "result.json" not in paths
 
 
-def test_golden_is_schema_valid(tmp_path):
+def test_pass_result_is_schema_valid(tmp_path):
     # Canonical pattern: validate the in-memory dict against {envelope schema + this
     # stage's result.schema} via Registry (mirrors test_signoff_result.py pattern).
     from jsonschema import Draft202012Validator
     from referencing import Registry, Resource
 
-    ROOT = Path(__file__).resolve().parent / "fixtures" / "power-golden"
-    wd = _copy_golden(tmp_path, ROOT)
-    p.build_result(wd, str(ROOT / "plan"), [], [])
-    env = _json.loads((wd / "result.json").read_text())
-    env_schema = _json.loads(
+    report = (
+        Path(__file__).parent / "fixtures/power-reports/rounded-power.rpt"
+    ).read_text()
+    wd, plan = make_workdir(
+        tmp_path, [{"id": "workload"}], {"workload": 1}, {"workload": report}
+    )
+    p.finalize(wd, plan, [], [])
+    env = json.loads((wd / "result.json").read_text())
+    env_schema = json.loads(
         (REPO_ROOT / "framework/references/schemas/envelope.schema.json").read_text()
     )
-    stage_schema = _json.loads(
+    stage_schema = json.loads(
         (REPO_ROOT / "skills/power-analysis/references/result.schema.json").read_text()
     )
     registry = Registry().with_resource(
@@ -765,10 +738,10 @@ def test_golden_is_schema_valid(tmp_path):
 # routable failure on a human. These tests hold the verb to being the only writer.
 
 
-def _declared(tmp_path, **kw):
+def declared(tmp_path, **kw):
     wd = tmp_path / "wd"
     wd.mkdir()
-    rc = p.build_result(wd, tmp_path / "nonexistent-plan", [], [], **kw)
+    rc = p.finalize(wd, tmp_path / "nonexistent-plan", [], [], **kw)
     return rc, wd
 
 
@@ -776,13 +749,13 @@ def test_declared_fail_writes_the_envelope_without_touching_the_reports(tmp_path
     # The workdir holds no reports and the scaffold path does not exist — the state a
     # missing external reference leaves behind. The declaration must precede run(),
     # which would raise on the absent power-scenarios.json.
-    rc, wd = _declared(
+    rc, wd = declared(
         tmp_path,
         fail_reason="external reference missing: Design/synthesis/out/dut_top_syn.sdf",
         fix_owner="synthesis",
     )
     assert rc == 0
-    env = _json.loads((wd / "result.json").read_text())
+    env = json.loads((wd / "result.json").read_text())
     ss = env["stage_specific"]
     assert env["status"] == "fail"
     assert ss["fix_owner"] == "synthesis"
@@ -797,18 +770,18 @@ def test_declared_fail_validates_against_the_stage_schema(tmp_path):
     # `blocked`, so the fix_owner the agent already worked out never reaches the kernel.
     from framework.scripts import store
 
-    _, wd = _declared(
+    unused, wd = declared(
         tmp_path,
         fail_reason="gls-compile failed: phase=compile, LIB_V not readable",
         fix_owner="simulation",
     )
-    env = _json.loads((wd / "result.json").read_text())
+    env = json.loads((wd / "result.json").read_text())
     assert store.validate_result("power-analysis", env) is None
 
 
 def test_declared_fail_omits_fix_owner_when_the_caller_cannot_name_one(tmp_path):
-    _, wd = _declared(tmp_path, fail_reason="pt_shell license checkout failed")
-    ss = _json.loads((wd / "result.json").read_text())["stage_specific"]
+    unused, wd = declared(tmp_path, fail_reason="pt_shell license checkout failed")
+    ss = json.loads((wd / "result.json").read_text())["stage_specific"]
     assert "fix_owner" not in ss  # an unnamed owner is how a human gets called in
 
 
@@ -822,15 +795,15 @@ def test_finalize_blocked_on_an_empty_declaration(tmp_path):
 
 
 def test_declared_fail_through_the_cli(tmp_path):
-    # End-to-end through _cmd_finalize: the flags must reach result.finalize in the
+    # End-to-end through the finalize CLI: the flags must reach result.finalize in the
     # right positions. A swapped pair would pass every in-process test above.
     wd = tmp_path / "wd"
     wd.mkdir()
     (wd / "dispatch.json").write_text(
-        _json.dumps(
+        json.dumps(
             {
                 "inputs": {
-                    "requirements": str(_spec(tmp_path, [])),
+                    "requirements": str(write_specification(tmp_path, [])),
                     "plan": str(tmp_path / "plan"),
                 }
             }
@@ -853,7 +826,7 @@ def test_declared_fail_through_the_cli(tmp_path):
         text=True,
     )
     assert r.returncode == 0, r.stderr
-    ss = _json.loads((wd / "result.json").read_text())["stage_specific"]
+    ss = json.loads((wd / "result.json").read_text())["stage_specific"]
     assert ss["fix_owner"] == "simulation-plan"
     assert "annotated 0%" in ss["fail_reason"]
 
@@ -869,7 +842,7 @@ def test_category_enum_is_exactly_what_the_parser_writes():
     # ever wrote it. The enum and the parser's literals are now one set.
     import re
 
-    from _skills_sot import load_stage_schema
+    from skills_source import load_stage_schema
 
     schema = load_stage_schema("power-analysis")
     enum = None
@@ -909,8 +882,8 @@ def test_no_deployed_script_emits_a_category_for_the_agent_to_transcribe():
 
 @pytest.mark.parametrize("fault", ["component", "mapping", "zero_mapping", "activity"])
 def test_incomplete_measurement_cannot_pass_without_a_budget(tmp_path, fault):
-    wd, plan = _make_workdir(
-        tmp_path, _SCEN[:1], {"S1": 1}, {"S1": _flat_rpt(1, 0.4, 0.4, 0.2)}
+    wd, plan = make_workdir(
+        tmp_path, SCEN[:1], {"S1": 1}, {"S1": flat_rpt(1, 0.4, 0.4, 0.2)}
     )
     if fault == "component":
         (wd / "reports_ptpx/S1/power_flat.rpt").write_text("Total Power = 1 mW\n")
@@ -920,16 +893,16 @@ def test_incomplete_measurement_cannot_pass_without_a_budget(tmp_path, fault):
         (wd / "reports_ptpx/S1/switching_activity.rpt").write_text("Nets 0(0.00%)\n")
     else:
         (wd / "saif/S1.saif").write_text("nonempty but no activity")
-    assert p.build_result(wd, plan, [], []) == 0
-    assert _json.loads((wd / "result.json").read_text())["status"] == "fail"
+    assert p.finalize(wd, plan, [], []) == 0
+    assert json.loads((wd / "result.json").read_text())["status"] == "fail"
 
 
 def test_blocked_finalize_removes_previous_success_and_cannot_override_budget(tmp_path):
-    wd, plan = _make_workdir(
-        tmp_path, _SCEN[:1], {"S1": 1}, {"S1": _flat_rpt(1, 0.4, 0.4, 0.2)}
+    wd, plan = make_workdir(
+        tmp_path, SCEN[:1], {"S1": 1}, {"S1": flat_rpt(1, 0.4, 0.4, 0.2)}
     )
     assert p.finalize(wd, plan, [], []) == 0
-    row = _bound("POWER", "<=", 0.1)
+    row = bound("POWER", "<=", 0.1)
     assert (
         p.finalize(
             wd, plan, [row], [{"id": "POWER", "met": True, "measured": "asserted"}]
@@ -938,12 +911,12 @@ def test_blocked_finalize_removes_previous_success_and_cannot_override_budget(tm
     )
     assert not (wd / "result.json").exists()
     assert p.finalize(wd, plan, [row], []) == 0
-    assert _json.loads((wd / "result.json").read_text())["status"] == "fail"
+    assert json.loads((wd / "result.json").read_text())["status"] == "fail"
 
 
 def test_blocked_finalize_missing_verdict_removes_previous_success(tmp_path):
-    wd, plan = _make_workdir(
-        tmp_path, _SCEN[:1], {"S1": 1}, {"S1": _flat_rpt(1, 0.4, 0.4, 0.2)}
+    wd, plan = make_workdir(
+        tmp_path, SCEN[:1], {"S1": 1}, {"S1": flat_rpt(1, 0.4, 0.4, 0.2)}
     )
     assert p.finalize(wd, plan, [], []) == 0
     assert p.finalize(wd, plan, [{"id": "REPORT"}], []) == 2
@@ -951,16 +924,16 @@ def test_blocked_finalize_missing_verdict_removes_previous_success(tmp_path):
 
 
 def test_lower_bound_reports_the_smallest_measurement(tmp_path):
-    wd, plan = _make_workdir(
+    wd, plan = make_workdir(
         tmp_path,
-        _SCEN,
+        SCEN,
         {"S1": 1, "S2": 1},
         {
-            "S1": _flat_rpt(1, 0.4, 0.4, 0.2),
-            "S2": _flat_rpt(2, 0.8, 0.8, 0.4),
+            "S1": flat_rpt(1, 0.4, 0.4, 0.2),
+            "S2": flat_rpt(2, 0.8, 0.8, 0.4),
         },
     )
-    rc, data = p.run(plan, wd, [_bound("LOW", ">=", 1.5)])
+    rc, data = p.run(plan, wd, [bound("LOW", ">=", 1.5)])
     assert rc == 0
     assert data["requirements"][0]["actual"] == 1
     assert data["requirements"][0]["met"] is False

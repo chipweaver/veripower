@@ -83,7 +83,7 @@ def run_codex(
     errors = []
 
     class Handler(BaseHTTPRequestHandler):
-        def log_message(self, *_args):
+        def log_message(self, *args):
             pass
 
         def do_POST(self):
@@ -158,17 +158,17 @@ def run_codex(
             args, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=log, text=True
         )
 
-        def receive():
+        def _receive():
             for line in process.stdout:
                 inbox.put(json.loads(line))
 
-        threading.Thread(target=receive, daemon=True).start()
+        threading.Thread(target=_receive, daemon=True).start()
 
-        def send(payload):
+        def _send(payload):
             process.stdin.write(json.dumps(payload) + "\n")
             process.stdin.flush()
 
-        send(
+        _send(
             {
                 "id": 1,
                 "method": "initialize",
@@ -188,8 +188,8 @@ def run_codex(
                     continue
                 events.append(event)
                 if event.get("id") == 1 and "result" in event:
-                    send({"method": "initialized", "params": {}})
-                    send(
+                    _send({"method": "initialized", "params": {}})
+                    _send(
                         {
                             "id": 2,
                             "method": "thread/start",
@@ -209,7 +209,7 @@ def run_codex(
                     )
                 elif event.get("id") == 2 and "result" in event:
                     thread_id = event["result"]["thread"]["id"]
-                    send(
+                    _send(
                         {
                             "id": 3,
                             "method": "turn/start",
@@ -228,7 +228,7 @@ def run_codex(
                     assert event["method"] == "item/commandExecution/requestApproval", (
                         event
                     )
-                    send({"id": event["id"], "result": {"decision": decision}})
+                    _send({"id": event["id"], "result": {"decision": decision}})
                 elif (
                     event.get("method") == "turn/completed"
                     and event["params"]["threadId"] == thread_id
@@ -249,7 +249,7 @@ def run_codex(
 
 @pytest.mark.parametrize("decision", ["accept", "decline"])
 def test_host_prompt_policy_is_respected(tmp_path, decision):
-    def response(_body, number, fixture):
+    def _response(body, number, fixture):
         if number == 1:
             return call(
                 "exec_command",
@@ -260,7 +260,7 @@ def test_host_prompt_policy_is_respected(tmp_path, decision):
             )
         return message()
 
-    events, _ = run_codex(tmp_path, response, decision, host_rule="prompt")
+    events, unused = run_codex(tmp_path, _response, decision, host_rule="prompt")
     approvals = [
         e for e in events if e.get("method") == "item/commandExecution/requestApproval"
     ]
@@ -282,7 +282,7 @@ def test_host_prompt_policy_is_respected(tmp_path, decision):
 def test_never_uses_host_policy_without_plugin_prompts(
     tmp_path, verb, host_rule, executed
 ):
-    def response(_body, number, fixture):
+    def _response(body, number, fixture):
         if number == 1:
             return call(
                 "exec_command",
@@ -293,8 +293,8 @@ def test_never_uses_host_policy_without_plugin_prompts(
             )
         return message()
 
-    events, _ = run_codex(
-        tmp_path, response, approval_policy="never", host_rule=host_rule
+    events, unused = run_codex(
+        tmp_path, _response, approval_policy="never", host_rule=host_rule
     )
     assert not [
         e for e in events if e.get("method") == "item/commandExecution/requestApproval"
@@ -305,7 +305,7 @@ def test_never_uses_host_policy_without_plugin_prompts(
 def test_fresh_native_child_receives_adapter_and_parent_waits(tmp_path):
     child_requests = []
 
-    def response(body, _number, _fixture):
+    def _response(body, number, fixture):
         inputs = body.get("input", [])
         is_child = any(
             item.get("role") == "user"
@@ -353,7 +353,7 @@ def test_fresh_native_child_receives_adapter_and_parent_waits(tmp_path):
             )
         return message("parent resumed after child")
 
-    _, requests = run_codex(tmp_path, response)
+    unused, requests = run_codex(tmp_path, _response)
     assert child_requests, "Codex did not start a child"
     assert "VeriPower on Codex" in json.dumps(child_requests[0])
     assert "Run the fixture test; spawn a fixture child" not in json.dumps(

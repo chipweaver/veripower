@@ -12,7 +12,7 @@ SKILLS_DIR = ROOT / "skills"
 
 def test_nine_rules_eight_stages_plus_triage():
     assert len(rules.RULES) == 9
-    # FORWARD_PRIORITY doubles as the signoff obligation set (_STAGE_PROOFS /
+    # FORWARD_PRIORITY doubles as the signoff obligation set (STAGE_PROOFS /
     # facts.signoff_gate, which iterates it whole), so anchor it to the SEMANTIC property —
     # proof-producing rules — not a hardcoded name exclusion. A future proof-rule added to
     # RULES but not FORWARD_PRIORITY would otherwise be silently exempt from the gate (F-5).
@@ -51,7 +51,7 @@ def test_every_input_traces_to_a_producer_or_pipeline_input():
 def test_declared_input_graph_is_acyclic_self_edges_excluded():
     # input_producers drops self-edges (in∩out inputs), so the derived graph is acyclic.
     graph = {n: rules.input_producers(n) for n in rules.RULES}
-    _assert_acyclic(graph)
+    assert_acyclic(graph)
 
 
 def test_advisory_edges_reference_registered_rules_and_stay_acyclic():
@@ -63,7 +63,7 @@ def test_advisory_edges_reference_registered_rules_and_stay_acyclic():
         n: rules.input_producers(n) | set(rules.ADVISORY_ORDER.get(n, ()))
         for n in rules.RULES
     }
-    _assert_acyclic(graph)
+    assert_acyclic(graph)
 
 
 def test_advisory_edges_are_sequencing_only():
@@ -86,22 +86,22 @@ def test_advisory_edges_are_sequencing_only():
     assert "simulation-plan" not in rules.input_producers("rtl-design")
 
 
-def _assert_acyclic(graph):
+def assert_acyclic(graph):
     WHITE, GREY, BLACK = 0, 1, 2
     color = dict.fromkeys(graph, WHITE)
 
-    def visit(n):
+    def _visit(n):
         color[n] = GREY
         for m in graph.get(n, ()):
             if color[m] == GREY:
                 pytest.fail(f"cycle through {n}->{m}")
             if color[m] == WHITE:
-                visit(m)
+                _visit(m)
         color[n] = BLACK
 
     for n in graph:
         if color[n] == WHITE:
-            visit(n)
+            _visit(n)
 
 
 def test_simulation_does_not_bind_constraint_annotations():

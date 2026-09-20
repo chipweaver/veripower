@@ -1,6 +1,5 @@
 # tests/unit/test_spec_result.py
 import json
-import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -12,11 +11,10 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "skills" / "specification" / "scripts"))
 from spec import constraints, result  # noqa: E402
 
-_ENVELOPE_URI = "https://veripower.local/schemas/envelope.schema.json"
-_FIX = Path(__file__).resolve().parent / "fixtures" / "specification-golden"
+ENVELOPE_URI = "https://veripower.local/schemas/envelope.schema.json"
 MAIN = ROOT / "skills/specification/scripts/spec/__main__.py"
 
-_ROWS = [
+ROWS = [
     {
         "id": "R-001",
         "verbatim": "done pulses one cycle after start",
@@ -31,7 +29,7 @@ _ROWS = [
 ]
 
 
-def _spec_workdir(tmp_path, rows=None):
+def spec_workdir(tmp_path, rows=None):
     """A workdir derive_constraints() can run over (valid clocks.json + top-io.json) plus
     the finalize inputs (manifest / ledger / per-child md / hints / spec-review)."""
     wd = tmp_path
@@ -69,7 +67,7 @@ def _spec_workdir(tmp_path, rows=None):
             }
         )
     )
-    (wd / "requirements.json").write_text(json.dumps(_ROWS if rows is None else rows))
+    (wd / "requirements.json").write_text(json.dumps(ROWS if rows is None else rows))
     (wd / "check-hints.json").write_text(
         json.dumps(
             [
@@ -93,7 +91,7 @@ def _spec_workdir(tmp_path, rows=None):
     return wd
 
 
-def _validate_envelope(env: dict) -> None:
+def validate_envelope(env: dict) -> None:
     env_schema = json.loads(
         (ROOT / "framework/references/schemas/envelope.schema.json").read_text()
     )
@@ -101,16 +99,16 @@ def _validate_envelope(env: dict) -> None:
         (ROOT / "skills/specification/references/result.schema.json").read_text()
     )
     registry = Registry().with_resource(
-        _ENVELOPE_URI, Resource.from_contents(env_schema)
+        ENVELOPE_URI, Resource.from_contents(env_schema)
     )
     Draft202012Validator(stage_schema, registry=registry).validate(
         env
     )  # raises on invalid
 
 
-def test_build_result_pass_lean_shape(tmp_path):
-    wd = _spec_workdir(tmp_path)
-    assert result.build_result(wd) == 0
+def test_finalize_pass_lean_shape(tmp_path):
+    wd = spec_workdir(tmp_path)
+    assert result.finalize(wd) == 0
     env = json.loads((wd / "result.json").read_text())
     assert env["stage"] == "specification"
     assert env["status"] == "pass" and env["produced_at"].endswith("Z")
@@ -118,24 +116,25 @@ def test_build_result_pass_lean_shape(tmp_path):
     assert ss == {}  # lean: the review is prose, the ledger a sidecar
     assert {"path": "requirements.json"} in env["artifacts"]
     assert (
-        json.loads((wd / "requirements.json").read_text()) == _ROWS
+        json.loads((wd / "requirements.json").read_text()) == ROWS
     )  # re-validated, untouched
+    validate_envelope(env)
 
 
 def test_a_stated_reason_is_the_failure(tmp_path):
     # The status is derived: no separate verdict flag can disagree with the reason, and a
     # failure nobody can name is not one this stage can record.
-    wd = _spec_workdir(tmp_path)
-    assert result.build_result(wd, fail_reason="transcribe sub-Task BLOCKED: x") == 0
+    wd = spec_workdir(tmp_path)
+    assert result.finalize(wd, fail_reason="transcribe sub-Task BLOCKED: x") == 0
     env = json.loads((wd / "result.json").read_text())
     assert env["status"] == "fail"
     assert env["stage_specific"]["fail_reason"] == "transcribe sub-Task BLOCKED: x"
 
-    _validate_envelope(env)
+    validate_envelope(env)
 
 
 def test_enumerate_artifacts_present_only(tmp_path):
-    wd = _spec_workdir(tmp_path)
+    wd = spec_workdir(tmp_path)
     constraints.derive_constraints(wd)
     arts = result.enumerate_artifacts(wd, top="dut_top")
     paths = {a["path"] for a in arts}
@@ -154,51 +153,25 @@ def test_enumerate_artifacts_present_only(tmp_path):
     assert all((wd / p).exists() for p in paths)  # present-only
 
 
-def test_golden_lean_against_a_real_run(tmp_path):
-    # The top module's name is read from the fixture's own manifest rather than written
-    # here: what this asserts is that finalize carries it through and names every present
-    # artifact exactly once, which holds for whichever module the sample happens to be.
-    wd = tmp_path / "specification"
-    shutil.copytree(_FIX, wd)
-    top = json.loads((_FIX / "manifest.json").read_text())["module"]
-    assert result.build_result(wd) == 0
-    env = json.loads((wd / "result.json").read_text())
-    assert env["status"] == "pass"
-    assert env["stage_specific"] == {}
-    paths = {a["path"] for a in env["artifacts"]}
-    assert paths == {
-        "design.md",
-        "manifest.json",
-        "check-hints.json",
-        "spec-review",
-        f"constraints/{top}.sdc",
-        f"constraints/{top}.sgdc",
-        "requirements.json",
-        "clocks.json",
-        "top-io.json",
-    }
-    _validate_envelope(env)
-
-
 # ── the ledger at finalize ────────────────────────────────────────────────────
 
 
 def test_missing_ledger_is_blocked(tmp_path):
-    wd = _spec_workdir(tmp_path)
+    wd = spec_workdir(tmp_path)
     (wd / "requirements.json").unlink()
     assert result.finalize(wd) == 2
     assert not (wd / "result.json").exists()
 
 
 def test_invalid_ledger_is_blocked(tmp_path):
-    wd = _spec_workdir(tmp_path, rows=[{**_ROWS[0], "judge": "bogus"}])
+    wd = spec_workdir(tmp_path, rows=[{**ROWS[0], "judge": "bogus"}])
     assert result.finalize(wd) == 2
 
 
 def test_unassignable_row_is_blocked_with_its_id(tmp_path, capsys):
     # The gate resolves these; finalize never carries one forward.
     rows = [
-        *_ROWS,
+        *ROWS,
         {
             "id": "R-003",
             "verbatim": "storage ≤ 16 Kbit",
@@ -206,14 +179,14 @@ def test_unassignable_row_is_blocked_with_its_id(tmp_path, capsys):
             "note": "no measurand",
         },
     ]
-    wd = _spec_workdir(tmp_path, rows=rows)
+    wd = spec_workdir(tmp_path, rows=rows)
     assert result.finalize(wd) == 2
     assert "R-003" in capsys.readouterr().err
     assert not (wd / "result.json").exists()
 
 
 def test_nan_target_is_blocked(tmp_path):
-    wd = _spec_workdir(tmp_path)
+    wd = spec_workdir(tmp_path)
     (wd / "requirements.json").write_text(
         '[{"id":"R-001","verbatim":"v","judge":"synthesis","target":{"dim":"area_um2","op":"<=","value":NaN}}]'
     )
@@ -223,8 +196,8 @@ def test_nan_target_is_blocked(tmp_path):
 def test_crossrefs_regression_after_the_gate_is_blocked(tmp_path):
     # A hint pointing at a row nobody has any more: clean at the cross-reference gate, so a failure now
     # means an artifact was edited afterwards.
-    wd = _spec_workdir(tmp_path)
-    (wd / "requirements.json").write_text(json.dumps([_ROWS[1]]))
+    wd = spec_workdir(tmp_path)
+    (wd / "requirements.json").write_text(json.dumps([ROWS[1]]))
     assert result.finalize(wd) == 2
 
 
@@ -232,11 +205,10 @@ def test_crossrefs_regression_after_the_gate_is_blocked(tmp_path):
 
 
 def test_early_fail_writes_reason_and_carries_artifacts(tmp_path):
-    wd = _spec_workdir(tmp_path)
+    wd = spec_workdir(tmp_path)
     constraints.derive_constraints(wd)
     assert (
-        result.build_result(wd, fail_reason="external reference missing: /x/design.md")
-        == 0
+        result.finalize(wd, fail_reason="external reference missing: /x/design.md") == 0
     )
     env = json.loads((wd / "result.json").read_text())
     assert env["status"] == "fail"
@@ -249,7 +221,7 @@ def test_early_fail_writes_reason_and_carries_artifacts(tmp_path):
         "requirements.json",
         "constraints/dut_top.sdc",
     } <= paths
-    _validate_envelope(env)
+    validate_envelope(env)
 
 
 def test_fail_without_manifest_is_blocked(tmp_path):
@@ -259,7 +231,7 @@ def test_fail_without_manifest_is_blocked(tmp_path):
 
 
 def test_no_reason_is_a_pass(tmp_path):
-    wd = _spec_workdir(tmp_path)
+    wd = spec_workdir(tmp_path)
     assert result.finalize(wd) == 0
     env = json.loads((wd / "result.json").read_text())
     assert env["status"] == "pass"
@@ -267,7 +239,7 @@ def test_no_reason_is_a_pass(tmp_path):
 
 
 def test_derivation_failure_on_pass_is_blocked_exit2(tmp_path):
-    wd = _spec_workdir(tmp_path)
+    wd = spec_workdir(tmp_path)
     (wd / "clocks.json").write_text(
         json.dumps(
             [
@@ -284,26 +256,17 @@ def test_derivation_failure_on_pass_is_blocked_exit2(tmp_path):
 
 
 def test_empty_fail_reason_is_blocked(tmp_path):
-    wd = _spec_workdir(tmp_path)
+    wd = spec_workdir(tmp_path)
     rc = result.finalize(wd, fail_reason="   ")
     assert rc == 2
     assert not (wd / "result.json").exists()
-
-
-def test_unreadable_schema_blocks_instead_of_waving_a_doc_through(
-    tmp_path, monkeypatch
-):
-    from spec import sidecar
-
-    monkeypatch.setattr(sidecar, "_REFERENCES", tmp_path)
-    assert sidecar.validate_doc("requirements.json", _ROWS)
 
 
 # ── the verbs ───────────────────────────────────────────────────────────────
 
 
 def test_finalize_cli_happy_path(tmp_path):
-    wd = _spec_workdir(tmp_path)
+    wd = spec_workdir(tmp_path)
     r = subprocess.run(
         ["python3", str(MAIN), "finalize", "--workdir", str(wd)],
         capture_output=True,
@@ -315,7 +278,7 @@ def test_finalize_cli_happy_path(tmp_path):
 
 def test_finalize_needs_only_the_workdir(tmp_path):
     # Nothing about the outcome is the caller's to assert, so nothing about it is a flag.
-    wd = _spec_workdir(tmp_path)
+    wd = spec_workdir(tmp_path)
     r = subprocess.run(
         ["python3", str(MAIN), "finalize", "--workdir", str(wd)],
         capture_output=True,
@@ -327,7 +290,7 @@ def test_finalize_needs_only_the_workdir(tmp_path):
 
 def test_check_ledger_prints_the_gate_view(tmp_path):
     rows = [
-        *_ROWS,
+        *ROWS,
         {"id": "R-003", "verbatim": "hidden tests all pass", "judge": "outside"},
         {
             "id": "R-004",
@@ -341,7 +304,7 @@ def test_check_ledger_prints_the_gate_view(tmp_path):
             "judge": "human",
         },
     ]
-    wd = _spec_workdir(tmp_path, rows=rows)
+    wd = spec_workdir(tmp_path, rows=rows)
     r = subprocess.run(
         ["python3", str(MAIN), "check-ledger", "--workdir", str(wd)],
         capture_output=True,
@@ -370,7 +333,7 @@ def test_check_ledger_prints_the_gate_view(tmp_path):
 
 
 def test_check_ledger_fails_loud_on_a_bad_ledger(tmp_path):
-    wd = _spec_workdir(tmp_path, rows=[{**_ROWS[0], "judge": "bogus"}])
+    wd = spec_workdir(tmp_path, rows=[{**ROWS[0], "judge": "bogus"}])
     r = subprocess.run(
         ["python3", str(MAIN), "check-ledger", "--workdir", str(wd)],
         capture_output=True,

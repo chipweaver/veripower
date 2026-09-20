@@ -13,7 +13,7 @@ SCAFFOLD = {
 }
 
 
-def _workdir(tmp_path, todo=False):
+def workdir(tmp_path, todo=False):
     (tmp_path / "tb/uvm/seq").mkdir(parents=True)
     (tmp_path / "tb/uvm/agent").mkdir(parents=True)
     (tmp_path / "tb/uvm/seq/m_smoke_seq.sv").write_text("class m_smoke_seq; endclass\n")
@@ -36,7 +36,7 @@ def _workdir(tmp_path, todo=False):
     return tmp_path, tmp_path
 
 
-def _run(wd, sp):
+def run(wd, sp):
     return subprocess.run(
         [
             "python3",
@@ -53,15 +53,15 @@ def _run(wd, sp):
 
 
 def test_materialization_clean_exit_0(tmp_path):
-    wd, sp = _workdir(tmp_path)
-    r = _run(wd, sp)
+    wd, sp = workdir(tmp_path)
+    r = run(wd, sp)
     assert r.returncode == 0, r.stderr
     assert r.stdout.strip() == "check-materialization: OK"
 
 
 def test_materialization_todo_exit_1_stderr(tmp_path):
-    wd, sp = _workdir(tmp_path, todo=True)
-    r = _run(wd, sp)
+    wd, sp = workdir(tmp_path, todo=True)
+    r = run(wd, sp)
     assert r.returncode == 1
     # The gate is exit-code truth: the detail is the fix-oriented message on stderr, and no
     # reader ever parsed stdout for it.

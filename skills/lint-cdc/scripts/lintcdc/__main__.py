@@ -1,16 +1,5 @@
 #!/usr/bin/env python3
-"""lintcdc — lint-cdc-stage CLI.
-
-Verbs (one stage = one tool):
-  bootstrap   deploy templates + seed SGDC (carried/cold/template) + sync filelist (exit 0 / 1 / 2)
-  finalize    AND the two *-violations.json sidecars, assemble result.json; also the
-              early-fail exit (with --fail-reason)                                (exit 0 written / 2 BLOCKED)
-
-Thin dispatcher: each subcommand parses its own flags and calls into the lintcdc.*
-library. Library imports are deferred into each handler because `from lintcdc import …`
-only resolves after the sys.path insert below has run. (Library modules themselves use
-top-level absolute imports; only this dispatcher defers.)
-"""
+"""Command-line operations for the lintcdc stage."""
 
 import argparse
 import os
@@ -25,77 +14,67 @@ from pathlib import Path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 
-def _cmd_bootstrap(a: argparse.Namespace) -> int:
-    from lintcdc import bootstrap
-
-    return bootstrap.run(a.workdir, top=a.top)
-
-
-def _cmd_finalize(a: argparse.Namespace) -> int:
-    (Path(a.workdir) / "result.json").unlink(missing_ok=True)
-    from lintcdc import requirements, result
-
-    return result.finalize(
-        a.workdir,
-        requirements.mine(requirements.load(a.workdir)),
-        requirements.parse_declared(a.requirements),
-        a.fix_owner,
-        a.fail_reason,
-    )
-
-
 def build_parser() -> argparse.ArgumentParser:
-    p = argparse.ArgumentParser(prog="lintcdc", description="lint-cdc-stage CLI")
-    sub = p.add_subparsers(dest="cmd", required=True)
+    parser = argparse.ArgumentParser(prog="lintcdc", description="lint-cdc-stage CLI")
+    subcommands = parser.add_subparsers(dest="cmd", required=True)
 
-    sp = sub.add_parser(
+    command_parser = subcommands.add_parser(
         "bootstrap",
         help="deploy templates + seed SGDC (carried/cold/template) + sync filelist",
     )
-    sp.add_argument("--workdir", required=True, type=Path)
-    sp.add_argument(
+    command_parser.add_argument("--workdir", required=True, type=Path)
+    command_parser.add_argument(
         "--top",
         default=None,
         help="top module; read from the specification manifest when omitted",
     )
-    sp.set_defaults(func=_cmd_bootstrap)
 
-    sp = sub.add_parser(
+    command_parser = subcommands.add_parser(
         "finalize",
         help="AND the two *-violations.json sidecars, assemble result.json",
     )
-    sp.add_argument("--workdir", required=True, type=Path)
-    sp.add_argument(
+    command_parser.add_argument("--workdir", required=True, type=Path)
+    command_parser.add_argument(
         "--fix-owner",
         default=None,
         help="on a failure, the rule that must act (you name it; the report cannot)",
     )
-    sp.add_argument(
+    command_parser.add_argument(
         "--fail-reason",
         default=None,
         help="force status=fail with this reason; use it when `make` died before the "
         "parser wrote its sidecar, so the reason on its stderr is the precise one",
     )
-    sp.add_argument(
+    command_parser.add_argument(
         "--requirements",
         default=None,
         help="your verdict on each requirements.json row judged by lint-cdc, as a JSON array "
         'of {"id", "met", "actual"}',
     )
-    sp.set_defaults(func=_cmd_finalize)
 
-    return p
+    return parser
 
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     try:
-        return args.func(args)
-    except Exception as exc:  # noqa: BLE001 — any failure to operate is BLOCKED
-        print(
-            f"[lintcdc {args.cmd}] BLOCKED: {type(exc).__name__}: {exc}",
-            file=sys.stderr,
-        )
+        if args.cmd == "bootstrap":
+            from lintcdc import bootstrap
+
+            return bootstrap.run(args.workdir, top=args.top)
+        else:
+            (Path(args.workdir) / "result.json").unlink(missing_ok=True)
+            from lintcdc import requirements, result
+
+            return result.finalize(
+                args.workdir,
+                requirements.load_requirements(args.workdir),
+                requirements.parse_declared(args.requirements),
+                args.fix_owner,
+                args.fail_reason,
+            )
+    except (OSError, ValueError) as error:
+        print(f"[lintcdc {args.cmd}] BLOCKED: {error}", file=sys.stderr)
         return 2
 
 

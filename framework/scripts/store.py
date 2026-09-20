@@ -17,21 +17,12 @@ from referencing.jsonschema import DRAFT202012
 sys.path.insert(0, str(Path(__file__).parent))
 import rules  # noqa: E402
 
-_PLUGIN_ROOT = Path(__file__).resolve().parents[2]
-_EVENT_SCHEMA_DIR = _PLUGIN_ROOT / "framework" / "references" / "schemas" / "events"
-
-
-def module_root(module: str) -> Path:
-    """Use the module directory path supplied by the caller."""
-    return Path(module)
-
-
-def events_path(module: str) -> Path:
-    return module_root(module) / "events.jsonl"
+PLUGIN_ROOT = Path(__file__).resolve().parents[2]
+EVENT_SCHEMA_DIR = PLUGIN_ROOT / "framework" / "references" / "schemas" / "events"
 
 
 def read_events(module: str) -> list[dict]:
-    p = events_path(module)
+    p = Path(module) / "events.jsonl"
     if not p.exists():
         return []
     out = []
@@ -45,26 +36,19 @@ def read_events(module: str) -> list[dict]:
     return out
 
 
-def _event_schema(etype: str) -> dict:
-    path = _EVENT_SCHEMA_DIR / f"{etype}.schema.json"
-    if not path.exists():
-        sys.exit(f"append_event: no schema for event type {etype!r}")
-    return json.loads(path.read_text())
-
-
-_ENVELOPE_URI = "https://veripower.local/schemas/envelope.schema.json"
-_ENVELOPE_SCHEMA_PATH = (
-    _PLUGIN_ROOT / "framework" / "references" / "schemas" / "envelope.schema.json"
+ENVELOPE_URI = "https://veripower.local/schemas/envelope.schema.json"
+ENVELOPE_SCHEMA_PATH = (
+    PLUGIN_ROOT / "framework" / "references" / "schemas" / "envelope.schema.json"
 )
 
 
-def _envelope_registry() -> Registry:
+def envelope_registry() -> Registry:
     """Register the shared envelope for event and stage schema references."""
     envelope = Resource.from_contents(
-        json.loads(_ENVELOPE_SCHEMA_PATH.read_text()),
+        json.loads(ENVELOPE_SCHEMA_PATH.read_text()),
         default_specification=DRAFT202012,
     )
-    return Registry().with_resource(_ENVELOPE_URI, envelope)
+    return Registry().with_resource(ENVELOPE_URI, envelope)
 
 
 def freeze_inputs(module: str) -> None:
@@ -72,7 +56,7 @@ def freeze_inputs(module: str) -> None:
 
     Preserve other permission bits and leave symlink targets unchanged."""
     for key in rules.PIPELINE_INPUTS:
-        root = module_root(module) / key
+        root = Path(module) / key
         if not root.exists():
             continue
         for q in (root, *root.rglob("*")):
@@ -85,49 +69,43 @@ def freeze_inputs(module: str) -> None:
 
 def append_event(module: str, event: dict, ts: str) -> None:
     etype = event.get("type")
+    schema_path = EVENT_SCHEMA_DIR / f"{etype}.schema.json"
+    if not schema_path.is_file():
+        sys.exit(f"append_event: no schema for event type {etype!r}")
+    schema = json.loads(schema_path.read_text())
     record = {"ts": ts, **event}  # ts first
     try:
-        jsonschema.Draft202012Validator(
-            _event_schema(etype), registry=_envelope_registry()
-        ).validate(record)
+        jsonschema.Draft202012Validator(schema, registry=envelope_registry()).validate(
+            record
+        )
     except jsonschema.ValidationError as e:
         sys.exit(f"append_event: {etype} schema violation: {e.message}")
     read_events(module)
-    p = events_path(module)
+    p = Path(module) / "events.jsonl"
     p.parent.mkdir(parents=True, exist_ok=True)
     previous = p.read_bytes() if p.exists() else b""
     separator = b"\n" if previous and not previous.endswith(b"\n") else b""
     record_bytes = json.dumps(record, ensure_ascii=False).encode() + b"\n"
     payload = separator + record_bytes
-    fd = os.open(p, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o666)
+    file_descriptor = os.open(p, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o666)
     try:
-        if os.write(fd, payload) != len(payload):
+        if os.write(file_descriptor, payload) != len(payload):
             raise OSError(f"append_event: incomplete write to {p}")
     finally:
-        os.close(fd)
-
-
-def _stage_result_schema_path(rule_name: str) -> Path:
-    """The rule's own result.schema.json, resolved from its skill name
-    (`veripower:<dir>` -> skills/<dir>/references/result.schema.json)."""
-    skill_dir = rules.RULES[rule_name].skill.split(":", 1)[1]
-    return _PLUGIN_ROOT / "skills" / skill_dir / "references" / "result.schema.json"
+        os.close(file_descriptor)
 
 
 def validate_result(rule_name: str, result: dict) -> str | None:
     """Return the first stage-schema error, or None for a valid result.
 
-    Schema-loading errors are reported as validation errors."""
-    try:
-        stage_schema = json.loads(_stage_result_schema_path(rule_name).read_text())
-        validator = jsonschema.Draft202012Validator(
-            stage_schema, registry=_envelope_registry()
-        )
-        errors = sorted(
-            validator.iter_errors(result), key=lambda e: list(e.absolute_path)
-        )
-    except Exception as e:
-        return f"schema validation internal error: {type(e).__name__}: {e}"
+    Schema files are maintained with the plugin; loading errors propagate."""
+    skill_name = rules.RULES[rule_name].skill.split(":", 1)[1]
+    schema_path = PLUGIN_ROOT / "skills" / skill_name / "references/result.schema.json"
+    stage_schema = json.loads(schema_path.read_text())
+    validator = jsonschema.Draft202012Validator(
+        stage_schema, registry=envelope_registry()
+    )
+    errors = sorted(validator.iter_errors(result), key=lambda e: list(e.absolute_path))
     if not errors:
         return None
     err = errors[0]
@@ -137,33 +115,29 @@ def validate_result(rule_name: str, result: dict) -> str | None:
     return f"schema violation at {path}: {err.message}"
 
 
-def _result_path(root: Path, rule: str) -> Path:
-    return Path(root, *rules.workdir_root(rule), "result.json")
-
-
-def _is_safe_rel(rel: str) -> bool:
+def is_contained_relative_path(rel: str) -> bool:
     """True iff `rel` is a containment-safe relative path: not absolute and not
     escaping its base after normalization. Lexical only — does NOT resolve()
     (so a legitimate symlink artifact is unaffected; symlink-traversal is handled
-    separately by _cp_al's follow_symlinks=False)."""
+    separately by copy_artifact's follow_symlinks=False)."""
     if os.path.isabs(rel):
         return False
     norm = os.path.normpath(rel)
     return not (norm == ".." or norm.startswith(".." + os.sep))
 
 
-def _resolve_sim_run(root: Path, sim_run) -> str:
+def resolve_sim_run(root: Path, sim_run) -> str:
     """Absolute location of a specific past simulation run: <sim-stage>/runs/<N>.
-    Dedicated runtime guard (NOT _is_safe_rel, which rejects absolute paths): N must
+    Dedicated runtime guard (NOT is_contained_relative_path, which rejects absolute paths): N must
     be a positive integer and the resolved runs/<N> must sit directly under the
     simulation stage's runs/ directory."""
     try:
         n = int(str(sim_run))
-    except (TypeError, ValueError):
+    except ValueError:
         raise ValueError(f"sim_run not an integer: {sim_run!r}")
     if n < 1:
         raise ValueError(f"sim_run must be a positive integer: {n}")
-    sim_root = (root / Path(*rules.workdir_root("simulation"))).resolve()
+    sim_root = (root / Path(*rules.RULES["simulation"].workdir_root)).resolve()
     runs = sim_root / "runs"
     run_dir = (runs / str(n)).resolve()
     if run_dir.parent != runs:
@@ -197,9 +171,9 @@ def write_dispatch(
         prod = rules.producer_of(g0)
         if prod is None:
             raise ValueError(f"{rule}: input key {key!r} glob {g0!r} has no producer")
-        table[key] = str((root / Path(*rules.workdir_root(prod))).resolve())
+        table[key] = str((root / Path(*rules.RULES[prod].workdir_root)).resolve())
     if params and "sim_run" in r.params and "sim_run" in params:
-        table["sim_run"] = _resolve_sim_run(root, params["sim_run"])
+        table["sim_run"] = resolve_sim_run(root, params["sim_run"])
     doc: dict = {"inputs": table}
     if scope:
         doc["scope"] = list(scope)
@@ -212,7 +186,7 @@ def write_dispatch(
     )
 
 
-_CARRY_EXCLUDE = (
+CARRY_EXCLUDE = (
     "result.json",
     "runs",
     "dispatch.json",
@@ -228,11 +202,11 @@ def carry_self(root: Path, rule: str, workdir) -> None:
     r = rules.RULES[rule]
     if not r.carry:
         return
-    stage_dir = _result_path(root, rule).parent.resolve()
+    stage_dir = (root / Path(*rules.RULES[rule].workdir_root)).resolve()
     if not stage_dir.is_dir():
         return
     dest = Path(workdir).resolve()
-    products = (p for p in stage_dir.iterdir() if p.name not in _CARRY_EXCLUDE)
+    products = (p for p in stage_dir.iterdir() if p.name not in CARRY_EXCLUDE)
     sources = (
         src
         for p in products
@@ -249,12 +223,12 @@ def carry_self(root: Path, rule: str, workdir) -> None:
         copies[src] = rel
     with tempfile.TemporaryDirectory(prefix=".carry-", dir=dest.parent) as temporary:
         pending = Path(temporary)
-        _copy_products({src: pending / rel for src, rel in copies.items()})
+        copy_products({src: pending / rel for src, rel in copies.items()})
         pending.chmod(dest.stat().st_mode)
         os.replace(pending, dest)
 
 
-def _copy_products(copies: dict[Path, Path], ancestors=frozenset()) -> None:
+def copy_products(copies: dict[Path, Path], ancestors=frozenset()) -> None:
     for src, dst in copies.items():
         dst.parent.mkdir(parents=True, exist_ok=True)
         if src.is_symlink():
@@ -264,14 +238,14 @@ def _copy_products(copies: dict[Path, Path], ancestors=frozenset()) -> None:
             if target in copies:
                 dst.symlink_to(os.path.relpath(copies[target], dst.parent))
             else:
-                _copy_content(src, dst, ancestors)
+                copy_referenced_content(src, dst, ancestors)
         elif src.is_dir():
             dst.mkdir(exist_ok=True)
         else:
-            _copy_content(src, dst, ancestors)
+            copy_referenced_content(src, dst, ancestors)
 
 
-def _copy_content(src: Path, dst: Path, ancestors=frozenset()) -> None:
+def copy_referenced_content(src: Path, dst: Path, ancestors=frozenset()) -> None:
     """Materialize a referenced file or tree as independent, writable content."""
     resolved = src.resolve(strict=True)
     if src.is_dir():
@@ -280,28 +254,28 @@ def _copy_content(src: Path, dst: Path, ancestors=frozenset()) -> None:
         copies = {
             p: dst / p.relative_to(resolved) for p in [resolved, *resolved.rglob("*")]
         }
-        _copy_products(copies, ancestors | {resolved})
+        copy_products(copies, ancestors | {resolved})
     else:
         shutil.copy2(src, dst)
         dst.chmod(dst.stat().st_mode | 0o200)
 
 
-def _cp_al(src: Path, dst: Path) -> None:
+def copy_artifact(src: Path, dst: Path) -> None:
     """Hardlink a directory tree, preserving symlink inodes without following them."""
     if dst.exists():
-        raise FileExistsError(f"_cp_al dst exists: {dst}")
+        raise FileExistsError(f"artifact destination exists: {dst}")
     dst.mkdir()
     for entry in src.iterdir():
         if entry.is_symlink():
             # Preserve the symlink inode without traversing its target.
             os.link(str(entry), str(dst / entry.name), follow_symlinks=False)
         elif entry.is_dir():
-            _cp_al(entry, dst / entry.name)
+            copy_artifact(entry, dst / entry.name)
         else:
             os.link(str(entry), str(dst / entry.name))
 
 
-def _artifact_roots(artifacts: list[dict]) -> list[Path]:
+def artifact_roots(artifacts: list[dict]) -> list[Path]:
     """Select each declared file once, including files covered by a directory."""
     roots: list[Path] = []
     for rel in sorted(
@@ -309,7 +283,7 @@ def _artifact_roots(artifacts: list[dict]) -> list[Path]:
     ):
         if rel == Path("result.json"):
             continue
-        if not _is_safe_rel(str(rel)):
+        if not is_contained_relative_path(str(rel)):
             raise ValueError(f"artifact path escapes run dir: {rel}")
         if not rel.parts or rel.parts[0] == "runs":
             raise ValueError(f"artifact path conflicts with run storage: {rel}")
@@ -324,10 +298,10 @@ def promote(root: Path, rule: str, run_n: int) -> None:
     Run directories retain the source artifacts. Interrupted process termination
     can leave a staging directory; an explicit reap rebuilds the requested view.
     """
-    stage_dir = _result_path(root, rule).parent.resolve()
+    stage_dir = (root / Path(*rules.RULES[rule].workdir_root)).resolve()
     run_dir = stage_dir / "runs" / str(run_n)
     rj_src = run_dir / "result.json"
-    artifacts = _artifact_roots(json.loads(rj_src.read_text()).get("artifacts", []))
+    artifacts = artifact_roots(json.loads(rj_src.read_text()).get("artifacts", []))
     temporary = Path(tempfile.mkdtemp(prefix=".promote-", dir=stage_dir))
     ready, previous = temporary / "ready", temporary / "previous"
     moved, published = [], []
@@ -339,7 +313,7 @@ def promote(root: Path, rule: str, run_n: int) -> None:
             src, dst = run_dir / rel, ready / rel
             dst.parent.mkdir(parents=True, exist_ok=True)
             if not src.is_symlink() and src.is_dir():
-                _cp_al(src, dst)
+                copy_artifact(src, dst)
             else:
                 os.link(src, dst, follow_symlinks=False)
 

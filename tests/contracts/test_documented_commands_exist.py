@@ -25,7 +25,7 @@ LONG_FLAG = re.compile(r"(?<![\w-])(--[a-z][a-z0-9-]*)")
 VERB = re.compile(r"[a-z][a-z-]*\Z")
 
 
-def _cli_for(cmd: str, skill: str) -> Path | None:
+def cli_for(cmd: str, skill: str) -> Path | None:
     if "kernel.py" in cmd:
         return ROOT / "framework/scripts/kernel.py"
     m = re.search(r"<skill>/scripts/([a-z_]+)(?:/__main__\.py)?", cmd)
@@ -35,7 +35,7 @@ def _cli_for(cmd: str, skill: str) -> Path | None:
     return base / "__main__.py" if (base / "__main__.py").is_file() else base
 
 
-def _commands():
+def documented_commands():
     for md in sorted((ROOT / "skills").glob("*/SKILL.md")) + sorted(
         (ROOT / "skills").glob("*/references/*.md")
     ):
@@ -43,13 +43,13 @@ def _commands():
         for block in BLOCK.findall(md.read_text(encoding="utf-8")):
             for line in block.replace("\\\n", " ").splitlines():
                 cmd = " ".join(line.split())
-                cli = _cli_for(cmd, skill)
+                cli = cli_for(cmd, skill)
                 if cli is not None:
                     yield str(md.relative_to(ROOT)), cli, cmd
 
 
-def _documented():
-    for md, cli, cmd in _commands():
+def documented():
+    for md, cli, cmd in documented_commands():
         tail = cmd.split(cli.name)[-1] if cli.name in cmd else cmd
         words = [
             w for w in tail.split() if not w.startswith(("-", "<", "{", "[", "'", '"'))
@@ -58,11 +58,11 @@ def _documented():
             yield md, cli, words[0], tuple(sorted(set(LONG_FLAG.findall(tail))))
 
 
-CASES = list(_documented())
+CASES = list(documented())
 
 
 @lru_cache(maxsize=None)
-def _help(cli: Path, verb: str):
+def help(cli: Path, verb: str):
     r = subprocess.run(
         [sys.executable, str(cli), verb, "--help"], capture_output=True, text=True
     )
@@ -70,7 +70,7 @@ def _help(cli: Path, verb: str):
 
 
 def test_every_skill_command_block_is_checked():
-    commands = list(_commands())
+    commands = list(documented_commands())
     assert commands
     for md, cli, cmd in commands:
         assert cli.is_file(), f"{md} documents missing CLI {cli}: {cmd}"
@@ -81,7 +81,7 @@ def test_every_skill_command_block_is_checked():
     "md,cli,verb,flags", CASES, ids=[f"{c[0]}:{c[2]}" for c in CASES]
 )
 def test_documented_command_is_accepted(md, cli, verb, flags):
-    rc, out = _help(cli, verb)
+    rc, out = help(cli, verb)
     assert rc == 0, f"{md} documents `{verb}`, which {cli.name} does not accept"
     for flag in flags:
         assert flag in out, (

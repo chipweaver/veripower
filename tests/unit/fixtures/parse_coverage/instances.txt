@@ -1,56 +1,30 @@
-Module Instance : microgpt_core_tb_top.u_dut.u_attn
-===============================================================================
+Module : controller
+SCORE LINE COND TOGGLE FSM BRANCH
+100 100 100 100 100 100
 
+Module Instance : tb.dut.channel_a
 Instance :
-
-SCORE  LINE   COND   TOGGLE FSM    BRANCH 
- 84.36  99.05  83.12  81.88  66.67  91.11 
-
+SCORE LINE TOGGLE
+90 90 90
 
 Instance's subtree :
+SCORE LINE TOGGLE
+80 85 75
 
-SCORE  LINE   COND   TOGGLE FSM    BRANCH 
- 84.24  98.52  86.09  76.80  66.67  93.10 
-
-Module Instance : microgpt_core_tb_top.u_dut.u_attn.u_divs0
-===============================================================================
-
+Module Instance : tb.dut.channel_b
 Instance :
-
-SCORE  LINE   COND   TOGGLE FSM    BRANCH 
- 89.51 100.00  83.33  83.80 --      90.91 
-
+SCORE LINE TOGGLE
+100 100 100
 
 Instance's subtree :
+SCORE LINE TOGGLE
+60 70 50
 
-SCORE  LINE   COND   TOGGLE FSM    BRANCH 
- 89.81  97.83  91.67  77.73 --      92.00 
-
-Module Instance : microgpt_core_tb_top.u_dut.u_attn.u_divs1
-===============================================================================
-
+Module Instance : tb.dut
 Instance :
-
-SCORE  LINE   COND   TOGGLE FSM    BRANCH 
- 89.63 100.00  83.33  84.26 --      90.91 
-
+SCORE LINE COND TOGGLE FSM BRANCH
+100 100 100 100 100 100
 
 Instance's subtree :
-
-SCORE  LINE   COND   TOGGLE FSM    BRANCH 
- 89.86  97.83  91.67  77.94 --      92.00 
-
-Module Instance : microgpt_core_tb_top.u_dut
-===============================================================================
-
-Instance :
-
-SCORE  LINE   COND   TOGGLE FSM    BRANCH 
- 96.77  98.51  94.03  94.21 100.00  97.10 
-
-
-Instance's subtree :
-
-SCORE  LINE   COND   TOGGLE FSM    BRANCH 
- 93.58  99.13  89.69  88.77  92.00  98.31 
-
+SCORE LINE COND TOGGLE FSM BRANCH
+75 90 80 70 -- 60

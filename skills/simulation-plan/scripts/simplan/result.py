@@ -3,36 +3,7 @@ import json
 import sys
 from pathlib import Path
 
-from simplan._plan import SIDECAR_NAMES
-
 STAGE = "simulation-plan"
-
-
-def _now_iso() -> str:
-    return datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-
-
-def _envelope(*, status, stage_specific, artifacts, fix_owner=None) -> dict:
-    """fix_owner rides on a failure only, and only when the caller named one: its ABSENCE is
-    what decide reads as "this stage cannot tell", so it must never serialize empty."""
-    if status == "fail" and fix_owner:
-        stage_specific = {**stage_specific, "fix_owner": fix_owner}
-    return {
-        "stage": STAGE,
-        "produced_at": _now_iso(),
-        "status": status,
-        "artifacts": artifacts,
-        "stage_specific": stage_specific,
-    }
-
-
-def _write_result(workdir: Path, env: dict) -> None:
-    tmp = workdir / "result.json.tmp"
-    tmp.write_text(json.dumps(env, indent=2) + "\n")
-    tmp.replace(workdir / "result.json")  # atomic: never observed half-written
-    sys.stdout.write(
-        f"[simplan finalize] Written: {workdir / 'result.json'} (status={env['status']})\n"
-    )
 
 
 def enumerate_artifacts(workdir) -> list:
@@ -44,75 +15,63 @@ def enumerate_artifacts(workdir) -> list:
     workdir = Path(workdir)
     fixed = [
         "verification-plan.md",
-        *SIDECAR_NAMES,
+        "tb-scaffold.json",
+        "sequences.json",
+        "power-scenarios.json",
     ]
     reviews = ["plan-review"] if (workdir / "plan-review").is_dir() else []
     return [{"path": p} for p in fixed + reviews if (workdir / p).exists()]
 
 
-def build_result(workdir, spec_workdir, *, fail_reason=None, fix_owner=None) -> int:
-    """Assemble the lean simulation-plan result.json from the workdir.
-
-    The pass path validates the current sidecars. Invalid inputs block closure until repaired
-    or explicitly returned as an unresolved failure. The failure path can close incomplete work.
-
-    The stage handles plan review findings before calling finalize and supplies fail_reason
-    for an unresolved blocking defect. This function does not interpret review prose.
-    Returns 0 (result.json written, pass or fail). A raise -> finalize() exit 2 (BLOCKED)."""
-    workdir = Path(workdir)
-
-    if fail_reason:
-        ss = {"fail_reason": fail_reason}
-        _write_result(
-            workdir,
-            _envelope(
-                status="fail",
-                stage_specific=ss,
-                artifacts=enumerate_artifacts(workdir),
-                fix_owner=fix_owner,
-            ),
-        )
-        return 0
-
-    from simplan.scaffold import verdict
-
-    errors = verdict(workdir, spec_workdir)
-    if errors:
-        listed = "; ".join(errors)
-        raise ValueError(
-            f"check-scaffold failed: {listed}. Repair the plan or report the unresolved cause."
-        )
-
-    _write_result(
-        workdir,
-        _envelope(
-            status="pass",
-            stage_specific={},
-            artifacts=enumerate_artifacts(workdir),
-            fix_owner=fix_owner,
-        ),
-    )
-    return 0
-
-
 def finalize(workdir, spec_workdir, *, fail_reason=None, fix_owner=None) -> int:
-    """build_result, with the exit-code contract. exit 0 = result.json written (pass or fail);
-    exit 2 = BLOCKED (an empty --fail-reason, a re-run check-scaffold failure, or any internal
-    raise) — never conflated with status=fail."""
+    """Assess the stage and write its result. Input or I/O errors leave no current result."""
     (Path(workdir) / "result.json").unlink(missing_ok=True)
-    if fail_reason is not None and not fail_reason.strip():
+    if fail_reason is not None and (not fail_reason.strip()):
         print(
             "[simplan finalize] BLOCKED: --fail-reason must be a non-empty one-line reason",
             file=sys.stderr,
         )
         return 2
+
+    def _write_result(*, status, stage_specific, artifacts):
+        if status == "fail" and fix_owner:
+            stage_specific = {**stage_specific, "fix_owner": fix_owner}
+        result = {
+            "stage": STAGE,
+            "produced_at": datetime.datetime.now(datetime.timezone.utc).strftime(
+                "%Y-%m-%dT%H:%M:%SZ"
+            ),
+            "status": status,
+            "artifacts": artifacts,
+            "stage_specific": stage_specific,
+        }
+        result_path = Path(workdir) / "result.json"
+        temporary_path = result_path.with_suffix(".json.tmp")
+        temporary_path.write_text(json.dumps(result, indent=2) + "\n")
+        temporary_path.replace(result_path)
+        print(f"[simplan finalize] Written: {result_path} (status={status})")
+        return 0
+
     try:
-        return build_result(
-            workdir,
-            spec_workdir,
-            fail_reason=fail_reason,
-            fix_owner=fix_owner,
+        workdir = Path(workdir)
+        if fail_reason:
+            stage_specific = {"fail_reason": fail_reason}
+            return _write_result(
+                status="fail",
+                stage_specific=stage_specific,
+                artifacts=enumerate_artifacts(workdir),
+            )
+        from simplan.scaffold import verdict
+
+        errors = verdict(workdir, spec_workdir)
+        if errors:
+            listed = "; ".join(errors)
+            raise ValueError(
+                f"check-scaffold failed: {listed}. Repair the plan or report the unresolved cause."
+            )
+        return _write_result(
+            status="pass", stage_specific={}, artifacts=enumerate_artifacts(workdir)
         )
-    except Exception as exc:  # noqa: BLE001 — any failure to operate is BLOCKED
+    except (OSError, ValueError) as exc:
         print(f"[simplan finalize] BLOCKED: {exc}", file=sys.stderr)
         return 2

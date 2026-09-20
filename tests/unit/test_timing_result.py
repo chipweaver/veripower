@@ -1,7 +1,6 @@
 """Tests for skills/timing-analysis/scripts/timing/result.py (marker-keyed).
 
-Fixtures are real-format excerpts from the pt2016 (M-2016.12-SP1) sdc_controller
-corpus: bare `report_timing -delay max|min` prints the worst path per group, each
+Fixtures preserve PrimeTime (M-2016.12-SP1) report syntax: bare `report_timing -delay max|min` prints the worst path per group, each
 block ending in a 'slack (MET)' / 'slack (VIOLATED...)' line; the displayed slack
 rounds to report precision, so the MARKER — not the number — decides met/violated.
 """
@@ -54,7 +53,7 @@ def test_timing_without_a_usable_unit_is_not_assumed_ns(unit):
 
 
 # ── fixtures (faithful real-format excerpts) ─────────────────────────────────
-_SETUP_MET = """\
+SETUP_MET = """\
 Time_unit : 1e-09 Second
 ****************************************
 Report : timing
@@ -62,16 +61,15 @@ Report : timing
 \t-delay_type max
 \t-max_paths 1
 \t-sort_by slack
-Design : sdc_controller
 Version: M-2016.12-SP1
 ****************************************
 
 
-  Startpoint: wb_adr_i[6]
-               (input port clocked by wb_clk_i)
-  Endpoint: wb_dat_o[2]
-               (output port clocked by wb_clk_i)
-  Path Group: wb_clk_i
+  Startpoint: input_data[6]
+               (input port clocked by clock_a)
+  Endpoint: output_data[2]
+               (output port clocked by clock_a)
+  Path Group: clock_a
   Path Type: max
 
   data arrival time                                   3.87
@@ -81,22 +79,21 @@ Version: M-2016.12-SP1
 
 """
 
-_HOLD_MET = """\
+HOLD_MET = """\
 ****************************************
 Report : timing
 \t-delay_type min
 \t-max_paths 1
 \t-sort_by slack
-Design : sdc_controller
 Version: M-2016.12-SP1
 ****************************************
 
 
-  Startpoint: data_master/a_cmp_rx_r_reg
-               (rising edge-triggered flip-flop clocked by wb_clk_i)
-  Endpoint: data_master/a_cmp_rx_r_reg
-               (rising edge-triggered flip-flop clocked by wb_clk_i)
-  Path Group: wb_clk_i
+  Startpoint: storage/data_reg
+               (rising edge-triggered flip-flop clocked by clock_a)
+  Endpoint: storage/data_reg
+               (rising edge-triggered flip-flop clocked by clock_a)
+  Path Group: clock_a
   Path Type: min
 
   slack (MET)                                         0.20
@@ -104,22 +101,21 @@ Version: M-2016.12-SP1
 """
 
 # Real case: displayed slack is 0.00 but the path is VIOLATED.
-_HOLD_VIOLATED_ZERO = """\
+HOLD_VIOLATED_ZERO = """\
 ****************************************
 Report : timing
 \t-delay_type min
 \t-max_paths 1
 \t-sort_by slack
-Design : sdc_controller
 Version: M-2016.12-SP1
 ****************************************
 
 
-  Startpoint: u_rx_filler/wb_free_reg
-               (rising edge-triggered flip-flop clocked by wb_clk_i)
-  Endpoint: u_rx_filler/rd_reg
-               (rising edge-triggered flip-flop clocked by wb_clk_i)
-  Path Group: wb_clk_i
+  Startpoint: producer/ready_reg
+               (rising edge-triggered flip-flop clocked by clock_a)
+  Endpoint: consumer/read_reg
+               (rising edge-triggered flip-flop clocked by clock_a)
+  Path Group: clock_a
   Path Type: min
 
   slack (VIOLATED: increase significant digits)       0.00
@@ -128,16 +124,15 @@ Version: M-2016.12-SP1
 
 # significant_digits=4 case: the same path prints a real negative number.
 # (re.sub, not .replace, so a whitespace mismatch fails loudly instead of no-op'ing.)
-_HOLD_VIOLATED_NEG = re.sub(
+HOLD_VIOLATED_NEG = re.sub(
     r"slack \(VIOLATED[^)]*\)\s+0\.00",
     "slack (VIOLATED)                                    -0.0050",
-    _HOLD_VIOLATED_ZERO,
+    HOLD_VIOLATED_ZERO,
 )
 
 # check_timing output is in the report for the reader; the gate does not read it.
-# 1461 unconstrained endpoints on a healthy design is ordinary — reset ports carry no
-# input delay, so every async-reset flop lands in that count.
-_CHECK_TIMING = """\
+# Counts describe reported checks; they do not establish the timing scope of a design.
+CHECK_TIMING = """\
 Information: Checking 'unconstrained_endpoints'.
 Warning: There are 1461 endpoints which are not constrained for maximum delay.
 
@@ -148,7 +143,7 @@ check_timing succeeded.
 """
 
 
-def _coverage(out_setup: int | None) -> str:
+def coverage(out_setup: int | None) -> str:
     """Native report_analysis_coverage table; totals count checks, not distinct pins."""
     row = (
         ""
@@ -164,11 +159,11 @@ def _coverage(out_setup: int | None) -> str:
     )
 
 
-_COV_FULL = _coverage(8)
-_COV_SHORT = _coverage(2)
+COV_FULL = coverage(8)
+COV_SHORT = coverage(2)
 
 
-def _write(tmp_path, text):
+def write_timing_report(tmp_path, text):
     rep = tmp_path / "timing-report.txt"
     rep.write_text(text)
     return rep
@@ -176,23 +171,23 @@ def _write(tmp_path, text):
 
 # ── parse-unit tests ─────────────────────────────────────────────────────────
 def test_parse_direction_met():
-    d = sp.parse_direction(_SETUP_MET + _HOLD_MET, "max")
+    d = sp.parse_direction(SETUP_MET + HOLD_MET, "max")
     assert d["met"] is True
     assert d["worst_slack_ns"] == pytest.approx(2.93)
-    assert d["worst_path"] == "wb_adr_i[6] -> wb_dat_o[2]"
+    assert d["worst_path"] == "input_data[6] -> output_data[2]"
 
 
 def test_parse_direction_violated_on_marker_despite_zero():
     # The regression: marker says VIOLATED while the number reads 0.00.
-    d = sp.parse_direction(_SETUP_MET + _HOLD_VIOLATED_ZERO, "min")
+    d = sp.parse_direction(SETUP_MET + HOLD_VIOLATED_ZERO, "min")
     assert d["met"] is False
     assert d["worst_slack_ns"] == pytest.approx(0.00)
-    assert d["worst_path"] == "u_rx_filler/wb_free_reg -> u_rx_filler/rd_reg"
+    assert d["worst_path"] == "producer/ready_reg -> consumer/read_reg"
 
 
 # ── run() exit-code + verdict contract ─────────────────────────────────────────
 def test_run_clean_pass(tmp_path):
-    rep = _write(tmp_path, _SETUP_MET + _HOLD_MET + _CHECK_TIMING + _COV_FULL)
+    rep = write_timing_report(tmp_path, SETUP_MET + HOLD_MET + CHECK_TIMING + COV_FULL)
     rc, data = sp.run(rep)
     assert rc == 0
     assert data["verdict"] == "pass"
@@ -202,20 +197,24 @@ def test_run_clean_pass(tmp_path):
 
 def test_run_marker_keyed_fail_on_displayed_zero(tmp_path):
     # Must FAIL despite hold slack displaying 0.00; actual ~ 0.00 here.
-    rep = _write(tmp_path, _SETUP_MET + _HOLD_VIOLATED_ZERO + _CHECK_TIMING + _COV_FULL)
+    rep = write_timing_report(
+        tmp_path, SETUP_MET + HOLD_VIOLATED_ZERO + CHECK_TIMING + COV_FULL
+    )
     rc, data = sp.run(rep)
     assert rc == 0
     assert data["verdict"] == "fail"
     assert data["timing"]["hold"]["met"] is False
     assert (
         data["timing"]["hold"]["worst_path"]
-        == "u_rx_filler/wb_free_reg -> u_rx_filler/rd_reg"
+        == "producer/ready_reg -> consumer/read_reg"
     )
 
 
 def test_run_negative_number_recorded_with_sig_digits4(tmp_path):
     # significant_digits=4: the recorded worst_slack_ns is the real negative value.
-    rep = _write(tmp_path, _SETUP_MET + _HOLD_VIOLATED_NEG + _CHECK_TIMING + _COV_FULL)
+    rep = write_timing_report(
+        tmp_path, SETUP_MET + HOLD_VIOLATED_NEG + CHECK_TIMING + COV_FULL
+    )
     rc, data = sp.run(rep)
     assert rc == 0
     assert data["timing"]["hold"]["worst_slack_ns"] < 0
@@ -223,15 +222,15 @@ def test_run_negative_number_recorded_with_sig_digits4(tmp_path):
 
 
 def test_counts_do_not_create_a_completeness_measurement(tmp_path):
-    wd = _workdir(tmp_path, report=_SETUP_MET + _HOLD_MET + _CHECK_TIMING + _COV_SHORT)
-    assert sp.build_result(wd, [], []) == 0
+    wd = workdir(tmp_path, report=SETUP_MET + HOLD_MET + CHECK_TIMING + COV_SHORT)
+    assert sp.finalize(wd, [], []) == 0
     env = json.loads((wd / "result.json").read_text())
     assert env["status"] == "pass"
     assert set(env["stage_specific"]["timing"]) == {"setup", "hold"}
 
 
 def test_scope_judgment_can_reject_met_paths(tmp_path):
-    wd = _workdir(tmp_path, report=_SETUP_MET + _HOLD_MET + _CHECK_TIMING + _COV_FULL)
+    wd = workdir(tmp_path, report=SETUP_MET + HOLD_MET + CHECK_TIMING + COV_FULL)
     rows = [
         {
             "id": "IO",
@@ -246,7 +245,7 @@ def test_scope_judgment_can_reject_met_paths(tmp_path):
             "measured": "port report: q[1] has no required output delay",
         }
     ]
-    assert sp.build_result(wd, rows, judgments, fix_owner="synthesis") == 0
+    assert sp.finalize(wd, rows, judgments, fix_owner="synthesis") == 0
     env = json.loads((wd / "result.json").read_text())
     assert env["status"] == "fail" and "IO" in env["stage_specific"]["fail_reason"]
     assert env["stage_specific"]["timing"]["setup"]["met"] is True
@@ -256,19 +255,19 @@ def test_scope_judgment_can_reject_met_paths(tmp_path):
 def test_unconstrained_endpoints_alone_never_fail_a_run(tmp_path):
     # Global warning counts are evidence for the stage owner, not an automatic
     # scope verdict. The reported timing measurements are still available.
-    wd = _workdir(tmp_path, report=_SETUP_MET + _HOLD_MET + _CHECK_TIMING + _COV_FULL)
+    wd = workdir(tmp_path, report=SETUP_MET + HOLD_MET + CHECK_TIMING + COV_FULL)
     (wd / "config.tcl").write_text("# current test setup\n")
-    assert sp.build_result(wd, [], []) == 0
+    assert sp.finalize(wd, [], []) == 0
     assert json.loads((wd / "result.json").read_text())["status"] == "pass"
 
 
 def test_report_counts_do_not_override_a_timing_violation(tmp_path):
     # Report counts do not change the measured hold violation.
-    wd = _workdir(
-        tmp_path, report=_SETUP_MET + _HOLD_VIOLATED_NEG + _CHECK_TIMING + _COV_SHORT
+    wd = workdir(
+        tmp_path, report=SETUP_MET + HOLD_VIOLATED_NEG + CHECK_TIMING + COV_SHORT
     )
     (wd / "config.tcl").write_text("# current test setup\n")
-    assert sp.build_result(wd, [], []) == 0
+    assert sp.finalize(wd, [], []) == 0
     ss = json.loads((wd / "result.json").read_text())["stage_specific"]
     assert ss["timing"]["hold"]["met"] is False
 
@@ -280,8 +279,8 @@ def test_run_missing_report_exit1(tmp_path):
 
 def test_run_no_slack_line_exit3(tmp_path):
     # A -delay max section present but with no slack line -> unparseable, never pass.
-    broken = re.sub(r"slack \(MET\)\s+2\.93", "", _SETUP_MET)
-    rep = _write(tmp_path, broken + _HOLD_MET + _CHECK_TIMING + _COV_FULL)
+    broken = re.sub(r"slack \(MET\)\s+2\.93", "", SETUP_MET)
+    rep = write_timing_report(tmp_path, broken + HOLD_MET + CHECK_TIMING + COV_FULL)
     rc, payload = sp.run(rep)
     assert rc == 3 and payload is None  # no verdict on a parse surprise
 
@@ -291,9 +290,11 @@ def test_run_marker_vs_sign_contradiction_exit3(tmp_path):
     contradiction = re.sub(
         r"slack \(MET\)\s+2\.93",
         "slack (MET)                                        -0.5000",
-        _SETUP_MET,
+        SETUP_MET,
     )
-    rep = _write(tmp_path, contradiction + _HOLD_MET + _CHECK_TIMING + _COV_FULL)
+    rep = write_timing_report(
+        tmp_path, contradiction + HOLD_MET + CHECK_TIMING + COV_FULL
+    )
     rc, payload = sp.run(rep)
     assert rc == 3 and payload is None  # no verdict on a parse surprise
 
@@ -304,9 +305,11 @@ def test_run_violated_marker_with_positive_slack_exit3(tmp_path):
     contradiction = re.sub(
         r"slack \(MET\)\s+0\.20",
         "slack (VIOLATED)                                     2.5000",
-        _HOLD_MET,
+        HOLD_MET,
     )
-    rep = _write(tmp_path, _SETUP_MET + contradiction + _CHECK_TIMING + _COV_FULL)
+    rep = write_timing_report(
+        tmp_path, SETUP_MET + contradiction + CHECK_TIMING + COV_FULL
+    )
     rc, payload = sp.run(rep)
     assert rc == 3 and payload is None  # no verdict on a parse surprise
 
@@ -324,14 +327,12 @@ def test_finalize_missing_required_flag_is_blocked(tmp_path):
     assert not (tmp_path / "result.json").exists()
 
 
-# ── build_result + finalize subcommand ───────────────────────────────────────
+# ── finalize + finalize subcommand ───────────────────────────────────────
 
 
-def _workdir(tmp_path, report=None, rows=()):
+def workdir(tmp_path, report=None, rows=()):
     report = (
-        (_SETUP_MET + _HOLD_MET + _CHECK_TIMING + _COV_FULL)
-        if report is None
-        else report
+        (SETUP_MET + HOLD_MET + CHECK_TIMING + COV_FULL) if report is None else report
     )
     (tmp_path / "timing-report.txt").write_text(report)
     sd = tmp_path / "spec"
@@ -343,10 +344,10 @@ def _workdir(tmp_path, report=None, rows=()):
     return tmp_path
 
 
-def test_build_result_pass_lean_shape(tmp_path):
-    wd = _workdir(tmp_path)
+def test_finalize_pass_lean_shape(tmp_path):
+    wd = workdir(tmp_path)
     (wd / "config.tcl").write_text("# current test setup\n")
-    assert sp.build_result(wd, [], []) == 0
+    assert sp.finalize(wd, [], []) == 0
     env = json.loads((wd / "result.json").read_text())
     assert env["stage"] == "timing-analysis"
     assert env["status"] == "pass" and env["produced_at"].endswith("Z")
@@ -356,40 +357,30 @@ def test_build_result_pass_lean_shape(tmp_path):
     assert "notes" not in ss  # lean shape: dropped field absent
 
 
-def test_build_result_tooling_fail_on_unparseable(tmp_path):
+def test_finalize_tooling_fail_on_unparseable(tmp_path):
     # A -delay max section with no slack line -> parser run() returns 3 (mirrors
     # test_run_no_slack_line_exit3 above).
-    broken = re.sub(r"slack \(MET\)\s+2\.93", "", _SETUP_MET)
-    wd = _workdir(tmp_path, report=broken + _HOLD_MET + _CHECK_TIMING + _COV_FULL)
+    broken = re.sub(r"slack \(MET\)\s+2\.93", "", SETUP_MET)
+    wd = workdir(tmp_path, report=broken + HOLD_MET + CHECK_TIMING + COV_FULL)
     (wd / "config.tcl").write_text("# current test setup\n")
-    assert sp.build_result(wd, [], []) == 0
+    assert sp.finalize(wd, [], []) == 0
     ss = json.loads((wd / "result.json").read_text())["stage_specific"]
     assert ss["fail_reason"] == "timing-report.txt unparseable"
     assert "timing" not in ss  # heavy pass-shape dropped when nothing was graded
 
 
-def test_build_result_tooling_fail_on_missing_report(tmp_path):
-    assert sp.build_result(tmp_path, [], []) == 0  # no report file
+def test_finalize_tooling_fail_on_missing_report(tmp_path):
+    assert sp.finalize(tmp_path, [], []) == 0  # no report file
     ss = json.loads((tmp_path / "result.json").read_text())["stage_specific"]
     assert ss["fail_reason"] == "timing-report.txt missing"
-
-
-def test_finalize_blocked_on_internal_raise(tmp_path, monkeypatch):
-    # finalize() wraps build_result: any internal raise -> exit 2 (BLOCKED), never
-    # status=fail. (The old main() finalize branch had this except; it moves to finalize().)
-    def boom(*a, **k):
-        raise RuntimeError("synthetic")
-
-    monkeypatch.setattr(sp, "build_result", boom)
-    assert sp.finalize(tmp_path, [], []) == 2
 
 
 def test_fail_reason_wins_over_a_clean_gate(tmp_path):
     # The caller watched pt_shell; this verb only sees what landed on disk. A report
     # that parses clean does not outrank a declared failure.
-    wd = _workdir(tmp_path)
+    wd = workdir(tmp_path)
     assert (
-        sp.build_result(
+        sp.finalize(
             wd,
             [],
             [],
@@ -410,7 +401,7 @@ def test_fail_reason_wins_over_a_clean_gate(tmp_path):
 
 
 def test_finalize_blocked_on_empty_fail_reason(tmp_path):
-    wd = _workdir(tmp_path)
+    wd = workdir(tmp_path)
     assert sp.finalize(wd, [], [], fail_reason="  ") == 2
     assert not (wd / "result.json").exists()
 
@@ -418,7 +409,7 @@ def test_finalize_blocked_on_empty_fail_reason(tmp_path):
 def test_finalize_cli_declared_failure(tmp_path):
     # A run PrimeTime never reached leaves nothing on disk to grade, so the cause is
     # reachable only through this flag — never through a hand-written envelope.
-    wd = _workdir(tmp_path)
+    wd = workdir(tmp_path)
     MAIN = REPO_ROOT / "skills/timing-analysis/scripts/timing/__main__.py"
     r = subprocess.run(
         [
@@ -439,9 +430,9 @@ def test_finalize_cli_declared_failure(tmp_path):
 
 
 def test_finalize_cli_happy_path(tmp_path):
-    # End-to-end through _cmd_finalize (handler import + arg mapping), not just
-    # in-process build_result.
-    wd = _workdir(tmp_path)
+    # End-to-end through the finalize CLI (handler import + arg mapping), not just
+    # in-process finalize.
+    wd = workdir(tmp_path)
     MAIN = REPO_ROOT / "skills/timing-analysis/scripts/timing/__main__.py"
     r = subprocess.run(
         ["python3", str(MAIN), "finalize", "--workdir", str(wd)],
@@ -453,7 +444,7 @@ def test_finalize_cli_happy_path(tmp_path):
     assert (env["stage"], env["status"]) == ("timing-analysis", "pass")
 
 
-_ROWS = [
+ROWS = [
     {
         "id": "R-1",
         "verbatim": "综合与 STA 后无 setup/hold 违例",
@@ -463,7 +454,7 @@ _ROWS = [
 ]
 
 
-def _cli(wd, *extra):
+def cli(wd, *extra):
     MAIN = REPO_ROOT / "skills/timing-analysis/scripts/timing/__main__.py"
     return subprocess.run(
         ["python3", str(MAIN), "finalize", "--workdir", str(wd), *extra],
@@ -473,7 +464,7 @@ def _cli(wd, *extra):
 
 
 def test_the_agents_verdict_on_its_rows_lands_in_the_envelope(tmp_path):
-    wd = _workdir(tmp_path, rows=_ROWS)
+    wd = workdir(tmp_path, rows=ROWS)
     declared = [
         {
             "id": "R-1",
@@ -482,15 +473,15 @@ def test_the_agents_verdict_on_its_rows_lands_in_the_envelope(tmp_path):
             "measured": "read from the run's own report",
         }
     ]
-    r = _cli(wd, "--requirements", json.dumps(declared))
+    r = cli(wd, "--requirements", json.dumps(declared))
     assert r.returncode == 0, r.stderr
     env = json.loads((wd / "result.json").read_text())
     assert env["status"] == "pass" and env["stage_specific"]["requirements"] == declared
 
 
 def test_a_declared_miss_fails_a_run_primetime_passed(tmp_path):
-    wd = _workdir(tmp_path, rows=_ROWS)
-    r = _cli(
+    wd = workdir(tmp_path, rows=ROWS)
+    r = cli(
         wd,
         "--requirements",
         json.dumps(
@@ -508,13 +499,13 @@ def test_a_declared_miss_fails_a_run_primetime_passed(tmp_path):
 
 
 def test_a_row_nobody_judged_is_blocked(tmp_path):
-    wd = _workdir(tmp_path, rows=_ROWS)
-    r = _cli(wd)
+    wd = workdir(tmp_path, rows=ROWS)
+    r = cli(wd)
     assert r.returncode == 2 and "R-1" in r.stderr
     assert not (wd / "result.json").exists()
 
 
-def _target(value=0, op=">=", dim="timing_slack_ns"):
+def target(value=0, op=">=", dim="timing_slack_ns"):
     return {
         "id": "T",
         "judge": "timing-analysis",
@@ -537,8 +528,8 @@ def _target(value=0, op=">=", dim="timing_slack_ns"):
 def test_numeric_targets_are_computed_from_worst_setup_and_hold(
     tmp_path, value, op, expected
 ):
-    wd = _workdir(tmp_path, rows=[_target(value, op)])
-    r = _cli(wd)
+    wd = workdir(tmp_path, rows=[target(value, op)])
+    r = cli(wd)
     assert r.returncode == 0, r.stderr
     env = json.loads((wd / "result.json").read_text())
     row = env["stage_specific"]["requirements"][0]
@@ -548,20 +539,20 @@ def test_numeric_targets_are_computed_from_worst_setup_and_hold(
 
 
 def test_numeric_target_cannot_pass_a_rounded_zero_violation(tmp_path):
-    wd = _workdir(
+    wd = workdir(
         tmp_path,
-        rows=[_target()],
-        report=_SETUP_MET + _HOLD_VIOLATED_ZERO + _CHECK_TIMING + _COV_FULL,
+        rows=[target()],
+        report=SETUP_MET + HOLD_VIOLATED_ZERO + CHECK_TIMING + COV_FULL,
     )
-    assert _cli(wd).returncode == 0
+    assert cli(wd).returncode == 0
     env = json.loads((wd / "result.json").read_text())
     assert env["status"] == "fail"
     assert env["stage_specific"]["requirements"][0]["met"] is False
 
 
 def test_declared_verdict_cannot_replace_numeric_comparison(tmp_path):
-    wd = _workdir(tmp_path, rows=[_target(5)])
-    r = _cli(
+    wd = workdir(tmp_path, rows=[target(5)])
+    r = cli(
         wd,
         "--requirements",
         json.dumps([{"id": "T", "met": True, "actual": 99, "measured": "claimed"}]),
@@ -572,30 +563,25 @@ def test_declared_verdict_cannot_replace_numeric_comparison(tmp_path):
 
 @pytest.mark.parametrize(
     "row",
-    [_target(dim="unknown"), _target(op="=="), _target(True), _target(float("nan"))],
+    [target(dim="unknown"), target(op="=="), target(True), target(float("nan"))],
 )
 def test_unknown_or_invalid_timing_target_is_named(tmp_path, row):
-    wd = _workdir(tmp_path, rows=[row])
-    r = _cli(wd)
+    wd = workdir(tmp_path, rows=[row])
+    r = cli(wd)
     assert r.returncode == 2 and "unsupported timing target" in r.stderr
     assert not (wd / "result.json").exists()
 
 
 def test_numeric_and_agent_judged_rows_can_coexist(tmp_path):
-    wd = _workdir(tmp_path, rows=[_target(), _ROWS[0]])
+    wd = workdir(tmp_path, rows=[target(), ROWS[0]])
     declared = [{"id": "R-1", "met": True, "measured": "report scope inspected"}]
-    r = _cli(wd, "--requirements", json.dumps(declared))
+    r = cli(wd, "--requirements", json.dumps(declared))
     assert r.returncode == 0, r.stderr
     rows = json.loads((wd / "result.json").read_text())["stage_specific"][
         "requirements"
     ]
     assert [r["id"] for r in rows] == ["T", "R-1"]
     assert rows[1] == declared[0]
-
-
-def test_parse_tool_from_primetime_version():
-    assert sp.parse_tool("Version: M-2016.12-SP1\n") == "PrimeTime M-2016.12-SP1"
-    assert sp.parse_tool("no version here") == "PrimeTime unknown"
 
 
 # ── artifacts[] enumeration ──────────────────────────────────────────────────
@@ -611,29 +597,28 @@ def test_enumerate_artifacts_present_only_no_self(tmp_path):
     assert all((tmp_path / p).is_file() for p in paths)  # only present files
 
 
-# ── golden test against a real run ───────────────────────────────────────────
+# Result-schema checks.
 
 
-def test_golden_lean_against_a_real_run(tmp_path):
+def test_report_values_and_paths_reach_result(tmp_path):
     import shutil
 
-    ROOT = Path(__file__).resolve().parent / "fixtures" / "timing-golden"
-    # Fixture is rooted at Design/ (no `asic` path component — it would be .gitignored).
-    shutil.copytree(ROOT / "Design", tmp_path / "module" / "Design")
-    wd = tmp_path / "module" / "Design" / "timing-analysis" / "runs" / "3"
+    ROOT = Path(__file__).resolve().parent / "fixtures" / "timing-reports"
+    wd = tmp_path / "timing"
+    shutil.copytree(ROOT, wd)
+    (wd / "run_sta.tcl").write_text("# tool entrypoint\n")
     (wd / "config.tcl").write_text("# current test setup\n")
-    assert sp.build_result(wd, [], []) == 0
+    assert sp.finalize(wd, [], []) == 0
     env = json.loads((wd / "result.json").read_text())
     ss = env["stage_specific"]
     # Replay the recorded setup/hold measurements without inventing a scope metric.
     assert env["status"] == "pass"
     assert set(ss["timing"]) == {"setup", "hold"}
-    # contract fields — exact to the real run
+    # Report values are copied with their units and endpoint names.
     assert ss["timing"]["setup"]["worst_slack_ns"] == pytest.approx(0.7252)
     assert ss["timing"]["setup"]["met"] is True
     assert (
-        ss["timing"]["setup"]["worst_path"]
-        == "systolic_reg/delay21_reg_0_ -> mac_10/o_result_reg_31_"
+        ss["timing"]["setup"]["worst_path"] == "launch_register/Q -> capture_register/D"
     )
     assert ss["timing"]["hold"]["worst_slack_ns"] == pytest.approx(0.2341)
     assert ss["timing"]["hold"]["met"] is True
@@ -650,17 +635,18 @@ def test_golden_lean_against_a_real_run(tmp_path):
     assert env["produced_at"].endswith("Z")
 
 
-def test_golden_is_schema_valid(tmp_path):
+def test_pass_result_is_schema_valid(tmp_path):
     import shutil
 
     from jsonschema import Draft202012Validator
     from referencing import Registry, Resource
 
-    ROOT = Path(__file__).resolve().parent / "fixtures" / "timing-golden"
-    shutil.copytree(ROOT / "Design", tmp_path / "module" / "Design")
-    wd = tmp_path / "module" / "Design" / "timing-analysis" / "runs" / "3"
+    ROOT = Path(__file__).resolve().parent / "fixtures" / "timing-reports"
+    wd = tmp_path / "timing"
+    shutil.copytree(ROOT, wd)
+    (wd / "run_sta.tcl").write_text("# tool entrypoint\n")
     (wd / "config.tcl").write_text("# test setup\n")
-    sp.build_result(wd, [], [])
+    sp.finalize(wd, [], [])
     env = json.loads((wd / "result.json").read_text())
     env_schema = json.loads(
         (REPO_ROOT / "framework/references/schemas/envelope.schema.json").read_text()
@@ -690,24 +676,24 @@ def test_numeric_rows_do_not_inherit_overall_sta_failure(tmp_path, direction):
         ("<", -1, False),
     ]
     rows = [
-        dict(_target(value, op), id=str(i))
-        for i, (op, value, _) in enumerate(comparisons)
+        dict(target(value, op), id=str(i))
+        for i, (op, value, unused) in enumerate(comparisons)
     ]
-    setup, hold = _SETUP_MET, _HOLD_MET
+    setup, hold = SETUP_MET, HOLD_MET
     if direction == "setup":
         setup = setup.replace("slack (MET)", "slack (VIOLATED)").replace(
             "2.93", "-1.00"
         )
     else:
         hold = hold.replace("slack (MET)", "slack (VIOLATED)").replace("0.20", "-1.00")
-    wd = _workdir(tmp_path, rows=rows, report=setup + hold + _CHECK_TIMING + _COV_FULL)
-    assert _cli(wd).returncode == 0
+    wd = workdir(tmp_path, rows=rows, report=setup + hold + CHECK_TIMING + COV_FULL)
+    assert cli(wd).returncode == 0
     env = json.loads((wd / "result.json").read_text())
     assert env["status"] == "fail"
     assert env["stage_specific"]["fail_reason"] == "setup/hold timing not met"
     verdicts = env["stage_specific"]["requirements"]
     assert [r["actual"] for r in verdicts] == [-1.0] * len(rows)
-    assert [r["met"] for r in verdicts] == [v for _, _, v in comparisons]
+    assert [r["met"] for r in verdicts] == [v for unused, unused, v in comparisons]
 
 
 @pytest.mark.parametrize("display", ["0.00", "-0.00"])
@@ -721,27 +707,25 @@ def test_rounded_violation_respects_the_comparison_direction(tmp_path, display):
         ("<=", -1, False),
     ]
     rows = [
-        dict(_target(value, op), id=str(i))
-        for i, (op, value, _) in enumerate(comparisons)
+        dict(target(value, op), id=str(i))
+        for i, (op, value, unused) in enumerate(comparisons)
     ]
-    hold = _HOLD_VIOLATED_ZERO.replace("0.00", display)
-    wd = _workdir(
-        tmp_path, rows=rows, report=_SETUP_MET + hold + _CHECK_TIMING + _COV_FULL
-    )
-    assert _cli(wd).returncode == 0
+    hold = HOLD_VIOLATED_ZERO.replace("0.00", display)
+    wd = workdir(tmp_path, rows=rows, report=SETUP_MET + hold + CHECK_TIMING + COV_FULL)
+    assert cli(wd).returncode == 0
     env = json.loads((wd / "result.json").read_text())
     assert env["status"] == "fail"
     verdicts = env["stage_specific"]["requirements"]
     assert all(r["actual"] == 0 for r in verdicts)
-    assert [r["met"] for r in verdicts] == [v for _, _, v in comparisons]
+    assert [r["met"] for r in verdicts] == [v for unused, unused, v in comparisons]
 
 
 def test_missing_native_coverage_report_is_incomplete(tmp_path):
-    report = _write(tmp_path, _SETUP_MET + _HOLD_MET + _CHECK_TIMING)
+    report = write_timing_report(tmp_path, SETUP_MET + HOLD_MET + CHECK_TIMING)
     assert sp.run(report) == (3, None)
 
 
 def test_native_coverage_needs_no_custom_boundary_counter(tmp_path):
-    text = _SETUP_MET + _HOLD_MET + _CHECK_TIMING + _COV_FULL
-    rc, data = sp.run(_write(tmp_path, text))
+    text = SETUP_MET + HOLD_MET + CHECK_TIMING + COV_FULL
+    rc, data = sp.run(write_timing_report(tmp_path, text))
     assert rc == 0 and set(data["timing"]) == {"setup", "hold"}

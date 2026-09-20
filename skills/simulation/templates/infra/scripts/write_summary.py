@@ -14,16 +14,6 @@ import sys
 from pathlib import Path
 
 
-def parse_args():
-    parser = argparse.ArgumentParser(
-        description="Generate simulation summary artifacts."
-    )
-    parser.add_argument(
-        "--verification-dir", required=True, help="Verification directory root."
-    )
-    return parser.parse_args()
-
-
 def load_results(log_path):
     """Parse regression-log.txt and return list of result dicts.
 
@@ -43,12 +33,14 @@ def load_results(log_path):
     return results
 
 
-def write_text(path, content):
-    path.write_text(content.rstrip() + "\n", encoding="utf-8")
-
-
 def main():
-    args = parse_args()
+    parser = argparse.ArgumentParser(
+        description="Generate simulation summary artifacts."
+    )
+    parser.add_argument(
+        "--verification-dir", required=True, help="Verification directory root."
+    )
+    args = parser.parse_args()
     root = Path(args.verification_dir).resolve()
     # Where run_vcs_regression.sh put the per-test logs this run: same env var, so the
     # summary points a reader at the directory that exists rather than a fixed guess.
@@ -164,7 +156,7 @@ def main():
 - `FAIL`: errors reported; investigate per-test log in `{log_dir}/`.
 - `NOT_RUN`: testcase declared but no result line present (likely a compile or selection issue).
 """
-    write_text(summary_path, summary_text)
+    summary_path.write_text(summary_text.rstrip() + "\n", encoding="utf-8")
     return 0
 
 

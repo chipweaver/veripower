@@ -31,7 +31,7 @@ SPEC = {
 }
 
 
-_TOP_IO = [
+TOP_IO = [
     {
         "name": "clk",
         "direction": "input",
@@ -67,21 +67,21 @@ _TOP_IO = [
         "role": "data",
     },
 ]
-_CLOCKS = [
+CLOCKS = [
     {"name": "clk", "io_delay_ns": 3.0, "period_ns": 10.0, "relationship": "primary"}
 ]
 
 
-def _write_boundary(d, top_io=None, clocks=None):
+def write_boundary(d, top_io=None, clocks=None):
     """The specification stage root the renderer reads the DUT boundary from."""
     d = Path(d)
     d.mkdir(parents=True, exist_ok=True)
-    (d / "top-io.json").write_text(json.dumps(_TOP_IO if top_io is None else top_io))
-    (d / "clocks.json").write_text(json.dumps(_CLOCKS if clocks is None else clocks))
+    (d / "top-io.json").write_text(json.dumps(TOP_IO if top_io is None else top_io))
+    (d / "clocks.json").write_text(json.dumps(CLOCKS if clocks is None else clocks))
     return d
 
 
-def _write_spec(tmp_path, spec=SPEC):
+def write_spec(tmp_path, spec=SPEC):
     """The plan dir: the renderer reads tb-scaffold.json + sequences.json out of it."""
     doc = dict(spec)
     (tmp_path / "sequences.json").write_text(json.dumps(doc.pop("sequences", [])))
@@ -89,11 +89,11 @@ def _write_spec(tmp_path, spec=SPEC):
     return tmp_path
 
 
-def _render(tmp_path, spec=SPEC, top_io=None, clocks=None):
+def render(tmp_path, spec=SPEC, top_io=None, clocks=None):
     """Render into tmp_path/out. bootstrap is the only caller in the pipeline and is covered
     as a subprocess in test_sim_bootstrap; here the subject is the renderer itself."""
-    plan = _write_spec(tmp_path, spec)
-    boundary = _write_boundary(tmp_path / "spec", top_io, clocks)
+    plan = write_spec(tmp_path, spec)
+    boundary = write_boundary(tmp_path / "spec", top_io, clocks)
     out = tmp_path / "out"
     out.mkdir(exist_ok=True)
     scaffold.render(plan, out, boundary, TEMPLATES)
@@ -104,7 +104,7 @@ def _render(tmp_path, spec=SPEC, top_io=None, clocks=None):
 def test_inout_connection_and_transaction_keep_distinct_types_on_regeneration(
     tmp_path, width
 ):
-    ports = [dict(p) for p in _TOP_IO] + [
+    ports = [dict(p) for p in TOP_IO] + [
         {
             "name": "io_link",
             "direction": "inout",
@@ -114,7 +114,7 @@ def test_inout_connection_and_transaction_keep_distinct_types_on_regeneration(
             "role": "data",
         }
     ]
-    out = _render(tmp_path, top_io=ports)
+    out = render(tmp_path, top_io=ports)
     signals = out / "tb/uvm/interface/m_drv_signals.svh"
     fields = out / "tb/uvm/transaction/m_drv_fields.svh"
     interface = out / "tb/uvm/interface/m_drv_if.sv"
@@ -122,7 +122,7 @@ def test_inout_connection_and_transaction_keep_distinct_types_on_regeneration(
         "endinterface", "  logic local_enable;\nendinterface"
     )
     interface.write_text(authored)
-    for _ in range(2):
+    for unused in range(2):
         assert "wire" in next(
             line for line in signals.read_text().splitlines() if "io_link;" in line
         )
@@ -144,10 +144,10 @@ def test_inout_connection_and_transaction_keep_distinct_types_on_regeneration(
     assert interface.read_text() == authored
 
 
-def _render_exit(tmp_path, spec=SPEC, plan_dir=None, top_io=None, clocks=None):
+def render_exit(tmp_path, spec=SPEC, plan_dir=None, top_io=None, clocks=None):
     """Render expecting a fail-loud exit; returns the message."""
-    plan = plan_dir or _write_spec(tmp_path, spec)
-    boundary = _write_boundary(tmp_path / "spec", top_io, clocks)
+    plan = plan_dir or write_spec(tmp_path, spec)
+    boundary = write_boundary(tmp_path / "spec", top_io, clocks)
     out = tmp_path / "out"
     out.mkdir(exist_ok=True)
     with pytest.raises(SystemExit) as e:
@@ -160,7 +160,7 @@ def test_rerender_keeps_a_filled_file(tmp_path):
     # and on a rework the whole carried testbench is already on disk, so writing over it
     # replaces a round of authored checks with `// TODO`. That happened on three consecutive
     # simulation rounds of the one real module, and cost a testpoint.
-    out = _render(tmp_path)
+    out = render(tmp_path)
     sb = out / "tb/uvm/checker/m_scoreboard.sv"
     filled = "class m_scoreboard; // 400 lines of real implementation\nendclass\n"
     sb.write_text(filled)
@@ -170,16 +170,16 @@ def test_rerender_keeps_a_filled_file(tmp_path):
 
 def test_rerender_adds_what_the_plan_gained(tmp_path):
     # The other half: skipping what exists must not stop a new sequence from being rendered.
-    out = _render(tmp_path)
+    out = render(tmp_path)
     grown = json.loads(json.dumps(SPEC))
     grown["sequences"] = grown["sequences"] + [{"name": "corner", "agent": "drv"}]
-    _write_spec(tmp_path, grown)
+    write_spec(tmp_path, grown)
     scaffold.render(tmp_path, out, tmp_path / "spec", TEMPLATES)
     assert (out / "tb/uvm/seq/m_corner_seq.sv").is_file()
 
 
 def test_render_scaffold_full_tree(tmp_path):
-    out = _render(tmp_path)
+    out = render(tmp_path)
     # interface / txn / agent / seq / env / scoreboard / rm / tb_top / pkg / filelist / testlist
     assert (out / "tb/uvm/interface/m_drv_if.sv").is_file()
     assert (out / "tb/uvm/transaction/m_drv_txn.sv").is_file()
@@ -192,7 +192,7 @@ def test_render_scaffold_full_tree(tmp_path):
 
 def test_testlist_carries_the_authored_suites(tmp_path):
     # Nothing here is invented: suites is the plan author's judgment. This verb only copies it.
-    out = _render(tmp_path)
+    out = render(tmp_path)
     tl = json.loads((out / "tests/testlist.json").read_text())
     assert tl["module"] == "m" and tl["top"] == "m_top"
     entry = tl["tests"][0]
@@ -206,13 +206,15 @@ def test_testlist_missing_authored_field_fails_loud(tmp_path):
 
     spec = copy.deepcopy(SPEC)
     del spec["tests"][0]["suites"]
-    assert "suites" in _render_exit(tmp_path, spec)
+    assert "suites" in render_exit(tmp_path, spec)
 
 
-def test_inport_and_observer_wiring(tmp_path):
+@pytest.mark.parametrize("inports", [["drv"], ["drv", "obs"]])
+def test_inport_and_observer_wiring(tmp_path, inports):
     # rm.inports / scoreboard.observer name agents verbatim; the txn TYPE is built from the
     # name here, so nothing un-wraps anything.
-    out = _render(tmp_path)
+    spec = {**SPEC, "rm": {**SPEC["rm"], "inports": inports}}
+    out = render(tmp_path, spec=spec)
     rm = (out / "tb/uvm/refmodel/m_rule_rm.sv").read_text()
     assert "write_drv" in rm  # inport agent derived by stripping module_/_txn
     env = (out / "tb/uvm/env/m_env.sv").read_text()
@@ -225,11 +227,15 @@ def test_inport_and_observer_wiring(tmp_path):
     )  # inport -> the one rm
     assert "m_rm" not in env
 
+    assert "m_obs_agent.ap.connect(m_scoreboard.rm." not in env
+    for agent in inports:
+        assert f"write_{agent}" in rm
+
 
 def test_driver_monitor_vif_key_matches_tb_top_set(tmp_path):
     # Regression: tb_top registers each agent's vif under "<agent>_vif"; the
     # driver/monitor must `get` under the same key or build_phase uvm_fatals.
-    out = _render(tmp_path)
+    out = render(tmp_path)
     tb_top = (out / "tb/uvm/top/m_top_tb_top.sv").read_text()
     assert '"drv_vif"' in tb_top  # set side, per scaffold.py
     for agent in ("drv", "obs"):
@@ -242,26 +248,26 @@ def test_driver_monitor_vif_key_matches_tb_top_set(tmp_path):
 
 
 def test_render_missing_scaffold_exits(tmp_path):
-    msg = _render_exit(tmp_path, plan_dir=tmp_path / "nope")
+    msg = render_exit(tmp_path, plan_dir=tmp_path / "nope")
     assert "missing tb-scaffold.json" in msg
 
 
 def test_atomic_rollback_on_write_error(tmp_path, monkeypatch):
     # A mid-loop OSError rolls back run_scaffold's own files; re-raises. (in-process)
-    spec_path = _write_spec(tmp_path)
-    boundary = _write_boundary(tmp_path / "spec")
+    spec_path = write_spec(tmp_path)
+    boundary = write_boundary(tmp_path / "spec")
     out = tmp_path / "out"
     out.mkdir()
     calls = {"n": 0}
-    real_write = scaffold._render.write_text
+    real_write = Path.write_text
 
-    def boom(path, content):
+    def _boom(path, content, *args, **kwargs):
         calls["n"] += 1
         if calls["n"] == 3:
             raise OSError("disk full")
-        return real_write(path, content)
+        return real_write(path, content, *args, **kwargs)
 
-    monkeypatch.setattr(scaffold._render, "write_text", boom)
+    monkeypatch.setattr(Path, "write_text", _boom)
     with pytest.raises(OSError):
         scaffold.render(spec_path, out, boundary, TEMPLATES)
     # the first two written files were rolled back (none of run_scaffold's own output remains)
@@ -272,7 +278,7 @@ def test_atomic_rollback_on_write_error(tmp_path, monkeypatch):
 def test_every_clock_is_generated_and_bound(tmp_path):
     """A DUT clock port the bench does not bind renders as an open port, which Verilog
     accepts and VCS compiles without an error — the domain is then dead for the whole run."""
-    top_io = _TOP_IO + [
+    top_io = TOP_IO + [
         {
             "name": "clk2",
             "direction": "input",
@@ -282,11 +288,11 @@ def test_every_clock_is_generated_and_bound(tmp_path):
             "role": "clock",
         }
     ]
-    clocks = _CLOCKS + [
+    clocks = CLOCKS + [
         {"name": "clk2", "io_delay_ns": 2.4, "period_ns": 8.0, "relationship": "async"}
     ]
     tb = (
-        _render(tmp_path, top_io=top_io, clocks=clocks)
+        render(tmp_path, top_io=top_io, clocks=clocks)
         / "tb"
         / "uvm"
         / "top"
@@ -299,24 +305,24 @@ def test_every_clock_is_generated_and_bound(tmp_path):
 
 def test_reset_polarity_is_exposed_without_changing_the_signal(tmp_path):
     """The reset schedule uses the original signal and its declared active level."""
-    low = (_render(tmp_path) / "tb" / "uvm" / "top" / "m_top_tb_top.sv").read_text()
+    low = (render(tmp_path) / "tb" / "uvm" / "top" / "m_top_tb_top.sv").read_text()
     assert ".rst_n(rst_n)" in low
 
-    top_io = [dict(p) for p in _TOP_IO]
+    top_io = [dict(p) for p in TOP_IO]
     for p_ in top_io:
         if p_["role"] == "reset":
             p_.update(name="rst", reset_polarity=1)
     high = tmp_path / "high"
     high.mkdir()
     tb = (
-        _render(high, top_io=top_io) / "tb" / "uvm" / "top" / "m_top_tb_top.sv"
+        render(high, top_io=top_io) / "tb" / "uvm" / "top" / "m_top_tb_top.sv"
     ).read_text()
     assert ".rst(rst)" in tb
     assert "active 1" in (high / "out/tb/uvm/interface/m_reset_ports.svh").read_text()
 
 
 def test_unclaimed_data_port_exits(tmp_path):
-    top_io = _TOP_IO + [
+    top_io = TOP_IO + [
         {
             "name": "orphan",
             "direction": "input",
@@ -326,7 +332,7 @@ def test_unclaimed_data_port_exits(tmp_path):
             "role": "data",
         }
     ]
-    msg = _render_exit(tmp_path, top_io=top_io)
+    msg = render_exit(tmp_path, top_io=top_io)
     assert "orphan" in msg and "no agent claims" in msg
 
 
@@ -338,7 +344,7 @@ def test_group_claimed_by_two_agents_exits(tmp_path):
             {"name": "obs", "mode": "passive", "interface_groups": ["obs_g"]},
         ],
     }
-    assert "claimed by both" in _render_exit(tmp_path, spec)
+    assert "claimed by both" in render_exit(tmp_path, spec)
 
 
 def test_agent_with_no_data_ports_exits(tmp_path):
@@ -349,12 +355,12 @@ def test_agent_with_no_data_ports_exits(tmp_path):
             {"name": "obs", "mode": "passive", "interface_groups": ["obs_g"]},
         ],
     }
-    msg = _render_exit(tmp_path, spec)
+    msg = render_exit(tmp_path, spec)
     assert "no data ports" in msg
 
 
 def test_clock_port_without_a_clocks_json_entry_exits(tmp_path):
-    top_io = _TOP_IO + [
+    top_io = TOP_IO + [
         {
             "name": "clk2",
             "direction": "input",
@@ -364,16 +370,16 @@ def test_clock_port_without_a_clocks_json_entry_exits(tmp_path):
             "role": "clock",
         }
     ]
-    msg = _render_exit(tmp_path, top_io=top_io)
+    msg = render_exit(tmp_path, top_io=top_io)
     assert "clk2" in msg and "clocks.json" in msg
 
 
 def test_reset_polarity_out_of_range_exits(tmp_path):
-    top_io = [dict(p) for p in _TOP_IO]
+    top_io = [dict(p) for p in TOP_IO]
     for p_ in top_io:
         if p_["role"] == "reset":
             p_.pop("reset_polarity")
-    assert "reset_polarity" in _render_exit(tmp_path, top_io=top_io)
+    assert "reset_polarity" in render_exit(tmp_path, top_io=top_io)
 
 
 # ── a rework has to re-derive: the plan or the boundary moving must reach the SV ────────
@@ -381,18 +387,18 @@ def test_rework_regenerates_the_derived_files(tmp_path):
     """The defect this replaces: render no-clobbered everything, so a second round found the
     old tb_top on disk and kept it — the run then used a DUT instantiation, a clock set and a
     reset polarity from whenever the workdir was first created."""
-    out = _render(tmp_path)
+    out = render(tmp_path)
     tb = out / "tb" / "uvm" / "top" / "m_top_tb_top.sv"
     assert ".rst_n(rst_n)" in tb.read_text()
 
-    top_io = [dict(p) for p in _TOP_IO]
+    top_io = [dict(p) for p in TOP_IO]
     for p_ in top_io:
         if p_["role"] == "reset":
             p_["reset_polarity"] = 1
     scaffold.render(
-        _write_spec(tmp_path),
+        write_spec(tmp_path),
         out,
-        _write_boundary(tmp_path / "spec", top_io),
+        write_boundary(tmp_path / "spec", top_io),
         TEMPLATES,
     )
     assert ".rst_n(rst_n)" in tb.read_text()
@@ -402,11 +408,11 @@ def test_rework_regenerates_the_derived_files(tmp_path):
 def test_rework_keeps_the_authored_stubs(tmp_path):
     """The other half: what a round filled in is never overwritten, which is why the derived
     part had to move out of those files rather than the whole tree becoming regenerable."""
-    out = _render(tmp_path)
+    out = render(tmp_path)
     sb = out / "tb" / "uvm" / "checker" / "m_m_sb.sv"
     sb.write_text("// a round's authored compare\n")
     scaffold.render(
-        _write_spec(tmp_path), out, _write_boundary(tmp_path / "spec"), TEMPLATES
+        write_spec(tmp_path), out, write_boundary(tmp_path / "spec"), TEMPLATES
     )
     assert sb.read_text() == "// a round's authored compare\n"
 
@@ -415,7 +421,7 @@ def test_the_reset_schedule_is_authored_and_survives_a_rework(tmp_path):
     """tb_top is derived, so a reset placed there is gone on the next round — and a reset exit
     from a state the design only passes through is reachable no other way. The schedule is
     therefore its own stub, included after the interfaces so it can be timed against them."""
-    out = _render(tmp_path)
+    out = render(tmp_path)
     tb = out / "tb" / "uvm" / "top" / "m_top_tb_top.sv"
     rst = out / "tb" / "uvm" / "top" / "m_reset.svh"
     assert '`include "m_reset.svh"' in tb.read_text()
@@ -424,7 +430,7 @@ def test_the_reset_schedule_is_authored_and_survives_a_rework(tmp_path):
 
     rst.write_text("// a round's own reset placement\n")
     scaffold.render(
-        _write_spec(tmp_path), out, _write_boundary(tmp_path / "spec"), TEMPLATES
+        write_spec(tmp_path), out, write_boundary(tmp_path / "spec"), TEMPLATES
     )
     assert rst.read_text() == "// a round's own reset placement\n"
 
@@ -434,7 +440,7 @@ def test_the_bench_can_name_sources_the_scaffold_cannot_derive(tmp_path):
     only route into the compile is filelist.f, which is derived and rewritten every round. The
     list it pulls in is therefore a stub, and what a round wrote there is still there next
     round."""
-    out = _render(tmp_path)
+    out = render(tmp_path)
     fl = out / "filelist.f"
     src = out / "tb" / "uvm" / "tb_sources.f"
     assert "-f tb/uvm/tb_sources.f" in fl.read_text()
@@ -442,17 +448,17 @@ def test_the_bench_can_name_sources_the_scaffold_cannot_derive(tmp_path):
 
     src.write_text("tb/uvm/refmodel/m_ref.c\n")
     scaffold.render(
-        _write_spec(tmp_path), out, _write_boundary(tmp_path / "spec"), TEMPLATES
+        write_spec(tmp_path), out, write_boundary(tmp_path / "spec"), TEMPLATES
     )
     assert src.read_text() == "tb/uvm/refmodel/m_ref.c\n"
     assert "-f tb/uvm/tb_sources.f" in fl.read_text()
 
 
 def test_a_new_port_reaches_the_vif_and_the_txn_on_a_rework(tmp_path):
-    out = _render(tmp_path)
+    out = render(tmp_path)
     sig = out / "tb" / "uvm" / "interface" / "m_drv_signals.svh"
     assert "grew" not in sig.read_text()
-    top_io = _TOP_IO + [
+    top_io = TOP_IO + [
         {
             "name": "grew",
             "direction": "input",
@@ -463,9 +469,9 @@ def test_a_new_port_reaches_the_vif_and_the_txn_on_a_rework(tmp_path):
         }
     ]
     scaffold.render(
-        _write_spec(tmp_path),
+        write_spec(tmp_path),
         out,
-        _write_boundary(tmp_path / "spec", top_io),
+        write_boundary(tmp_path / "spec", top_io),
         TEMPLATES,
     )
     assert "[7:0] grew;" in sig.read_text()
@@ -477,7 +483,7 @@ def test_each_vif_runs_on_its_own_declared_clock_domain(tmp_path):
     """top-io.json states a clock_domain per port. Wiring every vif to the primary made a
     second-domain agent sample its ports on a clock they are not in — a race the bench
     invented, not one the DUT has."""
-    top_io = [dict(p) for p in _TOP_IO] + [
+    top_io = [dict(p) for p in TOP_IO] + [
         {
             "name": "clk2",
             "direction": "input",
@@ -490,11 +496,11 @@ def test_each_vif_runs_on_its_own_declared_clock_domain(tmp_path):
     for p_ in top_io:
         if p_["interface_group"] == "obs_g":
             p_["clock_domain"] = "clk2"
-    clocks = _CLOCKS + [
+    clocks = CLOCKS + [
         {"name": "clk2", "io_delay_ns": 2.4, "period_ns": 8.0, "relationship": "async"}
     ]
     tb = (
-        _render(tmp_path, top_io=top_io, clocks=clocks)
+        render(tmp_path, top_io=top_io, clocks=clocks)
         / "tb"
         / "uvm"
         / "top"
@@ -505,7 +511,7 @@ def test_each_vif_runs_on_its_own_declared_clock_domain(tmp_path):
 
 
 def test_agent_spanning_domains_has_an_authored_connection(tmp_path):
-    top_io = [dict(p) for p in _TOP_IO] + [
+    top_io = [dict(p) for p in TOP_IO] + [
         {
             "name": "clk2",
             "direction": "input",
@@ -518,7 +524,7 @@ def test_agent_spanning_domains_has_an_authored_connection(tmp_path):
     for p_ in top_io:
         if p_["interface_group"] == "obs_g":
             p_["clock_domain"] = "clk2"
-    clocks = _CLOCKS + [
+    clocks = CLOCKS + [
         {"name": "clk2", "io_delay_ns": 2.4, "period_ns": 8.0, "relationship": "async"}
     ]
     spec = {
@@ -527,7 +533,7 @@ def test_agent_spanning_domains_has_an_authored_connection(tmp_path):
             {"name": "drv", "mode": "active", "interface_groups": ["drv_g", "obs_g"]},
         ],
     }
-    out = _render(tmp_path, spec, top_io=top_io, clocks=clocks)
+    out = render(tmp_path, spec, top_io=top_io, clocks=clocks)
     connections = (out / "tb/uvm/top/m_clocks.svh").read_text()
     assert "TODO(interface)" in connections
     assert "clk, clk2" in connections
@@ -535,16 +541,16 @@ def test_agent_spanning_domains_has_an_authored_connection(tmp_path):
 
 
 def test_clock_domain_with_no_clock_port_exits(tmp_path):
-    top_io = [dict(p) for p in _TOP_IO]
+    top_io = [dict(p) for p in TOP_IO]
     for p_ in top_io:
         if p_["interface_group"] == "obs_g":
             p_["clock_domain"] = "nowhere"
-    assert "nowhere" in _render_exit(tmp_path, top_io=top_io)
+    assert "nowhere" in render_exit(tmp_path, top_io=top_io)
 
 
 @pytest.mark.parametrize("polarities", [(0, 0), (0, 1), (1, 0), (1, 1)])
 def test_all_resets_reach_the_dut_and_interfaces(tmp_path, polarities):
-    ports = [dict(p) for p in _TOP_IO if p["role"] != "reset"]
+    ports = [dict(p) for p in TOP_IO if p["role"] != "reset"]
     for i, name in enumerate(("clear_core", "clear_io")):
         ports.append(
             {
@@ -561,7 +567,7 @@ def test_all_resets_reach_the_dut_and_interfaces(tmp_path, polarities):
     for reverse in (False, True):
         case = tmp_path / str(reverse)
         case.mkdir()
-        out = _render(case, top_io=list(reversed(ports)) if reverse else ports)
+        out = render(case, top_io=list(reversed(ports)) if reverse else ports)
         tb = (out / "tb/uvm/top/m_top_tb_top.sv").read_text()
         declarations = (out / "tb/uvm/interface/m_reset_ports.svh").read_text()
         for i, name in enumerate(("clear_core", "clear_io")):
@@ -573,16 +579,16 @@ def test_all_resets_reach_the_dut_and_interfaces(tmp_path, polarities):
 
 
 def test_reset_declarations_update_without_replacing_authored_work(tmp_path):
-    out = _render(tmp_path)
+    out = render(tmp_path)
     interface = out / "tb/uvm/interface/m_drv_if.sv"
     authored = interface.read_text() + "// authored clocking and observation logic\n"
     interface.write_text(authored)
     reset = out / "tb/uvm/top/m_reset.svh"
     reset.write_text("// authored reset sequence\n")
-    ports = [dict(p) for p in _TOP_IO]
+    ports = [dict(p) for p in TOP_IO]
     ports.append({**ports[1], "name": "reset_other", "reset_polarity": 1})
     scaffold.render(
-        _write_spec(tmp_path), out, _write_boundary(tmp_path / "spec", ports), TEMPLATES
+        write_spec(tmp_path), out, write_boundary(tmp_path / "spec", ports), TEMPLATES
     )
     assert (
         interface.read_text() == authored
@@ -598,7 +604,7 @@ def test_reset_declarations_update_without_replacing_authored_work(tmp_path):
 
 
 def test_a_boundary_without_reset_does_not_acquire_one(tmp_path):
-    out = _render(tmp_path, top_io=[p for p in _TOP_IO if p["role"] != "reset"])
+    out = render(tmp_path, top_io=[p for p in TOP_IO if p["role"] != "reset"])
     tb = (out / "tb/uvm/top/m_top_tb_top.sv").read_text()
     assert "rst_n" not in tb
     assert not (out / "tb/uvm/interface/m_reset_ports.svh").read_text().strip()
@@ -606,9 +612,9 @@ def test_a_boundary_without_reset_does_not_acquire_one(tmp_path):
 
 
 def test_reset_outputs_are_observed_not_scheduled_by_the_bench(tmp_path):
-    ports = [dict(p) for p in _TOP_IO]
+    ports = [dict(p) for p in TOP_IO]
     ports.append({**ports[1], "name": "reset_child_n", "direction": "output"})
-    out = _render(tmp_path, top_io=ports)
+    out = render(tmp_path, top_io=ports)
     assert (
         ".reset_child_n(reset_child_n)"
         in (out / "tb/uvm/top/m_top_tb_top.sv").read_text()
@@ -621,12 +627,12 @@ def test_reset_outputs_are_observed_not_scheduled_by_the_bench(tmp_path):
 
 
 def test_reset_width_and_bidirectional_net_are_preserved(tmp_path):
-    ports = [dict(p) for p in _TOP_IO]
+    ports = [dict(p) for p in TOP_IO]
     ports[1].update(name="clear_lanes", width=3)
     ports.append(
         {**ports[1], "name": "board_reset_n", "width": 1, "direction": "inout"}
     )
-    out = _render(tmp_path, top_io=ports)
+    out = render(tmp_path, top_io=ports)
     tb = (out / "tb/uvm/top/m_top_tb_top.sv").read_text()
     declarations = (out / "tb/uvm/interface/m_reset_ports.svh").read_text()
     assert "logic [2:0] clear_lanes;" in tb
@@ -636,7 +642,7 @@ def test_reset_width_and_bidirectional_net_are_preserved(tmp_path):
 
 
 def test_passive_driver_is_reusable_without_an_unused_authoring_task(tmp_path):
-    out = _render(tmp_path)
+    out = render(tmp_path)
     active = (out / "tb/uvm/agent/m_drv_driver.sv").read_text()
     passive = (out / "tb/uvm/agent/m_obs_driver.sv").read_text()
     assert "TODO(driver)" in active
@@ -646,13 +652,13 @@ def test_passive_driver_is_reusable_without_an_unused_authoring_task(tmp_path):
 
 
 def test_internal_domain_requires_authored_observation_not_an_oscillator(tmp_path):
-    from sim._gate import materialization_errors
+    from sim.checks import materialization_errors
 
-    ports = [dict(p) for p in _TOP_IO]
+    ports = [dict(p) for p in TOP_IO]
     for port in ports:
         if port["interface_group"] == "obs_g":
             port["clock_domain"] = "divided"
-    clocks = _CLOCKS + [
+    clocks = CLOCKS + [
         {
             "name": "divided",
             "period_ns": 20,
@@ -660,7 +666,7 @@ def test_internal_domain_requires_authored_observation_not_an_oscillator(tmp_pat
             "generated": True,
         }
     ]
-    out = _render(tmp_path, top_io=ports, clocks=clocks)
+    out = render(tmp_path, top_io=ports, clocks=clocks)
     connections = out / "tb/uvm/top/m_clocks.svh"
     top = out / "tb/uvm/top/m_top_tb_top.sv"
     assert "divided" not in top.read_text()
@@ -675,7 +681,7 @@ def test_internal_domain_requires_authored_observation_not_an_oscillator(tmp_pat
     connections.write_text(authored)
     clocks[0] = {**clocks[0], "period_ns": 12}
     scaffold.render(
-        tmp_path, out, _write_boundary(tmp_path / "spec", ports, clocks), TEMPLATES
+        tmp_path, out, write_boundary(tmp_path / "spec", ports, clocks), TEMPLATES
     )
     assert connections.read_text() == authored
     assert "forever #6 clk = ~clk" in top.read_text()
@@ -683,7 +689,7 @@ def test_internal_domain_requires_authored_observation_not_an_oscillator(tmp_pat
 
 
 def test_clock_output_is_connected_but_not_driven(tmp_path):
-    ports = [dict(p) for p in _TOP_IO]
+    ports = [dict(p) for p in TOP_IO]
     ports.append(
         {
             "name": "out_clk",
@@ -697,7 +703,7 @@ def test_clock_output_is_connected_but_not_driven(tmp_path):
     for p in ports:
         if p["interface_group"] == "obs_g":
             p["clock_domain"] = "out_clk"
-    clocks = _CLOCKS + [
+    clocks = CLOCKS + [
         {
             "name": "out_clk",
             "period_ns": 20,
@@ -705,7 +711,7 @@ def test_clock_output_is_connected_but_not_driven(tmp_path):
             "generated": True,
         }
     ]
-    out = _render(tmp_path, top_io=ports, clocks=clocks)
+    out = render(tmp_path, top_io=ports, clocks=clocks)
     top = (out / "tb/uvm/top/m_top_tb_top.sv").read_text()
     assert ".out_clk(out_clk)" in top
     assert "out_clk = " not in top
@@ -715,7 +721,7 @@ def test_clock_output_is_connected_but_not_driven(tmp_path):
 
 
 def test_generated_primary_needs_no_top_level_clock_port(tmp_path):
-    ports = [{**p, "clock_domain": "internal"} for p in _TOP_IO if p["role"] != "clock"]
+    ports = [{**p, "clock_domain": "internal"} for p in TOP_IO if p["role"] != "clock"]
     clocks = [
         {
             "name": "internal",
@@ -724,7 +730,7 @@ def test_generated_primary_needs_no_top_level_clock_port(tmp_path):
             "generated": True,
         }
     ]
-    out = _render(tmp_path, top_io=ports, clocks=clocks)
+    out = render(tmp_path, top_io=ports, clocks=clocks)
     top = (out / "tb/uvm/top/m_top_tb_top.sv").read_text()
     assert "forever #" not in top
     assert ".internal(" not in top

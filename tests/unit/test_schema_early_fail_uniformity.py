@@ -39,13 +39,13 @@ def test_schema_validates_minimum_fail_envelope(stage):
 # (`ppa_actual`) that had to travel beside `requirements[]`; nothing ever read it, and presence
 # is not connection — the two were never joined. It is now on the verdict itself, where the
 # reader is, and reap carries it into the signoff basis.
-_VERDICT_WITHOUT_ITS_MEASUREMENT = {
+VERDICT_WITHOUT_ITS_MEASUREMENT = {
     "synthesis": [{"id": "R-1", "met": False, "actual": 1234.0}],
     "power-analysis": [{"id": "R-1", "met": False, "actual": 12.0}],
 }
 
 
-def _fail_result(stage, stage_specific):
+def fail_result(stage, stage_specific):
     return {
         "stage": stage,
         "module": "M",
@@ -56,15 +56,15 @@ def _fail_result(stage, stage_specific):
     }
 
 
-@pytest.mark.parametrize("stage", sorted(_VERDICT_WITHOUT_ITS_MEASUREMENT))
+@pytest.mark.parametrize("stage", sorted(VERDICT_WITHOUT_ITS_MEASUREMENT))
 def test_a_verdict_without_its_measurement_is_rejected(stage):
     err = store.validate_result(
         stage,
-        _fail_result(
+        fail_result(
             stage,
             {
                 "fail_reason": "requirement(s) not met: R-1",
-                "requirements": _VERDICT_WITHOUT_ITS_MEASUREMENT[stage],
+                "requirements": VERDICT_WITHOUT_ITS_MEASUREMENT[stage],
             },
         ),
     )
@@ -75,11 +75,11 @@ def test_a_verdict_without_its_measurement_is_rejected(stage):
     # The same verdict, naming what it measured, validates.
     named = [
         {**v, "measured": "area.rpt Total cell area"}
-        for v in _VERDICT_WITHOUT_ITS_MEASUREMENT[stage]
+        for v in VERDICT_WITHOUT_ITS_MEASUREMENT[stage]
     ]
     err = store.validate_result(
         stage,
-        _fail_result(
+        fail_result(
             stage, {"fail_reason": "requirement(s) not met: R-1", "requirements": named}
         ),
     )
@@ -88,6 +88,6 @@ def test_a_verdict_without_its_measurement_is_rejected(stage):
     # And an early fail, which carries neither because no gate ran, stays valid.
     err = store.validate_result(
         stage,
-        _fail_result(stage, {"fail_reason": "no license"}),
+        fail_result(stage, {"fail_reason": "no license"}),
     )
     assert err is None, f"stage {stage}: early fail rejected: {err}"

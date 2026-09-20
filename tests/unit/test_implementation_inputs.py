@@ -26,12 +26,12 @@ def test_referenced_implementation_files_change_recorded_inputs(
     helper = out / support
     helper.parent.mkdir(parents=True, exist_ok=True)
     helper.write_text("original")
-    before = kernel._resolve_inputs(str(tmp_path), consumer)
+    before = kernel.resolve_inputs(str(tmp_path), consumer)
     helper.write_text("changed")
-    assert kernel._resolve_inputs(str(tmp_path), consumer) != before
+    assert kernel.resolve_inputs(str(tmp_path), consumer) != before
 
-    changed = kernel._resolve_inputs(str(tmp_path), consumer)
+    changed = kernel.resolve_inputs(str(tmp_path), consumer)
     (syn / "evidence").mkdir()
     (syn / "evidence/reassessment.md").write_text("New budget, same implementation")
     (syn / "result.json").write_text('{"status":"fail"}')
-    assert kernel._resolve_inputs(str(tmp_path), consumer) == changed
+    assert kernel.resolve_inputs(str(tmp_path), consumer) == changed

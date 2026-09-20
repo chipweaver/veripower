@@ -7,19 +7,8 @@ import json
 
 from spec.sidecar import read_sidecar
 
-NAME = "requirements.json"
-
 # Decision-facing groups; numerical targets are included separately.
 GATE_JUDGES = ("unassignable", "outside", "human")
-
-
-def load(workdir) -> list[dict]:
-    return read_sidecar(workdir, NAME)
-
-
-def hintable_ids(rows: list[dict]) -> set[str]:
-    """Rows a check-hint must name: judged by simulation, with no coverage target."""
-    return {r["id"] for r in rows if r["judge"] == "simulation" and "target" not in r}
 
 
 def gate_view(rows: list[dict]) -> dict:
@@ -33,10 +22,8 @@ def gate_view(rows: list[dict]) -> dict:
 
 def run(workdir: str) -> int:
     """Validate the ledger and show unresolved decisions, external scope and targets."""
-    rows = load(workdir)  # raises SidecarError naming every violation
+    rows = read_sidecar(
+        workdir, "requirements.json"
+    )  # raises SidecarError naming every violation
     print(json.dumps(gate_view(rows), ensure_ascii=False, indent=2))
     return 0
-
-
-def unassignable(rows: list[dict]) -> list[str]:
-    return [r["id"] for r in rows if r["judge"] == "unassignable"]

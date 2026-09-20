@@ -25,14 +25,14 @@ import store  # noqa: E402
 TS = "2026-07-10T00:00:00.000000Z"
 
 
-def _now_iso() -> str:
-    """Second-resolution UTC stamp, mirroring the skill finalizers' _now_iso() — so a
+def utc_timestamp() -> str:
+    """Second-resolution UTC stamp, mirroring the skill finalizers' utc_timestamp() — so a
     result.json written mid-test passes the reap temporal-integrity check the same way
     a real freshly-finalized envelope does (incl. the same-second floor semantics)."""
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def _run(tmp_path, *args):
+def run(tmp_path, *args):
     return subprocess.run(
         [sys.executable, SCRIPT, *args],
         capture_output=True,
@@ -41,16 +41,16 @@ def _run(tmp_path, *args):
     )
 
 
-def _run_json(tmp_path, *args):
-    r = _run(tmp_path, *args)
+def run_json(tmp_path, *args):
+    r = run(tmp_path, *args)
     assert r.returncode == 0, r.stderr
     return json.loads(r.stdout)
 
 
-def _write_file(module, rel, content):
+def write_file(module, rel, content):
     """The kernel leaves the intent tree unwritable, and revising it is `chmod u+w` then edit,
     so take the write bit back on every existing ancestor first."""
-    root = store.module_root(module)
+    root = Path(module)
     p = root / rel
     intent = root / "intent"
     # The kernel leaves the intent tree unwritable; revising it is `chmod -R u+w intent`
@@ -67,7 +67,7 @@ def _write_file(module, rel, content):
 # Minimal pass-valid stage_specific per stage — exactly the per-stage schema's
 # status=pass conditional requirements (skills/<stage>/references/result.schema.json),
 # so the reap-time schema validation genuinely passes, not vacuously.
-_STAGE_SPECIFIC = {
+STAGE_SPECIFIC = {
     "specification": {"top_module": "top"},
     "simulation-plan": {},
     "rtl-design": {},
@@ -103,11 +103,11 @@ _STAGE_SPECIFIC = {
 }
 
 
-def _dispatch_write_reap(tmp_path, module, rule, files):
+def dispatch_write_reap(tmp_path, module, rule, files):
     """dispatch `rule`, write `files` (workdir-relative path -> content) + a passing
     schema-valid result.json declaring them as artifacts, then reap. Returns the
     reap JSON."""
-    d = _run_json(
+    d = run_json(
         tmp_path,
         "dispatch",
         "--module",
@@ -118,17 +118,17 @@ def _dispatch_write_reap(tmp_path, module, rule, files):
     assert d["ok"] is True, d
     workdir = d["workdir"]
     for rel, content in files.items():
-        _write_file(module, f"{workdir}/{rel}", content)
+        write_file(module, f"{workdir}/{rel}", content)
     result = {
         "stage": rule,
         "module": module,
-        "produced_at": _now_iso(),
+        "produced_at": utc_timestamp(),
         "status": "pass",
         "artifacts": [{"path": p} for p in files],
-        "stage_specific": _STAGE_SPECIFIC[rule],
+        "stage_specific": STAGE_SPECIFIC[rule],
     }
-    _write_file(module, f"{workdir}/result.json", json.dumps(result))
-    return _run_json(
+    write_file(module, f"{workdir}/result.json", json.dumps(result))
+    return run_json(
         tmp_path, "reap", "--module", module, "--rule", rule, "--run", str(d["run"])
     )
 
@@ -136,7 +136,7 @@ def _dispatch_write_reap(tmp_path, module, rule, files):
 # Minimal declared-output set per stage: exactly the files downstream rules' own
 # `inputs` selectors reference (per rules.RULES), so the chain stays available/valid
 # all the way to a clear signoff gate.
-_STAGE_FILES = {
+STAGE_FILES = {
     "specification": {
         "design.md": "design v1",
         "children/c.md": "child v1",
@@ -188,7 +188,7 @@ _STAGE_FILES = {
 
 
 # Include delivered reviews and the reference model in the full-chain fixture.
-_REVIEW_CONTENT = {
+REVIEW_CONTENT = {
     "specification": {"spec-review/core.md": "spec review v1"},
     "simulation-plan": {"plan-review/review.md": "plan review v1"},
     "rtl-design": {"semantic-review/leaf.md": "semantic review v1"},
@@ -196,19 +196,19 @@ _REVIEW_CONTENT = {
 }
 
 
-def _build_full_chain(tmp_path, module):
+def build_full_chain(tmp_path, module):
     """Dispatch, write and reap all stages without recording acceptance."""
-    _write_file(module, "intent/brainstorm.md", "b1")
+    write_file(module, "intent/brainstorm.md", "b1")
     for rule in rules.FORWARD_PRIORITY:
-        files = {**_STAGE_FILES[rule], **_REVIEW_CONTENT.get(rule, {})}
-        outcome = _dispatch_write_reap(tmp_path, module, rule, files)
+        files = {**STAGE_FILES[rule], **REVIEW_CONTENT.get(rule, {})}
+        outcome = dispatch_write_reap(tmp_path, module, rule, files)
         assert outcome["ok"] is True and outcome["verdict"] == "pass", outcome
 
 
 def test_cold_start_decide_dispatches_specification(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
-    _write_file("m", "intent/brainstorm.md", "b1")
-    a = _run_json(tmp_path, "decide", "--module", "m")
+    write_file("m", "intent/brainstorm.md", "b1")
+    a = run_json(tmp_path, "decide", "--module", "m")
     assert a["action"] == "DISPATCH"
     assert a["rule"] == "specification"
     assert a["execution"] == "main-thread"
@@ -216,19 +216,19 @@ def test_cold_start_decide_dispatches_specification(tmp_path, monkeypatch):
 
 def test_dispatch_then_decide_yields(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
-    _write_file("m", "intent/brainstorm.md", "b1")
-    d = _run_json(tmp_path, "dispatch", "--module", "m", "--rule", "specification")
+    write_file("m", "intent/brainstorm.md", "b1")
+    d = run_json(tmp_path, "dispatch", "--module", "m", "--rule", "specification")
     assert d["ok"] is True
-    a = _run_json(tmp_path, "decide", "--module", "m")
+    a = run_json(tmp_path, "decide", "--module", "m")
     assert a["action"] == "YIELD"
     assert a["in_flight"] == [{"rule": "specification", "run": 1}]
 
 
 def test_full_mini_loop_dispatch_result_reap_decide(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
-    _write_file("m", "intent/brainstorm.md", "b1")
-    outcome = _dispatch_write_reap(
-        tmp_path, "m", "specification", _STAGE_FILES["specification"]
+    write_file("m", "intent/brainstorm.md", "b1")
+    outcome = dispatch_write_reap(
+        tmp_path, "m", "specification", STAGE_FILES["specification"]
     )
     assert outcome == {
         "ok": True,
@@ -239,7 +239,7 @@ def test_full_mini_loop_dispatch_result_reap_decide(tmp_path, monkeypatch):
     # specification's proof is now valid on disk (promoted); decide advances forward
     # to the next required proof — simulation-plan (index 1 < rtl-design's index 2
     # in FORWARD_PRIORITY; both become available off the same specification outputs).
-    a = _run_json(tmp_path, "decide", "--module", "m")
+    a = run_json(tmp_path, "decide", "--module", "m")
     assert a["action"] == "DISPATCH"
     assert a["rule"] == "simulation-plan"
 
@@ -251,16 +251,16 @@ def test_reap_schema_violation_blocks_and_skips_promote(tmp_path, monkeypatch):
     # a blocked outcome with the validation reason and promote is NOT called: a
     # malformed-but-status-bearing result.json must never mint a valid proof.
     monkeypatch.chdir(tmp_path)
-    _write_file("m", "intent/brainstorm.md", "b1")
-    d = _run_json(tmp_path, "dispatch", "--module", "m", "--rule", "specification")
+    write_file("m", "intent/brainstorm.md", "b1")
+    d = run_json(tmp_path, "dispatch", "--module", "m", "--rule", "specification")
     workdir = d["workdir"]
-    _write_file("m", f"{workdir}/design.md", "d1")
-    _write_file(
+    write_file("m", f"{workdir}/design.md", "d1")
+    write_file(
         "m",
         f"{workdir}/result.json",
         json.dumps({"status": "pass", "artifacts": [{"path": "design.md"}]}),
     )
-    r = _run_json(
+    r = run_json(
         tmp_path, "reap", "--module", "m", "--rule", "specification", "--run", "1"
     )
     assert r["ok"] and r["verdict"] == "blocked"
@@ -270,7 +270,7 @@ def test_reap_schema_violation_blocks_and_skips_promote(tmp_path, monkeypatch):
     assert outcome["reason"] == r["reason"]
     assert outcome["outputs"] == {} and outcome["proofs"] == []
     # promote not called: nothing appeared at the canonical stage dir
-    canonical = store.module_root("m") / "Design" / "specification"
+    canonical = Path("m") / "Design" / "specification"
     assert not (canonical / "result.json").exists()
     assert not (canonical / "design.md").exists()
 
@@ -278,12 +278,12 @@ def test_reap_schema_violation_blocks_and_skips_promote(tmp_path, monkeypatch):
 def test_signoff_close_end_to_end(tmp_path, monkeypatch):
     # Readiness is distinct from the explicit acceptance recorded by signoff.
     monkeypatch.chdir(tmp_path)
-    _build_full_chain(tmp_path, "close")
-    assert _run_json(tmp_path, "status", "--module", "close")["signed_off"] is False
-    a = _run_json(tmp_path, "decide", "--module", "close", "--closing")
+    build_full_chain(tmp_path, "close")
+    assert run_json(tmp_path, "status", "--module", "close")["signed_off"] is False
+    a = run_json(tmp_path, "decide", "--module", "close", "--closing")
     assert a["action"] == "DONE"  # gate clear — but nothing is signed off yet
-    assert _run_json(tmp_path, "status", "--module", "close")["signed_off"] is False
-    s = _run_json(
+    assert run_json(tmp_path, "status", "--module", "close")["signed_off"] is False
+    s = run_json(
         tmp_path,
         "signoff",
         "--module",
@@ -294,7 +294,7 @@ def test_signoff_close_end_to_end(tmp_path, monkeypatch):
         "tapeout rc1",
     )
     assert s["ok"] is True
-    assert _run_json(tmp_path, "status", "--module", "close")["signed_off"] is True
+    assert run_json(tmp_path, "status", "--module", "close")["signed_off"] is True
     # The response identifies the conclusions and evidence accepted.
     basis = {b["proof"]: b for b in s["basis"]}
     assert set(basis) == set(a["basis"][i]["proof"] for i in range(len(a["basis"])))
@@ -305,55 +305,55 @@ def test_signoff_close_end_to_end(tmp_path, monkeypatch):
     # without the measurement behind it names a dimension rather than a number.
     assert (
         basis["synthesis"]["requirements"]
-        == _STAGE_SPECIFIC["synthesis"]["requirements"]
+        == STAGE_SPECIFIC["synthesis"]["requirements"]
     )
 
 
 def test_signoff_stays_bound_to_the_accepted_evidence(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     module = "accepted-evidence"
-    _build_full_chain(tmp_path, module)
+    build_full_chain(tmp_path, module)
 
-    def status():
+    def _status():
         return kernel.cmd_status(module)["signed_off"]
 
-    def sign():
+    def _sign():
         assert kernel.cmd_signoff(
             module, "delegated reviewer", "accept current evidence"
         )["ok"]
 
-    sign()
-    assert status()
+    _sign()
+    assert _status()
     # A normal repeat reap preserves unchanged evidence.
     assert kernel.cmd_reap(module, "specification", 1)["ok"]
-    assert status()
-    extra = store.module_root(module) / "Verification/power-analysis/extra.txt"
+    assert _status()
+    extra = Path(module) / "Verification/power-analysis/extra.txt"
     extra.write_text("unrecorded")
-    assert not status()
+    assert not _status()
     extra.unlink()
-    assert status()
+    assert _status()
 
     events = store.read_events(module)
-    wd = store.module_root(module) / facts.run_workdir(events, "power-analysis", 1)
+    wd = Path(module) / facts.run_workdir(events, "power-analysis", 1)
     (wd / "reports_ptpx/run1/power_hier.rpt").write_text("changed measurement")
     assert kernel.cmd_reap(module, "power-analysis", 1)["ok"]
     assert facts.signoff_gate(module, store.read_events(module)) is None
-    assert not status()  # Same run, different evidence requires new acceptance.
-    sign()
-    assert status()
+    assert not _status()  # Same run, different evidence requires new acceptance.
+    _sign()
+    assert _status()
 
-    files = dict(_STAGE_FILES["power-analysis"])
+    files = dict(STAGE_FILES["power-analysis"])
     files["reports_ptpx/run1/power_hier.rpt"] = "new run measurement"
-    assert _dispatch_write_reap(tmp_path, module, "power-analysis", files)["ok"]
+    assert dispatch_write_reap(tmp_path, module, "power-analysis", files)["ok"]
     assert facts.signoff_gate(module, store.read_events(module)) is None
-    assert not status()
-    sign()
-    assert status()
+    assert not _status()
+    _sign()
+    assert _status()
 
 
 def test_unknown_rule_argparse_exits_cleanly(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
-    r = _run(tmp_path, "dispatch", "--module", "m", "--rule", "bogus-rule")
+    r = run(tmp_path, "dispatch", "--module", "m", "--rule", "bogus-rule")
     assert r.returncode == 2
     assert "invalid choice" in r.stderr
     assert "Traceback" not in r.stderr
@@ -362,12 +362,12 @@ def test_unknown_rule_argparse_exits_cleanly(tmp_path, monkeypatch):
 # ── simulation-triage reap path (proof=None -> diagnosis event, not a proof) ───────────
 
 
-def _dispatch_triage(tmp_path, module, sim_run):
+def dispatch_triage(tmp_path, module, sim_run):
     # Triage only ever fires as a disposition on a simulation failure, so its module
     # directory always exists by then. Seed it: the CLI refuses a module with no directory,
     # since module paths resolve against cwd and an absent one is a wrong-cwd mistake.
-    _write_file(module, "intent/brainstorm.md", "b1")
-    d = _run_json(
+    write_file(module, "intent/brainstorm.md", "b1")
+    d = run_json(
         tmp_path,
         "dispatch",
         "--module",
@@ -381,23 +381,23 @@ def _dispatch_triage(tmp_path, module, sim_run):
     return d
 
 
-def _write_triage_result(module, workdir, *, status, stage_specific):
+def write_triage_result(module, workdir, *, status, stage_specific):
     result = {
         "stage": "simulation-triage",
         "module": module,
-        "produced_at": _now_iso(),
+        "produced_at": utc_timestamp(),
         "status": status,
         "artifacts": [],
         "stage_specific": stage_specific,
     }
-    _write_file(module, f"{workdir}/result.json", json.dumps(result))
+    write_file(module, f"{workdir}/result.json", json.dumps(result))
 
 
 def test_triage_complete_reap_emits_outcome_and_diagnosis(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     module = "triage1"
-    d = _dispatch_triage(tmp_path, module, sim_run=7)
-    _write_triage_result(
+    d = dispatch_triage(tmp_path, module, sim_run=7)
+    write_triage_result(
         module,
         d["workdir"],
         status="pass",
@@ -412,7 +412,7 @@ def test_triage_complete_reap_emits_outcome_and_diagnosis(tmp_path, monkeypatch)
             ],
         },
     )
-    r = _run_json(
+    r = run_json(
         tmp_path,
         "reap",
         "--module",
@@ -440,13 +440,11 @@ def test_triage_complete_reap_emits_outcome_and_diagnosis(tmp_path, monkeypatch)
     assert diag["subject"] == {"proof": "simulation", "outcome_run": 7}
     # Nothing beyond the naming is copied onto the record: where the fix goes is in the
     # analysis (findings[].anchor), and what it rests on is addressable from the
-    # `subject` it already carries — the dispatch derives both (_diagnosis_sources).
+    # `subject` it already carries — the dispatch derives both (diagnosis_sources).
     assert "fix_locus" not in diag and "evidence" not in diag
 
     # non-blocked -> promoted to canonical
-    canonical = (
-        store.module_root(module) / "Verification" / "simulation-triage" / "result.json"
-    )
+    canonical = Path(module) / "Verification" / "simulation-triage" / "result.json"
     assert canonical.exists()
 
 
@@ -460,8 +458,8 @@ def test_triage_splits_one_analysis_into_one_diagnosis_per_root_cause(
     and all binding to the run that was analysed."""
     monkeypatch.chdir(tmp_path)
     module = "triage-split"
-    d = _dispatch_triage(tmp_path, module, sim_run=4)
-    _write_triage_result(
+    d = dispatch_triage(tmp_path, module, sim_run=4)
+    write_triage_result(
         module,
         d["workdir"],
         status="pass",
@@ -488,7 +486,7 @@ def test_triage_splits_one_analysis_into_one_diagnosis_per_root_cause(
             ],
         },
     )
-    r = _run_json(
+    r = run_json(
         tmp_path,
         "reap",
         "--module",
@@ -512,8 +510,8 @@ def test_triage_complete_reap_never_yields_fail_verdict(tmp_path, monkeypatch):
     # A completed diagnosis records analysis completion, not a verification failure.
     monkeypatch.chdir(tmp_path)
     module = "triagefail"
-    d = _dispatch_triage(tmp_path, module, sim_run=4)
-    _write_triage_result(
+    d = dispatch_triage(tmp_path, module, sim_run=4)
+    write_triage_result(
         module,
         d["workdir"],
         status="pass",
@@ -523,7 +521,7 @@ def test_triage_complete_reap_never_yields_fail_verdict(tmp_path, monkeypatch):
             ],
         },
     )
-    r = _run_json(
+    r = run_json(
         tmp_path,
         "reap",
         "--module",
@@ -546,7 +544,7 @@ def test_unresolved_triage_is_delivered_and_uses_existing_decision_path(
 ):
     monkeypatch.chdir(tmp_path)
     module = "unresolved"
-    _build_full_chain(tmp_path, module)
+    build_full_chain(tmp_path, module)
     d = kernel.cmd_dispatch(module, "simulation", None)
     sim_cli = ROOT / "skills/simulation/scripts/sim/__main__.py"
     proc = subprocess.run(
@@ -598,10 +596,8 @@ def test_unresolved_triage_is_delivered_and_uses_existing_decision_path(
     assert [e for e in events if e["type"] == "diagnosis"] == [diagnosis]
     assert diagnosis["type"] == "diagnosis" and diagnosis["reason"] == reason
     assert "attribution" not in diagnosis and "fix_owner" not in diagnosis
-    assert (
-        store.module_root(module) / "Verification/simulation-triage/result.json"
-    ).exists()
-    for _ in range(2):
+    assert (Path(module) / "Verification/simulation-triage/result.json").exists()
+    for unused in range(2):
         action = kernel.schedule.decide(module)
         assert action["action"] == "ESCALATE"
         assert action["candidates"] == [
@@ -632,8 +628,8 @@ def test_unresolved_triage_is_delivered_and_uses_existing_decision_path(
 def test_triage_local_root_cause_names_local_repair(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     module = "triage3"
-    d = _dispatch_triage(tmp_path, module, sim_run=9)
-    _write_triage_result(
+    d = dispatch_triage(tmp_path, module, sim_run=9)
+    write_triage_result(
         module,
         d["workdir"],
         status="pass",
@@ -643,7 +639,7 @@ def test_triage_local_root_cause_names_local_repair(tmp_path, monkeypatch):
             ],
         },
     )
-    r = _run_json(
+    r = run_json(
         tmp_path,
         "reap",
         "--module",
@@ -670,9 +666,9 @@ def test_triage_local_root_cause_names_local_repair(tmp_path, monkeypatch):
 def test_reap_never_dispatched_ok_false_no_event_appended(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     module = "reapguard1"
-    _write_file(module, "intent/brainstorm.md", "b1")
+    write_file(module, "intent/brainstorm.md", "b1")
     before = store.read_events(module)
-    r = _run_json(
+    r = run_json(
         tmp_path, "reap", "--module", module, "--rule", "specification", "--run", "1"
     )
     assert r["ok"] is False
@@ -687,8 +683,8 @@ def test_dispatch_triage_without_sim_run_rejected(tmp_path, monkeypatch):
     # sim_run, the triage reap builds a diagnosis with subject.outcome_run=None -> schema
     # violation AFTER the outcome already landed -> half-reap. Reject the dispatch up front.
     monkeypatch.chdir(tmp_path)
-    _write_file("m", "intent/brainstorm.md", "b1")
-    r = _run_json(tmp_path, "dispatch", "--module", "m", "--rule", "simulation-triage")
+    write_file("m", "intent/brainstorm.md", "b1")
+    r = run_json(tmp_path, "dispatch", "--module", "m", "--rule", "simulation-triage")
     assert r["ok"] is False
     assert "sim_run" in r["error"]
 
@@ -701,7 +697,7 @@ def test_unknown_module_directory_is_a_hard_error(tmp_path, monkeypatch):
     tree — which is exactly what a real module still waiting for its document reports."""
     monkeypatch.chdir(tmp_path)
     for verb in ("status", "decide"):
-        r = _run(tmp_path, verb, "--module", "nosuch")
+        r = run(tmp_path, verb, "--module", "nosuch")
         assert r.returncode != 0, r.stdout
         assert "no module directory" in r.stderr
         assert str(tmp_path / "nosuch") in r.stderr
@@ -714,8 +710,8 @@ def test_triage_reap_never_leaves_half_reap(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     module = "halfreap"
     # dispatch WITH sim_run (the only accepted form) -> complete reap lands both events.
-    d = _dispatch_triage(tmp_path, module, sim_run=6)
-    _write_triage_result(
+    d = dispatch_triage(tmp_path, module, sim_run=6)
+    write_triage_result(
         module,
         d["workdir"],
         status="pass",
@@ -725,7 +721,7 @@ def test_triage_reap_never_leaves_half_reap(tmp_path, monkeypatch):
             ],
         },
     )
-    r = _run_json(
+    r = run_json(
         tmp_path,
         "reap",
         "--module",
@@ -741,22 +737,22 @@ def test_triage_reap_never_leaves_half_reap(tmp_path, monkeypatch):
 
 
 def test_re_reap_old_triage_run_uses_its_own_sim_run(tmp_path, monkeypatch):
-    # F8b: _derive_triage must key sim_run off the run being reaped, NOT the latest triage
+    # F8b: derive_triage must key sim_run off the run being reaped, NOT the latest triage
     # dispatch. Re-reaping an older triage run while a newer one exists must label the
     # diagnosis subject with the OLD run's sim_run (mirrors the proof path's per-run lookup).
     monkeypatch.chdir(tmp_path)
     module = "rereap"
-    _ss = {
+    ss = {
         "findings": [{"anchor": "a.v:1", "root_cause": "rtl-design", "reason": "why"}]
     }
-    d1 = _dispatch_triage(tmp_path, module, sim_run=5)
-    _write_triage_result(
+    d1 = dispatch_triage(tmp_path, module, sim_run=5)
+    write_triage_result(
         module,
         d1["workdir"],
         status="pass",
-        stage_specific=_ss,
+        stage_specific=ss,
     )
-    _run_json(
+    run_json(
         tmp_path,
         "reap",
         "--module",
@@ -766,16 +762,16 @@ def test_re_reap_old_triage_run_uses_its_own_sim_run(tmp_path, monkeypatch):
         "--run",
         str(d1["run"]),
     )
-    d2 = _dispatch_triage(
+    d2 = dispatch_triage(
         tmp_path, module, sim_run=9
     )  # a newer triage, different sim_run
-    _write_triage_result(
+    write_triage_result(
         module,
         d2["workdir"],
         status="pass",
-        stage_specific=_ss,
+        stage_specific=ss,
     )
-    _run_json(
+    run_json(
         tmp_path,
         "reap",
         "--module",
@@ -786,7 +782,7 @@ def test_re_reap_old_triage_run_uses_its_own_sim_run(tmp_path, monkeypatch):
         str(d2["run"]),
     )
     # RE-REAP the OLD run 1 (its result.json is still on disk)
-    _run_json(
+    run_json(
         tmp_path,
         "reap",
         "--module",
@@ -800,7 +796,7 @@ def test_re_reap_old_triage_run_uses_its_own_sim_run(tmp_path, monkeypatch):
     # Unchanged collection does not add a diagnosis.
     assert [d["subject"]["outcome_run"] for d in diags] == [5, 9]
     # Changed evidence in the old run still refers to that run's original subject.
-    _write_triage_result(
+    write_triage_result(
         module,
         d1["workdir"],
         status="pass",
@@ -825,8 +821,8 @@ def test_dispatch_consumer_in_virgin_module_rejected(tmp_path, monkeypatch):
     # rejected; else the run records an empty input table -> a vacuously-valid proof forever.
     monkeypatch.chdir(tmp_path)
     module = "virgin"
-    _write_file(module, "intent/brainstorm.md", "b1")
-    r = _run_json(tmp_path, "dispatch", "--module", module, "--rule", "synthesis")
+    write_file(module, "intent/brainstorm.md", "b1")
+    r = run_json(tmp_path, "dispatch", "--module", module, "--rule", "synthesis")
     assert r["ok"] is False
     assert "not available" in r["error"]
 
@@ -840,9 +836,9 @@ def test_outputs_name_the_artifacts_that_are_the_evidence(tmp_path, monkeypatch)
     # truncates the audit trail. `outputs` carries them with their fingerprints, which is
     # why the proof no longer repeats the bare paths beside it.
     monkeypatch.chdir(tmp_path)
-    _write_file("m", "intent/brainstorm.md", "b1")
-    _dispatch_write_reap(tmp_path, "m", "specification", _STAGE_FILES["specification"])
-    _, outcome = facts.proof_outcome(store.read_events("m"), "specification")
+    write_file("m", "intent/brainstorm.md", "b1")
+    dispatch_write_reap(tmp_path, "m", "specification", STAGE_FILES["specification"])
+    unused, outcome = facts.proof_outcome(store.read_events("m"), "specification")
     outs = outcome["outputs"]
     assert "Design/specification/result.json" in outs
     assert any(o.endswith("design.md") for o in outs)  # an artifact beyond result.json
@@ -855,14 +851,14 @@ def test_unresolved_triage_without_reason_is_incomplete(tmp_path, monkeypatch):
     # An unresolved diagnosis needs a reason; an empty object is incomplete.
     monkeypatch.chdir(tmp_path)
     module = "d4a"
-    d = _dispatch_triage(tmp_path, module, sim_run=1)
-    _write_triage_result(
+    d = dispatch_triage(tmp_path, module, sim_run=1)
+    write_triage_result(
         module,
         d["workdir"],
         status="pass",
         stage_specific={"findings": []},
     )  # no findings
-    r = _run_json(
+    r = run_json(
         tmp_path,
         "reap",
         "--module",
@@ -888,21 +884,21 @@ def test_unresolved_triage_without_reason_is_incomplete(tmp_path, monkeypatch):
 def test_reap_stale_produced_at_blocked_no_promote(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     module = "stale1"
-    _write_file(module, "intent/brainstorm.md", "b1")
-    d = _run_json(tmp_path, "dispatch", "--module", module, "--rule", "specification")
+    write_file(module, "intent/brainstorm.md", "b1")
+    d = run_json(tmp_path, "dispatch", "--module", module, "--rule", "specification")
     workdir = d["workdir"]
-    for rel, content in _STAGE_FILES["specification"].items():
-        _write_file(module, f"{workdir}/{rel}", content)
+    for rel, content in STAGE_FILES["specification"].items():
+        write_file(module, f"{workdir}/{rel}", content)
     result = {
         "stage": "specification",
         "module": module,
         "produced_at": "2026-07-10T00:00:00Z",  # predates the just-made dispatch
         "status": "pass",
-        "artifacts": [{"path": p} for p in _STAGE_FILES["specification"]],
-        "stage_specific": _STAGE_SPECIFIC["specification"],
+        "artifacts": [{"path": p} for p in STAGE_FILES["specification"]],
+        "stage_specific": STAGE_SPECIFIC["specification"],
     }
-    _write_file(module, f"{workdir}/result.json", json.dumps(result))
-    r = _run_json(
+    write_file(module, f"{workdir}/result.json", json.dumps(result))
+    r = run_json(
         tmp_path, "reap", "--module", module, "--rule", "specification", "--run", "1"
     )
     assert r == {
@@ -915,7 +911,7 @@ def test_reap_stale_produced_at_blocked_no_promote(tmp_path, monkeypatch):
     outcome = store.read_events(module)[-1]
     assert outcome["reason"] == "stale_result"
     assert outcome["outputs"] == {} and outcome["proofs"] == []
-    canonical = store.module_root(module) / "Design" / "specification"
+    canonical = Path(module) / "Design" / "specification"
     assert not (canonical / "result.json").exists()  # blocked never promotes
 
 
@@ -925,22 +921,22 @@ def test_reap_same_second_produced_at_not_misjudged(tmp_path, monkeypatch):
     # The check floors the dispatch ts, so the boundary case must reap pass, not stale.
     monkeypatch.chdir(tmp_path)
     module = "boundary1"
-    _write_file(module, "intent/brainstorm.md", "b1")
-    d = _run_json(tmp_path, "dispatch", "--module", module, "--rule", "specification")
+    write_file(module, "intent/brainstorm.md", "b1")
+    d = run_json(tmp_path, "dispatch", "--module", module, "--rule", "specification")
     dispatch_ts = store.read_events(module)[-1]["ts"]  # %Y-%m-%dT%H:%M:%S.%fZ
     workdir = d["workdir"]
-    for rel, content in _STAGE_FILES["specification"].items():
-        _write_file(module, f"{workdir}/{rel}", content)
+    for rel, content in STAGE_FILES["specification"].items():
+        write_file(module, f"{workdir}/{rel}", content)
     result = {
         "stage": "specification",
         "module": module,
         "produced_at": dispatch_ts[:19] + "Z",  # dispatch second, microseconds dropped
         "status": "pass",
-        "artifacts": [{"path": p} for p in _STAGE_FILES["specification"]],
-        "stage_specific": _STAGE_SPECIFIC["specification"],
+        "artifacts": [{"path": p} for p in STAGE_FILES["specification"]],
+        "stage_specific": STAGE_SPECIFIC["specification"],
     }
-    _write_file(module, f"{workdir}/result.json", json.dumps(result))
-    r = _run_json(
+    write_file(module, f"{workdir}/result.json", json.dumps(result))
+    r = run_json(
         tmp_path, "reap", "--module", module, "--rule", "specification", "--run", "1"
     )
     assert r["verdict"] == "pass", r
@@ -949,21 +945,21 @@ def test_reap_same_second_produced_at_not_misjudged(tmp_path, monkeypatch):
 def test_reap_unparseable_produced_at_blocked(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     module = "stale2"
-    _write_file(module, "intent/brainstorm.md", "b1")
-    d = _run_json(tmp_path, "dispatch", "--module", module, "--rule", "specification")
+    write_file(module, "intent/brainstorm.md", "b1")
+    d = run_json(tmp_path, "dispatch", "--module", module, "--rule", "specification")
     workdir = d["workdir"]
-    for rel, content in _STAGE_FILES["specification"].items():
-        _write_file(module, f"{workdir}/{rel}", content)
+    for rel, content in STAGE_FILES["specification"].items():
+        write_file(module, f"{workdir}/{rel}", content)
     result = {
         "stage": "specification",
         "module": module,
         "produced_at": "yesterday-ish",  # schema-legal string, not a timestamp
         "status": "pass",
-        "artifacts": [{"path": p} for p in _STAGE_FILES["specification"]],
-        "stage_specific": _STAGE_SPECIFIC["specification"],
+        "artifacts": [{"path": p} for p in STAGE_FILES["specification"]],
+        "stage_specific": STAGE_SPECIFIC["specification"],
     }
-    _write_file(module, f"{workdir}/result.json", json.dumps(result))
-    r = _run_json(
+    write_file(module, f"{workdir}/result.json", json.dumps(result))
+    r = run_json(
         tmp_path, "reap", "--module", module, "--rule", "specification", "--run", "1"
     )
     assert r["verdict"] == "blocked"
@@ -972,16 +968,18 @@ def test_reap_unparseable_produced_at_blocked(tmp_path, monkeypatch):
 
 def test_stale_result_reason_boundaries():
     # Direct boundary semantics of the helper: same-second passes (floored dispatch),
-    # earlier second is stale, naive timestamps are taken as UTC, garbage is unparseable.
-    f = kernel._stale_result_reason
+    # earlier second is stale; missing timezone and malformed values are unparseable.
+    f = kernel.stale_result_reason
     assert f("2026-07-10T00:00:00Z", "2026-07-10T00:00:00.900000Z") is None
     assert f("2026-07-10T00:00:00Z", "2026-07-10T00:00:01.000000Z") == "stale_result"
     assert f("2026-07-10T00:00:01Z", "2026-07-10T00:00:00.900000Z") is None
-    assert f("2026-07-10T00:00:00", "2026-07-10T00:00:00.900000Z") is None  # naive=UTC
+    assert (
+        f("2026-07-10T00:00:00", "2026-07-10T00:00:00.900000Z")
+        == "produced_at_unparseable"
+    )
     assert (
         f("yesterday-ish", "2026-07-10T00:00:00.000000Z") == "produced_at_unparseable"
     )
-    assert f(None, "2026-07-10T00:00:00.000000Z") == "produced_at_unparseable"
 
 
 def test_dispatch_writes_dispatch_json(tmp_path, monkeypatch):
@@ -990,7 +988,7 @@ def test_dispatch_writes_dispatch_json(tmp_path, monkeypatch):
     (tmp_path / "m").mkdir(parents=True)
     (tmp_path / "m" / "intent").mkdir(parents=True, exist_ok=True)
     (tmp_path / "m" / "intent" / "brainstorm.md").write_text("bs")
-    r = _run_json(
+    r = run_json(
         tmp_path,
         "dispatch",
         "--module",
@@ -1011,7 +1009,7 @@ def test_dispatch_carries_author_previous_round(tmp_path, monkeypatch):
     (canon / "design.md").write_text("prev")
     (tmp_path / "m" / "intent").mkdir(parents=True, exist_ok=True)
     (tmp_path / "m" / "intent" / "brainstorm.md").write_text("bs")
-    r = _run_json(
+    r = run_json(
         tmp_path,
         "dispatch",
         "--module",
@@ -1029,12 +1027,12 @@ def test_dispatch_injects_no_upstream_byte_copy(tmp_path, monkeypatch):
     # invalidates the proof — is covered by test_facts_freshness input-change tests.)
     monkeypatch.chdir(tmp_path)
     # seed enough upstream so synthesis is dispatchable: specification then rtl-design,
-    # each taken through a real dispatch+result+reap (mirrors _dispatch_write_reap /
-    # _build_full_chain) so their outcomes are recorded and rule_available sees them.
-    _write_file("m", "intent/brainstorm.md", "bs")
-    _dispatch_write_reap(tmp_path, "m", "specification", _STAGE_FILES["specification"])
-    _dispatch_write_reap(tmp_path, "m", "rtl-design", _STAGE_FILES["rtl-design"])
-    r = _run_json(
+    # each taken through a real dispatch+result+reap (mirrors dispatch_write_reap /
+    # build_full_chain) so their outcomes are recorded and rule_available sees them.
+    write_file("m", "intent/brainstorm.md", "bs")
+    dispatch_write_reap(tmp_path, "m", "specification", STAGE_FILES["specification"])
+    dispatch_write_reap(tmp_path, "m", "rtl-design", STAGE_FILES["rtl-design"])
+    r = run_json(
         tmp_path,
         "dispatch",
         "--module",
@@ -1059,7 +1057,7 @@ def test_dispatch_proof_inputs_excludes_self_carry(tmp_path, monkeypatch):
     )  # a self-PRODUCT (output), carried, not an input
     (tmp_path / "m" / "intent").mkdir(parents=True, exist_ok=True)
     (tmp_path / "m" / "intent" / "brainstorm.md").write_text("bs")
-    _run_json(
+    run_json(
         tmp_path,
         "dispatch",
         "--module",
@@ -1094,14 +1092,14 @@ def test_a_read_only_verb_freezes_the_intent_tree(tmp_path, monkeypatch):
     in which a reader's __pycache__ invalidated every proof."""
     monkeypatch.chdir(tmp_path)
     module = "frozen"
-    _write_file(module, "intent/reference/model.py", "X = 1\n")
-    ref = store.module_root(module) / "intent" / "reference" / "model.py"
+    write_file(module, "intent/reference/model.py", "X = 1\n")
+    ref = Path(module) / "intent" / "reference" / "model.py"
     assert ref.stat().st_mode & 0o200  # the test wrote it, so it starts writable
 
-    r = _run_json(tmp_path, "status", "--module", module)
+    r = run_json(tmp_path, "status", "--module", module)
     assert r["stages"]["specification"] == "missing"
 
-    for p in (ref, ref.parent, store.module_root(module) / "intent"):
+    for p in (ref, ref.parent, Path(module) / "intent"):
         assert not p.stat().st_mode & 0o200, p
 
 
@@ -1110,7 +1108,7 @@ def test_dispatch_rejects_non_object_params_before_allocating_run(tmp_path):
     (module / "intent").mkdir(parents=True)
     (module / "intent/brainstorm.md").write_text("intent")
     for params in ("[]", "[1]", '"text"', "5"):
-        reply = _run_json(
+        reply = run_json(
             tmp_path,
             "dispatch",
             "--module",
@@ -1129,11 +1127,11 @@ def test_reap_reports_non_object_result_schema_error(tmp_path):
     module = tmp_path / "result-type"
     (module / "intent").mkdir(parents=True)
     (module / "intent/brainstorm.md").write_text("intent")
-    dispatched = _run_json(
+    dispatched = run_json(
         tmp_path, "dispatch", "--module", str(module), "--rule", "specification"
     )
     (Path(dispatched["workdir"]) / "result.json").write_text("[]")
-    reply = _run_json(
+    reply = run_json(
         tmp_path,
         "reap",
         "--module",
@@ -1152,19 +1150,19 @@ def test_reap_reports_non_object_result_schema_error(tmp_path):
 def test_cli_local_tb_repair_preserves_upstream_and_resumes(
     tmp_path, monkeypatch, source
 ):
-    """Replay the FSA endend failure through real dispatch/reap/decide, not a mocked scheduler."""
+    """A compiler failure must return through dispatch/reap/decide to its repair owner."""
     monkeypatch.chdir(tmp_path)
     module = "local-repair"
-    _build_full_chain(tmp_path, module)
-    upstream = store.module_root(module) / "Design/rtl-design/src"
+    build_full_chain(tmp_path, module)
+    upstream = Path(module) / "Design/rtl-design/src"
     before = facts.fingerprint(upstream)
-    d = _run_json(tmp_path, "dispatch", "--module", module, "--rule", "simulation")
+    d = run_json(tmp_path, "dispatch", "--module", module, "--rule", "simulation")
     result = {
         "stage": "simulation",
-        "produced_at": _now_iso(),
+        "produced_at": utc_timestamp(),
         "status": "fail",
         "artifacts": [
-            {"path": p} for p in [*_STAGE_FILES["simulation"], "tb/uvm/check.sv"]
+            {"path": p} for p in [*STAGE_FILES["simulation"], "tb/uvm/check.sv"]
         ],
         "stage_specific": {
             "fix_owner": "simulation",
@@ -1173,10 +1171,10 @@ def test_cli_local_tb_repair_preserves_upstream_and_resumes(
     }
     if source != "stage":
         result["stage_specific"].pop("fix_owner")
-    _write_file(module, d["workdir"] + "/tb/uvm/check.sv", "endend\n")
-    _write_file(module, d["workdir"] + "/result.json", json.dumps(result))
+    write_file(module, d["workdir"] + "/tb/uvm/check.sv", "endend\n")
+    write_file(module, d["workdir"] + "/result.json", json.dumps(result))
     assert (
-        _run_json(
+        run_json(
             tmp_path,
             "reap",
             "--module",
@@ -1189,8 +1187,8 @@ def test_cli_local_tb_repair_preserves_upstream_and_resumes(
         == "fail"
     )
     if source == "triage":
-        triage = _dispatch_triage(tmp_path, module, sim_run=d["run"])
-        _write_triage_result(
+        triage = dispatch_triage(tmp_path, module, sim_run=d["run"])
+        write_triage_result(
             module,
             triage["workdir"],
             status="pass",
@@ -1205,7 +1203,7 @@ def test_cli_local_tb_repair_preserves_upstream_and_resumes(
             },
         )
         assert (
-            _run_json(
+            run_json(
                 tmp_path,
                 "reap",
                 "--module",
@@ -1218,7 +1216,7 @@ def test_cli_local_tb_repair_preserves_upstream_and_resumes(
             == "pass"
         )
     elif source == "decision":
-        assert _run_json(
+        assert run_json(
             tmp_path,
             "diagnose",
             "--module",
@@ -1238,20 +1236,20 @@ def test_cli_local_tb_repair_preserves_upstream_and_resumes(
             "--reason",
             "TB syntax error",
         )["ok"]
-    action = _run_json(tmp_path, "decide", "--module", module)
+    action = run_json(tmp_path, "decide", "--module", module)
     assert (action["action"], action["rule"]) == ("DISPATCH", "simulation")
-    repair = _run_json(tmp_path, *action["dispatch_args"])
+    repair = run_json(tmp_path, *action["dispatch_args"])
     assert repair["ok"]
     dispatch = json.loads(
-        (store.module_root(module) / repair["workdir"] / "dispatch.json").read_text()
+        (Path(module) / repair["workdir"] / "dispatch.json").read_text()
     )
     assert any(f"runs/{d['run']}/result.json" in p for p in dispatch["caused_by"])
-    assert _run_json(tmp_path, "decide", "--module", module)["action"] == "YIELD"
-    _write_file(module, repair["workdir"] + "/tb/uvm/check.sv", "// repaired checker\n")
-    result.update(status="pass", produced_at=_now_iso(), stage_specific={})
-    _write_file(module, repair["workdir"] + "/result.json", json.dumps(result))
+    assert run_json(tmp_path, "decide", "--module", module)["action"] == "YIELD"
+    write_file(module, repair["workdir"] + "/tb/uvm/check.sv", "// repaired checker\n")
+    result.update(status="pass", produced_at=utc_timestamp(), stage_specific={})
+    write_file(module, repair["workdir"] + "/result.json", json.dumps(result))
     assert (
-        _run_json(
+        run_json(
             tmp_path,
             "reap",
             "--module",
@@ -1263,16 +1261,16 @@ def test_cli_local_tb_repair_preserves_upstream_and_resumes(
         )["verdict"]
         == "pass"
     )
-    status = _run_json(tmp_path, "status", "--module", module)
+    status = run_json(tmp_path, "status", "--module", module)
     assert status["stages"]["simulation"] == "valid"
     assert facts.fingerprint(upstream) == before
-    assert _run_json(tmp_path, "decide", "--module", module)["action"] != "ESCALATE"
+    assert run_json(tmp_path, "decide", "--module", module)["action"] != "ESCALATE"
 
 
 @pytest.mark.parametrize("source", ["decision", "triage"])
 def test_dispatch_preserves_a_diagnosis_reason_from_any_source(tmp_path, source):
     module = tmp_path / "module"
-    _write_file(str(module), "intent/brainstorm.md", "fixture intent")
+    write_file(str(module), "intent/brainstorm.md", "fixture intent")
     reason = "Retain the specified clock period while repairing the constraint."
     store.append_event(
         str(module),
@@ -1296,7 +1294,7 @@ def test_dispatch_preserves_a_diagnosis_reason_from_any_source(tmp_path, source)
 
 def test_blocked_rechecks_never_reuse_an_earlier_pass(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
-    _build_full_chain(tmp_path, "baseline")
+    build_full_chain(tmp_path, "baseline")
     assert kernel.cmd_signoff("baseline", "fixture", "accept baseline")["ok"]
     for rule in rules.FORWARD_PRIORITY:
         for cause in ("missing", "unparseable"):
@@ -1318,7 +1316,7 @@ def test_blocked_rechecks_never_reuse_an_earlier_pass(tmp_path, monkeypatch):
             action = kernel.schedule.decide(module, closing=True)
             assert action["action"] == "DISPATCH" and action["rule"] == rule
             # Correct and collect the same attempt; no historical event is edited.
-            canonical = Path("baseline").joinpath(*rules.workdir_root(rule))
+            canonical = Path("baseline").joinpath(*rules.RULES[rule].workdir_root)
             env = json.loads((canonical / "result.json").read_text())
             for a in env["artifacts"]:
                 source, target = canonical / a["path"], wd / a["path"]
@@ -1327,7 +1325,7 @@ def test_blocked_rechecks_never_reuse_an_earlier_pass(tmp_path, monkeypatch):
                     shutil.copytree(source, target, dirs_exist_ok=True)
                 else:
                     shutil.copy2(source, target)
-            env["produced_at"] = _now_iso()
+            env["produced_at"] = utc_timestamp()
             (wd / "result.json").write_text(json.dumps(env))
             assert kernel.cmd_reap(module, rule, d["run"])["verdict"] == "pass"
             assert kernel.schedule.decide(module)["action"] == "DONE"
@@ -1339,8 +1337,8 @@ def test_triage_recollection_completes_interrupted_diagnosis_recording(
 ):
     monkeypatch.chdir(tmp_path)
     module = "interrupted-triage"
-    d = _dispatch_triage(tmp_path, module, sim_run=4)
-    _write_triage_result(
+    d = dispatch_triage(tmp_path, module, sim_run=4)
+    write_triage_result(
         module,
         d["workdir"],
         status="pass",
@@ -1361,18 +1359,18 @@ def test_triage_recollection_completes_interrupted_diagnosis_recording(
     )
     append = store.append_event
 
-    def interrupted(module, event, ts):
+    def _interrupted(module, event, ts):
         if event["type"] == "diagnosis" and event.get("fix_owner") == "simulation":
             raise OSError("recording interrupted")
         return append(module, event, ts)
 
-    monkeypatch.setattr(store, "append_event", interrupted)
+    monkeypatch.setattr(store, "append_event", _interrupted)
     with pytest.raises(OSError, match="recording interrupted"):
         kernel.cmd_reap(module, "simulation-triage", d["run"])
     first = [e for e in store.read_events(module) if e["type"] == "diagnosis"]
     assert len(first) == 1
     monkeypatch.setattr(store, "append_event", append)
-    for _ in range(2):
+    for unused in range(2):
         assert (
             kernel.cmd_reap(module, "simulation-triage", d["run"])["verdict"] == "pass"
         )

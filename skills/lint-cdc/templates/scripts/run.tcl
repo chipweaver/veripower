@@ -17,12 +17,12 @@
 # so waivers and set_options apply to lint and CDC alike.
 # ==============================================================================
 
-set _stage "all"
+set stage "all"
 if {[info exists ::env(SPYGLASS_STAGE)] && $::env(SPYGLASS_STAGE) ne ""} {
-    set _stage $::env(SPYGLASS_STAGE)
+    set stage $::env(SPYGLASS_STAGE)
 }
-if {$_stage ne "lint" && $_stage ne "cdc" && $_stage ne "all"} {
-    puts stderr "ERROR: unknown SPYGLASS_STAGE='$_stage' (expected lint|cdc|all)"
+if {$stage ne "lint" && $stage ne "cdc" && $stage ne "all"} {
+    puts stderr "ERROR: unknown SPYGLASS_STAGE='$stage' (expected lint|cdc|all)"
     exit 1
 }
 
@@ -44,12 +44,12 @@ if {[catch {
     # leaves lint waiving unchanged.
     source scripts/waiver.tcl
 
-    if {$_stage eq "lint" || $_stage eq "all"} {
+    if {$stage eq "lint" || $stage eq "all"} {
         current_goal lint/lint_rtl
         run_goal
     }
 
-    if {$_stage eq "cdc" || $_stage eq "all"} {
+    if {$stage eq "cdc" || $stage eq "all"} {
         current_goal cdc/cdc_setup
         run_goal
         current_goal cdc/cdc_setup_check
@@ -57,8 +57,8 @@ if {[catch {
         current_goal cdc/cdc_verify_struct
         run_goal
     }
-} _err]} {
-    puts stderr "ERROR: SpyGlass stopped (SPYGLASS_STAGE=$_stage): $_err"
+} report_error]} {
+    puts stderr "ERROR: SpyGlass stopped (SPYGLASS_STAGE=$stage): $report_error"
     exit 1
 }
 

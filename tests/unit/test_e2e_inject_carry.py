@@ -7,7 +7,7 @@ criterion, not just token-absence): move the whole canonical
 tree wholesale and the consumer still re-anchors, because it re-reads
 `dispatch.json` every round instead of trusting a baked cross-stage path.
 
-Model: test_kernel_cli.py's `_run_json`/`_dispatch_write_reap` subprocess idiom
+Model: test_kernel_cli.py's `run_json`/`dispatch_write_reap` subprocess idiom
 (same per-stage minimal schema-valid `stage_specific`/output-file sets), scoped
 here to only the stages these three tests need (specification, simulation-plan,
 rtl-design, synthesis, simulation, power-analysis).
@@ -26,15 +26,15 @@ SYNTH_MAIN = ROOT / "skills" / "synthesis" / "scripts" / "synthesis" / "__main__
 POWER_MAIN = ROOT / "skills" / "power-analysis" / "scripts" / "power" / "__main__.py"
 
 
-def _now_iso() -> str:
-    """Second-resolution UTC stamp, mirroring the skill finalizers' _now_iso()
+def utc_timestamp() -> str:
+    """Second-resolution UTC stamp, mirroring the skill finalizers' utc_timestamp()
     (test_kernel_cli.py's helper) — so a result.json written mid-test passes the
     reap temporal-integrity check the same way a real freshly-finalized envelope
     does."""
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def _run(tree_root, *args):
+def run(tree_root, *args):
     return subprocess.run(
         [sys.executable, SCRIPT, *args],
         capture_output=True,
@@ -43,13 +43,13 @@ def _run(tree_root, *args):
     )
 
 
-def _run_json(tree_root, *args):
-    r = _run(tree_root, *args)
+def run_json(tree_root, *args):
+    r = run(tree_root, *args)
     assert r.returncode == 0, r.stderr
     return json.loads(r.stdout)
 
 
-def _write_file(tree_root, module, rel, content):
+def write_file(tree_root, module, rel, content):
     p = tree_root / module / rel
     p.parent.mkdir(parents=True, exist_ok=True)
     p.write_text(content)
@@ -59,7 +59,7 @@ def _write_file(tree_root, module, rel, content):
 # Minimal pass-valid stage_specific per stage used here — exactly the per-stage
 # schema's status=pass conditional requirements (skills/<stage>/references/
 # result.schema.json), so reap-time schema validation genuinely passes.
-_STAGE_SPECIFIC = {
+STAGE_SPECIFIC = {
     "specification": {"top_module": "top"},
     "simulation-plan": {},
     "rtl-design": {},
@@ -76,7 +76,7 @@ _STAGE_SPECIFIC = {
 
 # Minimal declared-output set per stage: exactly the files downstream rules'
 # own `inputs` selectors reference (per rules.RULES).
-_STAGE_FILES = {
+STAGE_FILES = {
     "specification": {
         "design.md": "design v1",
         "manifest.json": "{}",
@@ -120,11 +120,11 @@ _STAGE_FILES = {
 }
 
 
-def _dispatch_write_reap(tree_root, module, rule, files):
+def dispatch_write_reap(tree_root, module, rule, files):
     """dispatch `rule`, write `files` (workdir-relative path -> content) + a
     passing schema-valid result.json declaring them as artifacts, then reap.
     Returns the reap JSON."""
-    d = _run_json(
+    d = run_json(
         tree_root,
         "dispatch",
         "--module",
@@ -135,17 +135,17 @@ def _dispatch_write_reap(tree_root, module, rule, files):
     assert d["ok"] is True, d
     workdir = d["workdir"]
     for rel, content in files.items():
-        _write_file(tree_root, module, f"{workdir}/{rel}", content)
+        write_file(tree_root, module, f"{workdir}/{rel}", content)
     result = {
         "stage": rule,
         "module": module,
-        "produced_at": _now_iso(),
+        "produced_at": utc_timestamp(),
         "status": "pass",
         "artifacts": [{"path": p} for p in files],
-        "stage_specific": _STAGE_SPECIFIC[rule],
+        "stage_specific": STAGE_SPECIFIC[rule],
     }
-    _write_file(tree_root, module, f"{workdir}/result.json", json.dumps(result))
-    return _run_json(
+    write_file(tree_root, module, f"{workdir}/result.json", json.dumps(result))
+    return run_json(
         tree_root, "reap", "--module", module, "--rule", rule, "--run", str(d["run"])
     )
 
@@ -153,15 +153,15 @@ def _dispatch_write_reap(tree_root, module, rule, files):
 def test_rtl_author_dispatch_reap_promote_green(tmp_path):
     module = "m"
     # 1. seed upstream canonical (specification products) + the intent tree
-    _write_file(tmp_path, module, "intent/brainstorm.md", "b1")
-    spec = _dispatch_write_reap(
-        tmp_path, module, "specification", _STAGE_FILES["specification"]
+    write_file(tmp_path, module, "intent/brainstorm.md", "b1")
+    spec = dispatch_write_reap(
+        tmp_path, module, "specification", STAGE_FILES["specification"]
     )
     assert spec["ok"] is True and spec["verdict"] == "pass", spec
 
     # 2. dispatch rtl-design -> dispatch.json's design and manifest both
     # resolve to the SAME producer (specification) stage root, absolute.
-    d1 = _run_json(
+    d1 = run_json(
         tmp_path,
         "dispatch",
         "--module",
@@ -178,18 +178,18 @@ def test_rtl_author_dispatch_reap_promote_green(tmp_path):
 
     # 3. write a schema-valid rtl result.json in the workdir, reap -> verdict
     # pass, promote
-    for rel, content in _STAGE_FILES["rtl-design"].items():
-        _write_file(tmp_path, module, f"{d1['workdir']}/{rel}", content)
+    for rel, content in STAGE_FILES["rtl-design"].items():
+        write_file(tmp_path, module, f"{d1['workdir']}/{rel}", content)
     result1 = {
         "stage": "rtl-design",
         "module": module,
-        "produced_at": _now_iso(),
+        "produced_at": utc_timestamp(),
         "status": "pass",
-        "artifacts": [{"path": p} for p in _STAGE_FILES["rtl-design"]],
-        "stage_specific": _STAGE_SPECIFIC["rtl-design"],
+        "artifacts": [{"path": p} for p in STAGE_FILES["rtl-design"]],
+        "stage_specific": STAGE_SPECIFIC["rtl-design"],
     }
-    _write_file(tmp_path, module, f"{d1['workdir']}/result.json", json.dumps(result1))
-    r1 = _run_json(
+    write_file(tmp_path, module, f"{d1['workdir']}/result.json", json.dumps(result1))
+    r1 = run_json(
         tmp_path,
         "reap",
         "--module",
@@ -201,13 +201,13 @@ def test_rtl_author_dispatch_reap_promote_green(tmp_path):
     )
     assert r1 == {"ok": True, "rule": "rtl-design", "run": d1["run"], "verdict": "pass"}
     canonical = tmp_path / module / "Design" / "rtl-design"
-    assert (canonical / "src/top.v").read_text() == _STAGE_FILES["rtl-design"][
+    assert (canonical / "src/top.v").read_text() == STAGE_FILES["rtl-design"][
         "src/top.v"
     ]
 
     # 4. re-dispatch rtl-design -> the previous *.v and both sidecars were
     # CARRIED into the new workdir (carry_self), not re-authored from scratch.
-    d2 = _run_json(
+    d2 = run_json(
         tmp_path,
         "dispatch",
         "--module",
@@ -217,18 +217,18 @@ def test_rtl_author_dispatch_reap_promote_green(tmp_path):
     )
     assert d2["ok"] is True and d2["run"] == d1["run"] + 1
     wd2 = tmp_path / module / d2["workdir"]
-    assert (wd2 / "src/top.v").read_text() == _STAGE_FILES["rtl-design"]["src/top.v"]
-    assert (wd2 / "rtl-files.json").read_text() == _STAGE_FILES["rtl-design"][
+    assert (wd2 / "src/top.v").read_text() == STAGE_FILES["rtl-design"]["src/top.v"]
+    assert (wd2 / "rtl-files.json").read_text() == STAGE_FILES["rtl-design"][
         "rtl-files.json"
     ]
-    assert (wd2 / "constraint-annotations.json").read_text() == _STAGE_FILES[
+    assert (wd2 / "constraint-annotations.json").read_text() == STAGE_FILES[
         "rtl-design"
     ]["constraint-annotations.json"]
 
 
 def test_power_transformer_filelist_across_sim_and_synth(tmp_path):
     module = "m"
-    _write_file(tmp_path, module, "intent/brainstorm.md", "b1")
+    write_file(tmp_path, module, "intent/brainstorm.md", "b1")
     # Power consumes the plan meaning and identifiers, independently of functional sequences.
     simplan_files = {
         "verification-plan.md": "plan v1",
@@ -245,18 +245,18 @@ def test_power_transformer_filelist_across_sim_and_synth(tmp_path):
     # seed synthesis (netlist) + simulation (tb_env) + simulation-plan
     # (scaffold) + spec (ppa) canonical, each through a real dispatch+reap
     for rule, files in (
-        ("specification", _STAGE_FILES["specification"]),
+        ("specification", STAGE_FILES["specification"]),
         ("simulation-plan", simplan_files),
-        ("rtl-design", _STAGE_FILES["rtl-design"]),
-        ("synthesis", _STAGE_FILES["synthesis"]),
-        ("simulation", _STAGE_FILES["simulation"]),
+        ("rtl-design", STAGE_FILES["rtl-design"]),
+        ("synthesis", STAGE_FILES["synthesis"]),
+        ("simulation", STAGE_FILES["simulation"]),
     ):
-        outcome = _dispatch_write_reap(tmp_path, module, rule, files)
+        outcome = dispatch_write_reap(tmp_path, module, rule, files)
         assert outcome["ok"] is True and outcome["verdict"] == "pass", outcome
 
     # dispatch power-analysis -> dispatch.json spans all four keys as absolute
     # stage roots
-    d = _run_json(
+    d = run_json(
         tmp_path,
         "dispatch",
         "--module",
@@ -299,28 +299,26 @@ def test_power_transformer_filelist_across_sim_and_synth(tmp_path):
     assert "/../" not in env_sh  # no relpath climb regardless of workdir depth
 
     # reap -> promote green
-    for rel, content in _STAGE_FILES["power-analysis"].items():
-        _write_file(tmp_path, module, f"{d['workdir']}/{rel}", content)
+    for rel, content in STAGE_FILES["power-analysis"].items():
+        write_file(tmp_path, module, f"{d['workdir']}/{rel}", content)
     authored = {
         "experiment/run.sh": "echo authored\n",
         "scripts/ptpx.tcl": "# local setup\n",
         "saif/idle.saif": "activity evidence\n",
     }
     for rel, content in authored.items():
-        _write_file(tmp_path, module, f"{d['workdir']}/{rel}", content)
+        write_file(tmp_path, module, f"{d['workdir']}/{rel}", content)
     (wd / "experiment/run.sh").chmod(0o755)
     result = {
         "stage": "power-analysis",
         "module": module,
-        "produced_at": _now_iso(),
+        "produced_at": utc_timestamp(),
         "status": "pass",
-        "artifacts": [
-            {"path": p} for p in [*_STAGE_FILES["power-analysis"], *authored]
-        ],
-        "stage_specific": _STAGE_SPECIFIC["power-analysis"],
+        "artifacts": [{"path": p} for p in [*STAGE_FILES["power-analysis"], *authored]],
+        "stage_specific": STAGE_SPECIFIC["power-analysis"],
     }
-    _write_file(tmp_path, module, f"{d['workdir']}/result.json", json.dumps(result))
-    r = _run_json(
+    write_file(tmp_path, module, f"{d['workdir']}/result.json", json.dumps(result))
+    r = run_json(
         tmp_path,
         "reap",
         "--module",
@@ -339,7 +337,7 @@ def test_power_transformer_filelist_across_sim_and_synth(tmp_path):
     canonical = tmp_path / module / "Verification" / "power-analysis"
     assert (canonical / "reports_ptpx" / "run1" / "power_hier.rpt").is_file()
 
-    again = _run_json(
+    again = run_json(
         tmp_path, "dispatch", "--module", module, "--rule", "power-analysis"
     )
     carried = tmp_path / module / again["workdir"]
@@ -357,13 +355,13 @@ def test_relocation_invariance_consumer_reanchors(tmp_path):
     module = "m"
     tree_a = tmp_path / "a"
     tree_a.mkdir()
-    _write_file(tree_a, module, "intent/brainstorm.md", "b1")
+    write_file(tree_a, module, "intent/brainstorm.md", "b1")
     for rule in ("specification", "rtl-design"):
-        outcome = _dispatch_write_reap(tree_a, module, rule, _STAGE_FILES[rule])
+        outcome = dispatch_write_reap(tree_a, module, rule, STAGE_FILES[rule])
         assert outcome["ok"] is True and outcome["verdict"] == "pass", outcome
 
     # Dispatch synthesis under tree A -> rtl_load.tcl points into A.
-    d_a = _run_json(
+    d_a = run_json(
         tree_a,
         "dispatch",
         "--module",
@@ -393,18 +391,18 @@ def test_relocation_invariance_consumer_reanchors(tmp_path):
     assert rtl_root_a in tcl_a
 
     # reap synthesis run 1 in A (so it is no longer in-flight) -> promote
-    for rel, content in _STAGE_FILES["synthesis"].items():
-        _write_file(tree_a, module, f"{d_a['workdir']}/{rel}", content)
+    for rel, content in STAGE_FILES["synthesis"].items():
+        write_file(tree_a, module, f"{d_a['workdir']}/{rel}", content)
     result = {
         "stage": "synthesis",
         "module": module,
-        "produced_at": _now_iso(),
+        "produced_at": utc_timestamp(),
         "status": "pass",
-        "artifacts": [{"path": p} for p in _STAGE_FILES["synthesis"]],
-        "stage_specific": _STAGE_SPECIFIC["synthesis"],
+        "artifacts": [{"path": p} for p in STAGE_FILES["synthesis"]],
+        "stage_specific": STAGE_SPECIFIC["synthesis"],
     }
-    _write_file(tree_a, module, f"{d_a['workdir']}/result.json", json.dumps(result))
-    reap_a = _run_json(
+    write_file(tree_a, module, f"{d_a['workdir']}/result.json", json.dumps(result))
+    reap_a = run_json(
         tree_a,
         "reap",
         "--module",
@@ -423,7 +421,7 @@ def test_relocation_invariance_consumer_reanchors(tmp_path):
 
     # Re-dispatch synthesis THERE -> a fresh run 2 whose write_dispatch
     # recomputes the rtl stage root against tree B's own cwd.
-    d_b = _run_json(
+    d_b = run_json(
         tree_b,
         "dispatch",
         "--module",

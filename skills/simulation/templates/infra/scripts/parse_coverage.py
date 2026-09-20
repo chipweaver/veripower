@@ -17,15 +17,10 @@ import re
 import sys
 from pathlib import Path
 
-# urg prints its column names above every table, and which columns it prints follows the
-# `-metric` it was run with. Reading them beats assuming a set: a report produced without
-# branch coverage has five columns, and a parser expecting six walks past the row it wants
-# and latches onto the next block's — on a real OpenTitan run that put an instance NAME
-# where a number belonged. So the header is the schema, and a dim urg did not measure is
-# simply absent, which is what the coverage gate already answers ("urg measured none").
+# Each URG table declares the metrics selected for that measurement.
 
 
-def _num(tok: str):
+def parse_coverage_percent(tok: str):
     """'--' / 'n/a' -> None; otherwise float."""
     if tok in ("--", "n/a"):
         return None
@@ -35,21 +30,18 @@ def _num(tok: str):
     return value
 
 
-def _dims(header: str) -> list[str]:
-    """The dim column names this table declares, lowercased, NAME excluded."""
-    return [t.lower() for t in header.split() if t.upper() != "NAME"]
-
-
-def _values_after_header(lines: list[str], start: int) -> dict | None:
+def values_after_header(lines: list[str], start: int) -> dict | None:
     """The first row under the header at lines[start] that has exactly the columns the
     header declares. A row with a different count belongs to another block, not this one."""
-    dims = _dims(lines[start])
+    dims = [
+        column.lower() for column in lines[start].split() if column.upper() != "NAME"
+    ]
     for ln in lines[start + 1 :]:
         toks = ln.split()
         if not toks:
             continue
         if len(toks) == len(dims) and re.match(r"^[\d.]+$|^--$", toks[0]):
-            return dict(zip(dims, (_num(t) for t in toks)))
+            return dict(zip(dims, (parse_coverage_percent(t) for t in toks)))
         return None
     return None
 
@@ -62,7 +54,7 @@ def parse_aggregate(text: str) -> dict | None:
             # The next table declares whichever metrics URG reported.
             for j in range(i + 1, min(i + 4, len(lines))):
                 if lines[j].split()[:1] == ["SCORE"]:
-                    return _values_after_header(lines, j)
+                    return values_after_header(lines, j)
     return None
 
 
@@ -84,7 +76,7 @@ def parse_instances(text: str) -> list[dict]:
             if line.strip() == "Instance's subtree :":
                 for j in range(i + 1, min(i + 4, len(lines))):
                     if lines[j].split()[:1] == ["SCORE"]:
-                        row = _values_after_header(lines, j)
+                        row = values_after_header(lines, j)
                         break
                 break
         if row is None:
@@ -92,11 +84,6 @@ def parse_instances(text: str) -> list[dict]:
         row["name"] = name
         out.append(row)
     return out
-
-
-def _urg_version(text: str) -> str:
-    m = re.search(r"Version:\s*(\S+)", text)
-    return m.group(1) if m else ""
 
 
 # ── modinfo.txt: the named uncovered items ─────────────────────────
@@ -109,18 +96,18 @@ def _urg_version(text: str) -> str:
 #           rows), so that marker's source line is the locus.
 #   Cond    ` LINE <n>` + ` EXPRESSION <text>` + a small `-1- Status` table.
 #   FSM     `<state-or-transition>  <line>  Covered|Not Covered` rows.
-_MODULE_RE = re.compile(r"^Module : (\S+)")
-_SECTION_RE = re.compile(r"^(Branch|Cond|FSM|Line|Toggle) Coverage for Module : (\S+)")
-_SRC_RE = re.compile(r"^\s*(\d+)\s{2,}(\S.*?)\s*$")
-_MARKER_RE = re.compile(r"^-\d+-$")
-_COND_LINE_RE = re.compile(r"^\s*LINE\s+(\d+)\s*$")
+MODULE_RE = re.compile(r"^Module : (\S+)")
+SECTION_RE = re.compile(r"^(Branch|Cond|FSM|Line|Toggle) Coverage for Module : (\S+)")
+SRC_RE = re.compile(r"^\s*(\d+)\s{2,}(\S.*?)\s*$")
+MARKER_RE = re.compile(r"^-\d+-$")
+COND_LINE_RE = re.compile(r"^\s*LINE\s+(\d+)\s*$")
 #   urg emits both EXPRESSION and SUB-EXPRESSION blocks (a nested term of the same
 #   construct, at its own LINE); both carry their own Status table, so both count.
-_COND_EXPR_RE = re.compile(r"^\s*(?:SUB-)?EXPRESSION\s+(\S.*?)\s*$")
-_FSM_ROW_RE = re.compile(r"^(\S+)\s+(\d+)\s+(Not Covered|Covered)\s*$")
+COND_EXPR_RE = re.compile(r"^\s*(?:SUB-)?EXPRESSION\s+(\S.*?)\s*$")
+FSM_ROW_RE = re.compile(r"^(\S+)\s+(\d+)\s+(Not Covered|Covered)\s*$")
 
 
-def _status_of(toks: list[str]) -> tuple[str | None, list[str]]:
+def coverage_status(toks: list[str]) -> tuple[str | None, list[str]]:
     """Split a trailing Covered / 'Not Covered' status off a row's tokens."""
     if len(toks) >= 2 and toks[-2:] == ["Not", "Covered"]:
         return "Not Covered", toks[:-2]
@@ -146,22 +133,22 @@ def parse_uncovered(text: str) -> list[dict]:
     cond_line: int | None = None
     cond_expr: str | None = None
 
-    def reset_section() -> None:
+    def _reset_section() -> None:
         nonlocal marker_line, src_text, last_src, header, cond_line, cond_expr
         marker_line, src_text, last_src, header = {}, {}, None, []
         cond_line, cond_expr = None, None
 
     for raw in text.splitlines():
-        m = _MODULE_RE.match(raw)
+        m = MODULE_RE.match(raw)
         if m:
             module, kind = m.group(1), None
-            reset_section()
+            _reset_section()
             continue
-        m = _SECTION_RE.match(raw)
+        m = SECTION_RE.match(raw)
         if m:
             kind = {"Branch": "branch", "Cond": "cond", "FSM": "fsm"}.get(m.group(1))
             module = m.group(2)
-            reset_section()
+            _reset_section()
             continue
         if kind is None or module is None:
             continue
@@ -170,16 +157,16 @@ def parse_uncovered(text: str) -> list[dict]:
             continue
 
         if kind == "branch":
-            if toks and all(_MARKER_RE.match(t) for t in toks):
+            if toks and all(MARKER_RE.match(t) for t in toks):
                 if last_src is not None:
                     for t in toks:
                         marker_line.setdefault(t, last_src)
                 continue
-            if toks[-1] == "Status" and any(_MARKER_RE.match(t) for t in toks):
-                header = [t for t in toks if _MARKER_RE.match(t)]
+            if toks[-1] == "Status" and any(MARKER_RE.match(t) for t in toks):
+                header = [t for t in toks if MARKER_RE.match(t)]
                 continue
             if header:
-                status, vals = _status_of(toks)
+                status, vals = coverage_status(toks)
                 if status is not None and len(vals) == len(header):
                     taken = [h for h, v in zip(header, vals) if v != "-"]
                     if status == "Not Covered" and taken:
@@ -193,22 +180,22 @@ def parse_uncovered(text: str) -> list[dict]:
                             }
                         )
                     continue
-            m = _SRC_RE.match(raw)
+            m = SRC_RE.match(raw)
             if m and not all(t in ("0", "1", "-") for t in toks[1:]):
                 last_src = int(m.group(1))
                 src_text[last_src] = m.group(2)
             continue
 
         if kind == "cond":
-            m = _COND_LINE_RE.match(raw)
+            m = COND_LINE_RE.match(raw)
             if m:
                 cond_line, cond_expr = int(m.group(1)), None
                 continue
-            m = _COND_EXPR_RE.match(raw)
+            m = COND_EXPR_RE.match(raw)
             if m:
                 cond_expr = m.group(1)
                 continue
-            status, vals = _status_of(toks)
+            status, vals = coverage_status(toks)
             if status == "Not Covered" and cond_expr is not None:
                 items.append(
                     {
@@ -221,7 +208,7 @@ def parse_uncovered(text: str) -> list[dict]:
             continue
 
         if kind == "fsm":
-            m = _FSM_ROW_RE.match(raw.strip())
+            m = FSM_ROW_RE.match(raw.strip())
             if m and m.group(3) == "Not Covered":
                 items.append(
                     {
@@ -254,11 +241,13 @@ def build(cov_dir: Path, out_path: Path) -> int:
             f"(fail-loud: never claim coverage met when it cannot be measured)."
         )
     dtext = dashboard.read_text(encoding="utf-8", errors="ignore")
+    version_match = re.search(r"Version:\s*(\S+)", dtext)
+    version = version_match.group(1) if version_match else ""
     agg = parse_aggregate(dtext)
     if agg is None:
         sys.exit(
             f"parse_coverage: could not parse aggregate coverage from {dashboard} "
-            f"(urg text format may differ on this version: {_urg_version(dtext)!r}). "
+            f"(urg text format may differ on this version: {version!r}). "
             f"Fix parse_coverage for this urg version; NOT emitting structural-coverage.json."
         )
     modinfo = cov_dir / "modinfo.txt"
@@ -274,7 +263,7 @@ def build(cov_dir: Path, out_path: Path) -> int:
         "per_instance": per_instance,
         "uncovered": uncovered,
         "source": str(modinfo),
-        "urg_version": _urg_version(dtext),
+        "urg_version": version,
     }
     out_path.write_text(json.dumps(data, indent=2), encoding="utf-8")
     print(

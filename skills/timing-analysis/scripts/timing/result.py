@@ -15,17 +15,17 @@ from pathlib import Path
 
 from timing import requirements
 
-_EPS = 1e-4
+SLACK_SIGN_TOLERANCE_NS = 1e-4
 
 # Each report_timing block carries a header line '-delay_type max|min'.
-_DELAY_MAX_RE = re.compile(r"-delay_type\s+max")
-_DELAY_MIN_RE = re.compile(r"-delay_type\s+min")
+DELAY_MAX_RE = re.compile(r"-delay_type\s+max")
+DELAY_MIN_RE = re.compile(r"-delay_type\s+min")
 # A path's slack line: 'slack (MET) 2.93' or 'slack (VIOLATED: increase significant digits) 0.00'.
-_SLACK_RE = re.compile(r"slack\s*\((MET|VIOLATED)[^)]*\)\s*([-+0-9.]+)")
-_START_RE = re.compile(r"Startpoint:\s*(\S+)")
-_END_RE = re.compile(r"Endpoint:\s*(\S+)")
-_COVERAGE_TABLE_RE = re.compile(r"^Type of Check\s+Total", re.M)
-_TIME_UNIT_RE = re.compile(
+SLACK_RE = re.compile(r"slack\s*\((MET|VIOLATED)[^)]*\)\s*([-+0-9.]+)")
+START_RE = re.compile(r"Startpoint:\s*(\S+)")
+END_RE = re.compile(r"Endpoint:\s*(\S+)")
+COVERAGE_TABLE_RE = re.compile(r"^Type of Check\s+Total", re.M)
+TIME_UNIT_RE = re.compile(
     r"^\s*Time_unit\s*:\s*([-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?)\s+Second\b",
     re.M,
 )
@@ -35,14 +35,14 @@ class ParseError(Exception):
     """Raised on a format surprise; caller maps it to exit 3 (FAIL=unparseable)."""
 
 
-def _section(text: str, kind: str) -> str:
+def timing_section(text: str, kind: str) -> str:
     """Return the text of the `-delay max` or `-delay min` report section.
 
     Setup = from the first -delay_type max header to the first -delay_type min header.
     Hold  = from the first -delay_type min header to end. Raise if the header is absent.
     """
-    mmax = _DELAY_MAX_RE.search(text)
-    mmin = _DELAY_MIN_RE.search(text)
+    mmax = DELAY_MAX_RE.search(text)
+    mmin = DELAY_MIN_RE.search(text)
     if kind == "max":
         if mmax is None:
             raise ParseError("no '-delay_type max' section header")
@@ -59,8 +59,8 @@ def parse_direction(text: str, kind: str) -> dict:
     Classifies on the marker; records the worst (min-slack) path. Raises ParseError
     when the section has no slack line or a marker contradicts its sign.
     """
-    section = _section(text, kind)
-    unit = _TIME_UNIT_RE.search(text)
+    section = timing_section(text, kind)
+    unit = TIME_UNIT_RE.search(text)
     if unit is None:
         raise ParseError("no report_units time unit in the report")
     ns_per_unit = float(unit.group(1)) / 1e-9
@@ -69,18 +69,18 @@ def parse_direction(text: str, kind: str) -> dict:
     paths = []
     # Split into path blocks at each 'Startpoint:'; the leading chunk is the header.
     for block in re.split(r"(?=Startpoint:)", section):
-        m = _SLACK_RE.search(block)
+        m = SLACK_RE.search(block)
         if not m:
             continue
         marker, raw = m.group(1), float(m.group(2)) * ns_per_unit
         # A marker that disagrees with its own number means the line is not the shape
         # this parser was grounded on; fail loud rather than trust either half.
-        if marker == "MET" and raw < -_EPS:
+        if marker == "MET" and raw < -SLACK_SIGN_TOLERANCE_NS:
             raise ParseError(f"MET marker with negative slack {raw}")
-        if marker == "VIOLATED" and raw > _EPS:
+        if marker == "VIOLATED" and raw > SLACK_SIGN_TOLERANCE_NS:
             raise ParseError(f"VIOLATED marker with positive slack {raw}")
-        s = _START_RE.search(block)
-        e = _END_RE.search(block)
+        s = START_RE.search(block)
+        e = END_RE.search(block)
         paths.append(
             {
                 "start": s.group(1) if s else "?",
@@ -112,7 +112,7 @@ def run(report_path) -> tuple[int, dict | None]:
 
     text = report_path.read_text(errors="replace")
     try:
-        if not _COVERAGE_TABLE_RE.search(text):
+        if not COVERAGE_TABLE_RE.search(text):
             raise ParseError("no report_analysis_coverage table in the report")
         setup = parse_direction(text, "max")
         hold = parse_direction(text, "min")
@@ -131,43 +131,12 @@ def run(report_path) -> tuple[int, dict | None]:
 
 
 STAGE = "timing-analysis"
-_FAIL_REASON = {
+FAIL_REASON = {
     "missing": "timing-report.txt missing",
     "unparseable": "timing-report.txt unparseable",
 }
 
-_VERSION_RE = re.compile(r"^\s*Version:\s*(\S+)", re.M)
-
-
-def _now_iso() -> str:
-    return datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-
-
-def _envelope(*, status, stage_specific, artifacts) -> dict:
-    return {
-        "stage": STAGE,
-        "produced_at": _now_iso(),
-        "status": status,
-        "artifacts": artifacts,
-        "stage_specific": stage_specific,
-    }
-
-
-def _write_result(workdir: Path, env: dict) -> None:
-    tmp = workdir / "result.json.tmp"
-    tmp.write_text(json.dumps(env, indent=2) + "\n")
-    tmp.replace(workdir / "result.json")  # atomic: never observed half-written
-    sys.stdout.write(
-        f"[timing finalize] Written: {workdir / 'result.json'} (status={env['status']})\n"
-    )
-
-
-def parse_tool(report_text: str) -> str:
-    """The PrimeTime version off the report header. The kernel's reap-time identity
-    record covers the library environment variables and no tool version, and this
-    reports come from pt_shell; record which engine produced them."""
-    m = _VERSION_RE.search(report_text)
-    return f"PrimeTime {m.group(1)}" if m else "PrimeTime unknown"
+VERSION_RE = re.compile(r"^\s*Version:\s*(\S+)", re.M)
 
 
 def enumerate_artifacts(workdir: Path) -> list:
@@ -185,99 +154,88 @@ def enumerate_artifacts(workdir: Path) -> list:
     ]
 
 
-def build_result(workdir, rows, declared, fix_owner=None, fail_reason=None) -> int:
-    """Assemble the lean timing-analysis result.json. Reuses run() for the timing gate
-    (in-process), then derives the header + artifacts + writes the envelope.
-    Returns 0 (result.json written, pass or fail). A raise -> finalize() exit 2 (BLOCKED).
-
-    Three things this verb cannot derive, so the caller states them:
-
-    fix_owner — which rule must act. The report says what failed; whose artifact is at
-    fault is the caller's reading.
-
-    fail_reason — the cause of a run that produced no gradeable report. Supplying it IS
-    the declaration of failure: it wins over the gate, because the agent watched pt_shell
-    and this verb can only read what landed on disk."""
-    workdir = Path(workdir)
-    report = workdir / "timing-report.txt"
-
-    if fail_reason is not None:
-        ss = {"fail_reason": fail_reason}
-        if fix_owner:
-            ss["fix_owner"] = fix_owner
-        _write_result(
-            workdir,
-            _envelope(
-                status="fail",
-                stage_specific=ss,
-                artifacts=enumerate_artifacts(workdir),
-            ),
-        )
-        return 0
-
-    rc, actual = run(report)  # reuse the gate verbatim
-    if rc != 0:
-        token = (
-            "missing" if rc == 1 else "unparseable"
-        )  # run(): 1=missing, 3=unparseable
-        ss = {"fail_reason": _FAIL_REASON[token]}
-        if fix_owner:
-            ss["fix_owner"] = fix_owner
-        _write_result(
-            workdir,
-            _envelope(
-                status="fail",
-                stage_specific=ss,
-                artifacts=enumerate_artifacts(workdir),
-            ),
-        )
-        return 0
-
-    status = "pass" if actual["verdict"] == "pass" else "fail"
-    report_text = report.read_text(errors="replace")
-    judged = requirements.merge(
-        rows, requirements.compare(rows, actual["timing"]), declared
-    )
-    unmet = requirements.unmet(judged)
-    ss = {
-        "tool": parse_tool(report_text),
-        "timing": actual["timing"],
-        "requirements": judged,
-    }
-    if status == "fail":
-        ss["fail_reason"] = "setup/hold timing not met"
-    elif unmet:
-        status = "fail"
-        ss["fail_reason"] = f"requirement(s) not met: {', '.join(unmet)}"
-    if status == "fail" and fix_owner:
-        ss["fix_owner"] = fix_owner
-    _write_result(
-        workdir,
-        _envelope(
-            status=status,
-            stage_specific=ss,
-            artifacts=enumerate_artifacts(workdir),
-        ),
-    )
-    return 0
-
-
 def finalize(workdir, rows, declared, fix_owner=None, fail_reason=None) -> int:
-    """Parse the PT report, judge the timing gate and the rows requirements.json assigns to
-    this stage, write the lean result.json. exit 0 = written (pass or fail); exit 2 = BLOCKED
-    (an empty --fail-reason, a row nobody judged, or any internal raise) — never conflated
-    with status=fail."""
+    """Assess the stage and write its result. Input or I/O errors leave no current result."""
     (Path(workdir) / "result.json").unlink(missing_ok=True)
     if fail_reason is not None:
         if not fail_reason.strip():
             print(
-                "[timing finalize] BLOCKED: --fail-reason must be a non-empty "
-                "one-line cause",
+                "[timing finalize] BLOCKED: --fail-reason must be a non-empty one-line cause",
                 file=sys.stderr,
             )
             return 2
+
+    def _write_result(*, status, stage_specific, artifacts):
+        result = {
+            "stage": STAGE,
+            "produced_at": datetime.datetime.now(datetime.timezone.utc).strftime(
+                "%Y-%m-%dT%H:%M:%SZ"
+            ),
+            "status": status,
+            "artifacts": artifacts,
+            "stage_specific": stage_specific,
+        }
+        result_path = Path(workdir) / "result.json"
+        temporary_path = result_path.with_suffix(".json.tmp")
+        temporary_path.write_text(json.dumps(result, indent=2) + "\n")
+        temporary_path.replace(result_path)
+        print(f"[timing finalize] Written: {result_path} (status={status})")
+        return 0
+
     try:
-        return build_result(workdir, rows, declared, fix_owner, fail_reason)
-    except Exception as exc:  # noqa: BLE001 — any failure to operate is BLOCKED
+        workdir = Path(workdir)
+        report = workdir / "timing-report.txt"
+        if fail_reason is not None:
+            stage_specific = {"fail_reason": fail_reason}
+            if fix_owner:
+                stage_specific["fix_owner"] = fix_owner
+            return _write_result(
+                status="fail",
+                stage_specific=stage_specific,
+                artifacts=enumerate_artifacts(workdir),
+            )
+        exit_code, actual = run(report)
+        if exit_code != 0:
+            token = "missing" if exit_code == 1 else "unparseable"
+            stage_specific = {"fail_reason": FAIL_REASON[token]}
+            if fix_owner:
+                stage_specific["fix_owner"] = fix_owner
+            return _write_result(
+                status="fail",
+                stage_specific=stage_specific,
+                artifacts=enumerate_artifacts(workdir),
+            )
+        status = "pass" if actual["verdict"] == "pass" else "fail"
+        report_text = report.read_text(errors="replace")
+        version_match = VERSION_RE.search(report_text)
+        tool = (
+            f"PrimeTime {version_match.group(1)}"
+            if version_match
+            else "PrimeTime unknown"
+        )
+        judged = requirements.merge(
+            rows, requirements.compare(rows, actual["timing"]), declared
+        )
+        unmet = [entry["id"] for entry in judged if not entry["met"]]
+        stage_specific = {
+            "tool": tool,
+            "timing": actual["timing"],
+            "requirements": judged,
+        }
+        if status == "fail":
+            stage_specific["fail_reason"] = "setup/hold timing not met"
+        elif unmet:
+            status = "fail"
+            stage_specific["fail_reason"] = (
+                f"requirement(s) not met: {', '.join(unmet)}"
+            )
+        if status == "fail" and fix_owner:
+            stage_specific["fix_owner"] = fix_owner
+        return _write_result(
+            status=status,
+            stage_specific=stage_specific,
+            artifacts=enumerate_artifacts(workdir),
+        )
+    except (OSError, ValueError) as exc:
         print(f"[timing finalize] FAIL=internal {exc}", file=sys.stderr)
         return 2

@@ -17,7 +17,7 @@ sibling, so `X.zh.md` is normalised to `X.md` before comparing.
 import re
 
 import pytest
-from _skills_sot import PLUGIN_ROOT
+from skills_source import PLUGIN_ROOT
 
 HEADING = re.compile(r"^#{2,3}\s+(.+)$", re.M)
 BACKTICKED = re.compile(r"`([^`\n]+)`")
@@ -26,14 +26,14 @@ BACKTICKED = re.compile(r"`([^`\n]+)`")
 NEUTRAL = re.compile(r"[/.]|^--|^kernel|^\d")
 
 
-def _pairs():
+def pairs():
     for zh in sorted(PLUGIN_ROOT.rglob("*.zh.md")):
         en = zh.with_name(zh.name.replace(".zh.md", ".md"))
         if en.is_file():
             yield en, zh
 
 
-def _sections(path):
+def sections(path):
     text = path.read_text(encoding="utf-8")
     marks = list(HEADING.finditer(text))
     return [
@@ -45,7 +45,7 @@ def _sections(path):
     ]
 
 
-def _facts(body):
+def facts(body):
     out = set()
     for span in BACKTICKED.findall(body):
         span = span.strip().replace(".zh.md", ".md")
@@ -54,7 +54,7 @@ def _facts(body):
     return out
 
 
-PAIRS = list(_pairs())
+PAIRS = list(pairs())
 
 
 def test_there_are_bilingual_pairs_to_check():
@@ -63,7 +63,7 @@ def test_there_are_bilingual_pairs_to_check():
 
 @pytest.mark.parametrize("en,zh", PAIRS, ids=[p[1].name for p in PAIRS])
 def test_same_sections(en, zh):
-    e, z = [h for h, _ in _sections(en)], [h for h, _ in _sections(zh)]
+    e, z = [h for h, unused in sections(en)], [h for h, unused in sections(zh)]
     assert len(e) == len(z), (
         f"{zh.name} has {len(z)} sections against {en.name}'s {len(e)} — one language "
         f"gained or lost a section"
@@ -73,8 +73,8 @@ def test_same_sections(en, zh):
 @pytest.mark.parametrize("en,zh", PAIRS, ids=[p[1].name for p in PAIRS])
 def test_same_facts_per_section(en, zh):
     drift = []
-    for (eh, eb), (zh_h, zb) in zip(_sections(en), _sections(zh)):
-        fe, fz = _facts(eb), _facts(zb)
+    for (eh, eb), (zh_h, zb) in zip(sections(en), sections(zh)):
+        fe, fz = facts(eb), facts(zb)
         for only, where in ((sorted(fe - fz), en.name), (sorted(fz - fe), zh.name)):
             if only:
                 drift.append(f"{eh} / {zh_h}: only in {where}: {', '.join(only)}")

@@ -13,14 +13,14 @@ SCAFFOLD = ROOT / "skills/simulation/templates/scaffold"
 # A "TODO" is allowed only as a fill marker: TODO( ... ) or the literal start-seq marker.
 # (The start-seq branch is inert for *templates* — that marker is emitted by the renderer
 # into generated files; the branch is kept so this regex matches the sim check-materialization scanner.)
-_MARKER = re.compile(r"TODO\(|TODO: Start sequences here\.")
+MARKER = re.compile(r"TODO\(|TODO: Start sequences here\.")
 
 
-def _bad_todo_lines(path: Path):
+def bad_todo_lines(path: Path):
     return [
         ln
         for ln in path.read_text().splitlines()
-        if "TODO" in ln and not _MARKER.search(ln)
+        if "TODO" in ln and not MARKER.search(ln)
     ]
 
 
@@ -33,8 +33,8 @@ def test_infra_sv_has_no_todo():
 def test_scaffold_headers_have_no_nonmarker_todo():
     # provenance headers reworded off "TODO"; only real fill markers may remain.
     for sv in SCAFFOLD.glob("*.sv"):
-        assert _bad_todo_lines(sv) == [], (
-            f"{sv} has non-marker TODO: {_bad_todo_lines(sv)}"
+        assert bad_todo_lines(sv) == [], (
+            f"{sv} has non-marker TODO: {bad_todo_lines(sv)}"
         )
 
 

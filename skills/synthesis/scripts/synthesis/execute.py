@@ -8,21 +8,21 @@ from synthesis import result
 
 
 def run(workdir) -> int:
-    wd = Path(workdir).resolve()
+    workdir = Path(workdir).resolve()
     for name in ("result.json", "run.log"):
-        (wd / name).unlink(missing_ok=True)
-    reports = wd / "reports"
+        (workdir / name).unlink(missing_ok=True)
+    reports = workdir / "reports"
     if reports.is_symlink():
         reports.unlink()
     elif reports.exists():
         shutil.rmtree(reports)
-    if not (wd / "scripts/dc_run.tcl").is_file():
-        raise FileNotFoundError(wd / "scripts/dc_run.tcl")
-    attempt = wd / ".pending"
+    if not (workdir / "scripts/dc_run.tcl").is_file():
+        raise FileNotFoundError(workdir / "scripts/dc_run.tcl")
+    attempt = workdir / ".pending"
     if attempt.exists():
         shutil.rmtree(attempt)
     attempt.mkdir()
-    for source in wd.iterdir():
+    for source in workdir.iterdir():
         if source.name in {
             ".pending",
             "dispatch.json",
@@ -39,10 +39,10 @@ def run(workdir) -> int:
             shutil.copytree(source, target)
         else:
             shutil.copy2(source, target)
-    log = wd / "run.log"
+    log = workdir / "run.log"
     print(f"[synthesis run] {log}", flush=True)
     with log.open("w") as stream:
-        rc = subprocess.run(
+        exit_code = subprocess.run(
             ["dc_shell", "-f", "scripts/dc_run.tcl"],
             cwd=attempt,
             stdout=stream,
@@ -52,16 +52,16 @@ def run(workdir) -> int:
         line.startswith(("Error:", "ERROR:"))
         for line in log.read_text(errors="replace").splitlines()
     )
-    if rc or errors:
-        return rc if rc > 0 else 1
-    if result.run(attempt / "reports", [])[0] or result._missing_netlist(attempt):
+    if exit_code or errors:
+        return exit_code if exit_code > 0 else 1
+    if result.run(attempt / "reports", [])[0] or result.missing_netlist(attempt):
         return 1
-    old_out = wd / "out"
+    old_out = workdir / "out"
     if old_out.is_symlink():
         old_out.unlink()
     elif old_out.exists():
         shutil.rmtree(old_out)
     for name in ("out", "reports"):
-        (attempt / name).replace(wd / name)
+        (attempt / name).replace(workdir / name)
     shutil.rmtree(attempt)
     return 0

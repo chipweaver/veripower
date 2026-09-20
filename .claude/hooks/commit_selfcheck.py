@@ -8,9 +8,6 @@ convention + staged diff back to Claude so it re-reads its own message, then
 allows the re-submit of the same message (one-shot gate keyed by the message,
 not the command — the surrounding shell may vary). Revising the message re-arms
 the gate, so each final message is checked once.
-
-Fail-open: any internal error allows the command — a hook bug must never wedge
-a legitimate commit.
 """
 
 import hashlib
@@ -31,7 +28,7 @@ def commit_invoked(command: str) -> bool:
     try:
         toks = shlex.split(command)
     except ValueError:
-        toks = command.split()
+        return False
     takes_arg = {"-C", "-c", "--git-dir", "--work-tree", "--namespace", "--exec-path"}
     i = 0
     while i < len(toks):
@@ -87,22 +84,20 @@ def extract_message(command: str):
 
 
 def staged_summary(project_dir: str) -> str:
-    def run(args):
-        try:
-            out = subprocess.run(
-                ["git", *args],
-                cwd=project_dir,
-                capture_output=True,
-                text=True,
-                timeout=5,
-            )
-            return out.stdout.strip()
-        except Exception:
-            return ""
+    def _run(args):
+        result = subprocess.run(
+            ["git", *args],
+            cwd=project_dir,
+            capture_output=True,
+            text=True,
+            timeout=5,
+            check=True,
+        )
+        return result.stdout.strip()
 
-    stat = run(["diff", "--cached", "--stat"])
+    stat = _run(["diff", "--cached", "--stat"])
     if not stat:  # e.g. `git commit -a`: nothing in the index yet
-        stat = run(["diff", "--stat"])
+        stat = _run(["diff", "--stat"])
     if not stat:
         return "(no diff available)"
     if len(stat) > 4000:
@@ -176,26 +171,19 @@ def main():
 
     # Already prompted on this exact message recently → this is the re-submit.
     try:
-        with open(state_path) as fh:
-            seen_hash, seen_ts = fh.read().split()
+        with open(state_path) as stream:
+            seen_hash, seen_ts = stream.read().split()
         if seen_hash == msg_hash and (time.time() - float(seen_ts)) < TTL_SECONDS:
             os.remove(state_path)
             allow()
-    except (FileNotFoundError, ValueError, OSError):
+    except FileNotFoundError:
         pass
 
-    try:
-        with open(state_path, "w") as fh:
-            fh.write(f"{msg_hash} {time.time()}")
-    except OSError:
-        allow()  # can't record state → don't risk a loop; let it through
+    with open(state_path, "w") as stream:
+        stream.write(f"{msg_hash} {time.time()}")
 
     deny(REASON_TEMPLATE.format(diff=staged_summary(project_dir)))
 
 
 if __name__ == "__main__":
-    try:
-        main()
-    except Exception:
-        # Fail open: never wedge a legitimate commit on a hook bug.
-        sys.exit(0)
+    main()

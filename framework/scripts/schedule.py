@@ -12,82 +12,72 @@ import rules  # noqa: E402
 import store  # noqa: E402
 
 # Stage proofs in forward priority order.
-_STAGE_PROOFS = [r for r in rules.FORWARD_PRIORITY if rules.RULES[r].proof]
+STAGE_PROOFS = [r for r in rules.FORWARD_PRIORITY if rules.RULES[r].proof]
 
 
-def _latest_fail(events: list[dict], rule: str) -> tuple[int, dict] | None:
-    """(position, outcome) of the rule's latest outcome iff it is a fail."""
-    for i in range(len(events) - 1, -1, -1):
-        e = events[i]
-        if e["type"] == "outcome" and e["rule"] == rule:
-            return (i, e) if e["verdict"] == "fail" else None
-    return None
-
-
-def _active_diagnoses(events: list[dict], rule: str, outcome: dict) -> list[dict]:
+def active_diagnoses(events: list[dict], rule: str, outcome: dict) -> list[dict]:
     """Return unsuperseded diagnoses for this failure's run, in event order."""
-    sup = {
-        e["supersedes"]
-        for e in events
-        if e["type"] == "diagnosis" and e.get("supersedes")
+    superseded_ids = {
+        event["supersedes"]
+        for event in events
+        if event["type"] == "diagnosis" and event.get("supersedes")
     }
     return [
-        e
-        for e in events
-        if e["type"] == "diagnosis"
-        and e["id"] not in sup
-        and e["subject"]["proof"] == rule
-        and e["subject"]["outcome_run"] == outcome["run"]
+        event
+        for event in events
+        if event["type"] == "diagnosis"
+        and event["id"] not in superseded_ids
+        and event["subject"]["proof"] == rule
+        and event["subject"]["outcome_run"] == outcome["run"]
     ]
 
 
-def _legal(rule: str, name: str | None) -> bool:
-    """A repair owner is the failed stage or one of its input producers."""
-    return bool(name) and name in rules.repair_owners(rule)
-
-
-def _event_index(events: list[dict], event: dict) -> int:
-    """Find the position of this event object, including when equal-valued records coexist."""
-    for i, e in enumerate(events):
-        if e is event:
-            return i
-    return 0
-
-
-def _owner(module: str, events: list[dict], rule: str, idx: int, outcome: dict) -> dict:
+def resolve_repair_owners(
+    module: str, events: list[dict], rule: str, failure_index: int, outcome: dict
+) -> dict:
     """Resolve repair owners from diagnoses, the stage's result, then its diagnostic rule.
 
     An unresolved diagnosis holds the failure for clarification; otherwise group
     diagnoses by owner and record when each attribution became known."""
-    diags = _active_diagnoses(events, rule, outcome)
-    if diags:  # source 1: a later analysis outranks the stage's own self-report
-        if not all(d.get("fix_owner") for d in diags):
+    diagnoses = active_diagnoses(events, rule, outcome)
+    if diagnoses:  # source 1: a later analysis outranks the stage's own self-report
+        if not all(diagnosis.get("fix_owner") for diagnosis in diagnoses):
             return {
-                "attribution": diags[-1].get("attribution"),
+                "attribution": diagnoses[-1].get("attribution"),
                 "owners": [],
-                "unroutable": diags,
+                "unroutable": diagnoses,
             }
         owners = {}
-        for d in diags:
-            o = owners.setdefault(
-                d["fix_owner"], {"owner": d["fix_owner"], "since": idx, "diagnoses": []}
+        for diagnosis in diagnoses:
+            owner_state = owners.setdefault(
+                diagnosis["fix_owner"],
+                {
+                    "owner": diagnosis["fix_owner"],
+                    "since": failure_index,
+                    "diagnoses": [],
+                },
             )
-            o["since"] = max(o["since"], _event_index(events, d))
-            o["diagnoses"].append(d)
+            owner_state["since"] = max(
+                owner_state["since"],
+                next(index for index, event in enumerate(events) if event is diagnosis),
+            )
+            owner_state["diagnoses"].append(diagnosis)
         return {
-            "attribution": diags[-1].get("attribution"),
-            "owners": sorted(owners.values(), key=lambda o: o["since"]),
+            "attribution": diagnoses[-1].get("attribution"),
+            "owners": sorted(
+                owners.values(), key=lambda owner_state: owner_state["since"]
+            ),
             "unroutable": [],
         }
-    named = facts.declared_fix_owner(
+    declared_owner = facts.declared_fix_owner(
         module, rule
     )  # source 2: the failing stage's own envelope
-    if named:
+    if declared_owner:
         return {
-            "attribution": named,
+            "attribution": declared_owner,
             "owners": (
-                [{"owner": named, "since": idx, "diagnoses": []}]
-                if _legal(rule, named)
+                [{"owner": declared_owner, "since": failure_index, "diagnoses": []}]
+                if declared_owner in rules.repair_owners(rule)
                 else []
             ),
             "unroutable": [],
@@ -96,45 +86,54 @@ def _owner(module: str, events: list[dict], rule: str, idx: int, outcome: dict) 
     triage = rules.RULES[rule].triage
     return {
         "attribution": None,
-        "owners": [{"owner": triage, "since": idx, "diagnoses": []}] if triage else [],
+        "owners": [{"owner": triage, "since": failure_index, "diagnoses": []}]
+        if triage
+        else [],
         "unroutable": [],
     }
 
 
-def _answered(events: list[dict], since: int, owner: str) -> bool:
+def repair_started(events: list[dict], since: int, owner: str) -> bool:
     """A later owner dispatch answers an attribution unless its outcome is blocked."""
-    for i, e in enumerate(events):
-        if i <= since or e["type"] != "dispatch" or e["rule"] != owner:
+    for index, event in enumerate(events):
+        if index <= since or event["type"] != "dispatch" or event["rule"] != owner:
             continue
-        done = next(
+        completion = next(
             (
-                o
-                for o in events[i + 1 :]
-                if o["type"] == "outcome"
-                and o["rule"] == owner
-                and o["run"] == e["run"]
+                outcome
+                for outcome in events[index + 1 :]
+                if outcome["type"] == "outcome"
+                and outcome["rule"] == owner
+                and outcome["run"] == event["run"]
             ),
             None,
         )
-        if done is None or done["verdict"] != "blocked":
+        if completion is None or completion["verdict"] != "blocked":
             return True
     return False
 
 
-def _failures(module: str, events: list[dict]) -> list[dict]:
+def failures(module: str, events: list[dict]) -> list[dict]:
     """List the latest failed stage outcomes and their repair owners, in forward priority order."""
     out = []
     for rule in rules.FORWARD_PRIORITY:
-        hit = _latest_fail(events, rule)
-        if hit is None:
+        latest_failure = next(
+            (
+                (index, event)
+                for index, event in reversed(list(enumerate(events)))
+                if event["type"] == "outcome" and event["rule"] == rule
+            ),
+            None,
+        )
+        if latest_failure is None or latest_failure[1]["verdict"] != "fail":
             continue
-        idx, outcome = hit
+        outcome_index, outcome = latest_failure
         out.append(
             {
                 "rule": rule,
                 "run": outcome["run"],
-                "idx": idx,
-                **_owner(module, events, rule, idx, outcome),
+                "idx": outcome_index,
+                **resolve_repair_owners(module, events, rule, outcome_index, outcome),
             }
         )
     return out
@@ -143,58 +142,60 @@ def _failures(module: str, events: list[dict]) -> list[dict]:
 def owed(events: list[dict], fails: list[dict]) -> list[dict]:
     """Return unresolved failure-owner pairs after excluding owners that have acted."""
     out = []
-    for f in fails:
-        rest = {k: v for k, v in f.items() if k != "owners"}
-        for o in f["owners"]:
-            if not _answered(events, o["since"], o["owner"]):
-                out.append({**rest, **o})
+    for failure in fails:
+        failure_context = {k: v for k, v in failure.items() if k != "owners"}
+        for owner_state in failure["owners"]:
+            if not repair_started(events, owner_state["since"], owner_state["owner"]):
+                out.append({**failure_context, **owner_state})
     return out
 
 
-def _escalation(c: dict) -> dict:
+def escalation(failure: dict) -> dict:
     """Describe why the failure cannot be assigned an automatic repair."""
-    rule, named = c["rule"], c["attribution"]
-    if c["unroutable"]:
+    rule, attribution = failure["rule"], failure["attribution"]
+    if failure["unroutable"]:
         return {
             "rule": rule,
             "reason": f"{rule}: diagnosis named no fix_owner",
             "candidates": [
                 {
-                    "diagnosis": d["id"],
+                    "diagnosis": diagnosis["id"],
                     **{
-                        key: d[key]
+                        key: diagnosis[key]
                         for key in ("attribution", "fix_owner", "reason")
-                        if key in d
+                        if key in diagnosis
                     },
                 }
-                for d in c["unroutable"]
+                for diagnosis in failure["unroutable"]
             ],
         }
-    if named is None:
+    if attribution is None:
         return {"rule": rule, "reason": f"{rule}: envelope named no fix_owner"}
     return {
         "rule": rule,
-        "reason": f"{rule}: fix_owner {named!r} is neither itself nor an input producer",
+        "reason": f"{rule}: fix_owner {attribution!r} is neither itself nor an input producer",
     }
 
 
-def _unblocked(rule_name: str, pending: set[str], inflight: list[dict]) -> bool:
+def dependencies_ready(rule_name: str, pending: set[str], inflight: list[dict]) -> bool:
     """Check producer and consumer dependencies before starting a rule.
 
     An in-flight producer or consumer blocks the rule. A producer that is only a
     candidate blocks proof-producing work; diagnostics can analyze a past run."""
     closure = rules.input_closure(rule_name)
-    running = {f["rule"] for f in inflight}
-    if any(r in closure for r in running):
+    running = {execution["rule"] for execution in inflight}
+    if any(stage_name in closure for stage_name in running):
         return False
     if rules.RULES[rule_name].proof and any(
-        p != rule_name and p in closure for p in pending - running
+        producer != rule_name and producer in closure for producer in pending - running
     ):
         return False
-    return not any(rule_name in rules.input_closure(r) for r in running)
+    return not any(
+        rule_name in rules.input_closure(stage_name) for stage_name in running
+    )
 
 
-def _held_by_advisory(
+def held_by_advisory(
     module: str,
     events: list[dict],
     rule: str,
@@ -202,116 +203,108 @@ def _held_by_advisory(
     inflight: list[dict],
 ) -> bool:
     """Hold a rule for an invalid advisory predecessor that is scheduled or running."""
-    coming = coming | {f["rule"] for f in inflight}
-    for p in rules.ADVISORY_ORDER.get(rule, ()):
-        if p in coming and not facts.proof_valid(module, events, rules.RULES[p].proof):
+    coming = coming | {execution["rule"] for execution in inflight}
+    for predecessor in rules.ADVISORY_ORDER.get(rule, ()):
+        if predecessor in coming and not facts.proof_valid(
+            module, events, rules.RULES[predecessor].proof
+        ):
             return True
     return False
 
 
-def _forward_work(module: str, events: list[dict], required: set[str]) -> set[str]:
+def forward_work(module: str, events: list[dict], required: set[str]) -> set[str]:
     """Expand invalid required proofs with producers needed to make their inputs available."""
-    work = {p for p in required if not facts.proof_valid(module, events, p)}
+    work = {
+        stage_name
+        for stage_name in required
+        if not facts.proof_valid(module, events, stage_name)
+    }
     frontier = set(work)
     while frontier:
-        nxt = set()
+        next_frontier = set()
         for rule in frontier:
             if facts.rule_available(module, events, rule):
                 continue
-            for prod in rules.input_producers(rule):
-                pr = rules.RULES[prod]
+            for producer in rules.input_producers(rule):
+                producer_rule = rules.RULES[producer]
                 needs = (
-                    pr.proof and not facts.proof_valid(module, events, pr.proof)
-                ) or not facts.rule_available(module, events, prod)
-                if needs and prod not in work:
-                    work.add(prod)
-                    nxt.add(prod)
-        frontier = nxt
+                    producer_rule.proof
+                    and not facts.proof_valid(module, events, producer_rule.proof)
+                ) or not facts.rule_available(module, events, producer)
+                if needs and producer not in work:
+                    work.add(producer)
+                    next_frontier.add(producer)
+        frontier = next_frontier
     return work
 
 
-def _dispatched(module: str, action: dict) -> dict:
-    """Add the exact dispatch argv for the selected action and its repair context."""
-    action = dict(action)
-    args = [
-        "dispatch",
-        "--module",
-        module,
-        "--rule",
-        action["rule"],
-    ]
-    for cb_rule, cb_run in action.get("caused_by", []):
-        args += ["--caused-by", f"{cb_rule}:{cb_run}"]
-    if action.get("diagnosis_refs"):
-        args += ["--diagnosis-refs", ",".join(action["diagnosis_refs"])]
-    if action.get("params"):
-        args += ["--params", json.dumps(action["params"], sort_keys=True)]
-    action["dispatch_args"] = args
-    return action
-
-
-def _ready_to_reap(module, events, inflight, wake):
+def ready_to_reap(module, events, inflight, wake):
     """Select a run with a result, or the exited executor identified by --wake."""
     if wake and ":" in wake:
-        r, _, n = wake.partition(":")
-        if n.isdigit() and {"rule": r, "run": int(n)} in inflight:
-            return {"action": "REAP", "rule": r, "run": int(n)}
-    ready = [
-        f
-        for f in inflight
+        stage_name, unused, run_number = wake.partition(":")
         if (
-            store.module_root(module)
-            / (facts.run_workdir(events, f["rule"], f["run"]) or "")
+            run_number.isdigit()
+            and {"rule": stage_name, "run": int(run_number)} in inflight
+        ):
+            return {"action": "REAP", "rule": stage_name, "run": int(run_number)}
+    ready = [
+        execution
+        for execution in inflight
+        if (
+            Path(module)
+            / (facts.run_workdir(events, execution["rule"], execution["run"]) or "")
             / "result.json"
         ).is_file()
     ]
     if not ready:
         return None
     ready.sort(
-        key=lambda f: (
-            rules.FORWARD_PRIORITY.index(f["rule"])
-            if f["rule"] in rules.FORWARD_PRIORITY
+        key=lambda execution: (
+            rules.FORWARD_PRIORITY.index(execution["rule"])
+            if execution["rule"] in rules.FORWARD_PRIORITY
             else 99
         )
     )
     return {"action": "REAP", "rule": ready[0]["rule"], "run": ready[0]["run"]}
 
 
-def _group(owed_: list[dict]) -> dict[str, list[dict]]:
-    """Group outstanding failures by repair owner for a shared dispatch."""
-    out: dict[str, list[dict]] = {}
-    for f in owed_:
-        out.setdefault(f["owner"], []).append(f)
-    return out
-
-
-def _candidates(module, events, inflight, repair, owed_rules, work):
+def ready_stages(module, events, inflight, repair, owed_rules, work):
     """Order currently startable rules by repair, execution mode and forward priority."""
-    pool = (work | set(repair)) - owed_rules - {f["rule"] for f in inflight}
+    pool = (
+        (work | set(repair))
+        - owed_rules
+        - {execution["rule"] for execution in inflight}
+    )
     # `coming`, for the advisory gate: a rule held out of the pool is not going to speak
     # this round, and an advisory hold that waits for it waits forever.
     startable = [
-        r
-        for r in pool
-        if facts.rule_available(module, events, r)
-        and not _held_by_advisory(module, events, r, pool, inflight)
+        stage_name
+        for stage_name in pool
+        if facts.rule_available(module, events, stage_name)
+        and not held_by_advisory(module, events, stage_name, pool, inflight)
     ]
-    pending = {f["rule"] for f in inflight} | set(startable)
-    out = [r for r in startable if _unblocked(r, pending, inflight)]
+    pending = {execution["rule"] for execution in inflight} | set(startable)
+    available_stages = [
+        stage_name
+        for stage_name in startable
+        if dependencies_ready(stage_name, pending, inflight)
+    ]
     return sorted(
-        out,
-        key=lambda r: (
+        available_stages,
+        key=lambda stage_name: (
             # answer a failure before building anything: a proof still owed against is going
             # to be re-verified either way, and doing it before the fix lands spends it twice
-            0 if r in repair else 1,
+            0 if stage_name in repair else 1,
             # Start independent background tasks before main-thread work.
-            0 if rules.RULES[r].execution == "task" else 1,
-            rules.FORWARD_PRIORITY.index(r) if r in rules.FORWARD_PRIORITY else -1,
+            0 if rules.RULES[stage_name].execution == "task" else 1,
+            rules.FORWARD_PRIORITY.index(stage_name)
+            if stage_name in rules.FORWARD_PRIORITY
+            else -1,
         ),
     )
 
 
-def _dispatch_action(module, rule, repair):
+def dispatch_action(module, rule, repair):
     """The DISPATCH, carrying every failure this round is answerable for."""
     action = {
         "action": "DISPATCH",
@@ -320,18 +313,28 @@ def _dispatch_action(module, rule, repair):
     }
     group = repair.get(rule, [])
     if group:
-        action["caused_by"] = [[f["rule"], f["run"]] for f in group]
-        refs = [d["id"] for f in group for d in f["diagnoses"]]
-        if refs:
-            action["diagnosis_refs"] = refs
+        action["caused_by"] = [[failure["rule"], failure["run"]] for failure in group]
+        diagnosis_ids = [
+            diagnosis["id"] for failure in group for diagnosis in failure["diagnoses"]
+        ]
+        if diagnosis_ids:
+            action["diagnosis_refs"] = diagnosis_ids
         # A rule that declares params is being dispatched AT one of these failures — today
         # only the diagnostic, which needs the run it must open.
         if "sim_run" in rules.RULES[rule].params:
             action["params"] = {"sim_run": group[0]["run"]}
-    return _dispatched(module, action)
+    arguments = ["dispatch", "--module", module, "--rule", rule]
+    for failed_rule, failed_run in action.get("caused_by", []):
+        arguments += ["--caused-by", f"{failed_rule}:{failed_run}"]
+    if action.get("diagnosis_refs"):
+        arguments += ["--diagnosis-refs", ",".join(action["diagnosis_refs"])]
+    if action.get("params"):
+        arguments += ["--params", json.dumps(action["params"], sort_keys=True)]
+    action["dispatch_args"] = arguments
+    return action
 
 
-def _settle(module, events, inflight, required, closing):
+def settle(module, events, inflight, required, closing):
     """Return YIELD, DONE or the remaining blocker when no rule can start."""
     if inflight:
         return {"action": "YIELD", "in_flight": facts.in_flight(events)}
@@ -363,31 +366,37 @@ def decide(
     events = store.read_events(module)
     inflight = facts.in_flight(events)
 
-    reap = _ready_to_reap(module, events, inflight, wake)
+    reap = ready_to_reap(module, events, inflight, wake)
     if reap:
         return reap
 
-    fails = _failures(module, events)
-    unclear = [f for f in fails if not f["owners"]]
+    failed_stages = failures(module, events)
+    unclear = [failure for failure in failed_stages if not failure["owners"]]
     if unclear:
         # Clarify unresolved attribution before scheduling repairs.
-        return {"action": "ESCALATE", **_escalation(unclear[0])}
+        return {"action": "ESCALATE", **escalation(unclear[0])}
     # ↓ every failure below this line has an owner
-    owed_ = owed(events, fails)
+    pending_repairs = owed(events, failed_stages)
 
-    repair = _group(owed_)
+    repair: dict[str, list[dict]] = {}
+    for failure in pending_repairs:
+        repair.setdefault(failure["owner"], []).append(failure)
     # Wait for upstream repairs before re-verifying, but allow a stage to repair itself.
-    owed_rules = {f["rule"] for f in owed_ if f["owner"] != f["rule"]}
-    required = set(_STAGE_PROOFS)
-    candidates = _candidates(
+    owed_rules = {
+        failure["rule"]
+        for failure in pending_repairs
+        if failure["owner"] != failure["rule"]
+    }
+    required = set(STAGE_PROOFS)
+    candidates = ready_stages(
         module,
         events,
         inflight,
         repair,
         owed_rules,
-        _forward_work(module, events, required),
+        forward_work(module, events, required),
     )
     if candidates:
-        return _dispatch_action(module, candidates[0], repair)
+        return dispatch_action(module, candidates[0], repair)
 
-    return _settle(module, events, inflight, required, closing)
+    return settle(module, events, inflight, required, closing)

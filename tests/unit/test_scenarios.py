@@ -37,7 +37,7 @@ import store  # noqa: E402
 TS = "2026-07-10T00:00:00.000000Z"
 
 
-def _now_iso() -> str:
+def utc_timestamp() -> str:
     """Fresh second-resolution UTC stamp (mirrors skill finalizers) so a mid-test
     result.json passes the reap temporal-integrity check."""
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -45,7 +45,7 @@ def _now_iso() -> str:
 
 # ── test_schedule.py helper idioms (copied verbatim — real event logs) ──────────
 
-_OUTPUTS = {
+OUTPUTS = {
     "specification": [
         "Design/specification/design.md",
         "Design/specification/manifest.json",
@@ -90,19 +90,19 @@ _OUTPUTS = {
 }
 
 
-def _fp(module, rel):
-    return facts.fingerprint(store.module_root(module) / rel)
+def fp(module, rel):
+    return facts.fingerprint(Path(module) / rel)
 
 
-def _mk(module, rel, content):
+def mk(module, rel, content):
     if not Path(rel).suffix:  # tree artifact (Design/rtl-design/src): one file inside
-        return _mk(module, rel + "/rtl.v", content)
-    p = store.module_root(module) / rel
+        return mk(module, rel + "/rtl.v", content)
+    p = Path(module) / rel
     p.parent.mkdir(parents=True, exist_ok=True)
     p.write_text(content)
 
 
-def _dispatch(module, rule, run, inputs):
+def dispatch(module, rule, run, inputs):
     store.append_event(
         module,
         {
@@ -117,7 +117,7 @@ def _dispatch(module, rule, run, inputs):
     )
 
 
-def _outcome(module, rule, run, verdict, outputs, proofs, **extra):
+def outcome(module, rule, run, verdict, outputs, proofs, **extra):
     ev = {
         "type": "outcome",
         "rule": rule,
@@ -131,8 +131,8 @@ def _outcome(module, rule, run, verdict, outputs, proofs, **extra):
     store.append_event(module, ev, TS)
 
 
-def _recorded_inputs(module, rule, extra=()):
-    root = store.module_root(module)
+def recorded_inputs(module, rule, extra=()):
+    root = Path(module)
     rec = {}
     for globs in rules.RULES[rule].inputs.values():
         for g in globs:
@@ -141,22 +141,22 @@ def _recorded_inputs(module, rule, extra=()):
             for p in sorted(root.glob(g)):
                 rec[str(p.relative_to(root))] = facts.fingerprint(p)
     for rel in extra:
-        rec[rel] = _fp(module, rel)
+        rec[rel] = fp(module, rel)
     return rec
 
 
-def _valid(module, rule, run, *, tag=None, out_content=None):
+def valid(module, rule, run, *, tag=None, out_content=None):
     """Dispatch+pass `rule`: write its declared outputs (content per `out_content`
     override else the run-tagged default), record inputs/outputs at current-disk
     fingerprints, and emit a passing same-name proof."""
     marker = tag if tag is not None else f"r{run}"
-    for rel in _OUTPUTS[rule]:
+    for rel in OUTPUTS[rule]:
         content = (out_content or {}).get(rel, f"{rule}:{rel}:{marker}")
-        _mk(module, rel, content)
-    inputs = _recorded_inputs(module, rule)
-    outputs = {rel: _fp(module, rel) for rel in _OUTPUTS[rule]}
-    _dispatch(module, rule, run, inputs)
-    _outcome(
+        mk(module, rel, content)
+    inputs = recorded_inputs(module, rule)
+    outputs = {rel: fp(module, rel) for rel in OUTPUTS[rule]}
+    dispatch(module, rule, run, inputs)
+    outcome(
         module,
         rule,
         run,
@@ -172,7 +172,7 @@ def _valid(module, rule, run, *, tag=None, out_content=None):
     )
 
 
-def _fail(module, rule, run, owner="auto"):
+def fail(module, rule, run, owner="auto"):
     """Dispatch+fail `rule`, recording current-disk inputs and no outputs.
 
     Also writes the canonical envelope naming a fix owner, because every stage contract
@@ -185,14 +185,14 @@ def _fail(module, rule, run, owner="auto"):
     ss = {"fail_reason": f"synthetic {rule} failure"}
     if owner:
         ss["fix_owner"] = owner
-    _mk(
+    mk(
         module,
-        "/".join(rules.workdir_root(rule)) + "/result.json",
+        "/".join(rules.RULES[rule].workdir_root) + "/result.json",
         json.dumps({"status": "fail", "stage_specific": ss}),
     )
-    inputs = _recorded_inputs(module, rule)
-    _dispatch(module, rule, run, inputs)
-    _outcome(
+    inputs = recorded_inputs(module, rule)
+    dispatch(module, rule, run, inputs)
+    outcome(
         module,
         rule,
         run,
@@ -208,12 +208,12 @@ def _fail(module, rule, run, owner="auto"):
     )
 
 
-def _chain_through_simulation(module):
+def chain_through_simulation(module):
     """spec/plan/rtl proofs valid on disk — simulation's whole input closure."""
-    _mk(module, "intent/brainstorm.md", "b1")
-    _valid(module, "specification", 1)
-    _valid(module, "simulation-plan", 1)
-    _valid(module, "rtl-design", 1)
+    mk(module, "intent/brainstorm.md", "b1")
+    valid(module, "specification", 1)
+    valid(module, "simulation-plan", 1)
+    valid(module, "rtl-design", 1)
 
 
 # ── Step 1 ──────────────────────────────────────────────────────────────────────
@@ -225,7 +225,7 @@ def test_step1_scaffold_fix_keeps_upstream_proofs_valid(tmp_path, monkeypatch):
     because none of them consume the plan sidecars."""
     monkeypatch.chdir(tmp_path)
     m = "round1"
-    _mk(m, "intent/brainstorm.md", "b1")
+    mk(m, "intent/brainstorm.md", "b1")
     for rule in (
         "specification",
         "simulation-plan",
@@ -235,7 +235,7 @@ def test_step1_scaffold_fix_keeps_upstream_proofs_valid(tmp_path, monkeypatch):
         "timing-analysis",
         "simulation",
     ):
-        _valid(m, rule, 1)
+        valid(m, rule, 1)
 
     evs = store.read_events(m)
     # baseline (non-vacuous): every proof valid before the scaffold change.
@@ -243,7 +243,7 @@ def test_step1_scaffold_fix_keeps_upstream_proofs_valid(tmp_path, monkeypatch):
         assert facts.proof_valid(m, evs, rule), f"{rule} should start valid"
 
     # scaffold-only change: drift simulation-plan's tb-scaffold.json.
-    _mk(m, "Verification/simulation-plan/tb-scaffold.json", "scaffold-v2")
+    mk(m, "Verification/simulation-plan/tb-scaffold.json", "scaffold-v2")
     evs = store.read_events(m)
 
     # BINDING: lint / synth / timing proofs stay valid (no scaffold in their inputs).
@@ -265,7 +265,7 @@ def test_plan_sidecars_invalidate_only_their_own_consumer(tmp_path, monkeypatch)
     """
     monkeypatch.chdir(tmp_path)
     m = "granularity"
-    _mk(m, "intent/brainstorm.md", "b1")
+    mk(m, "intent/brainstorm.md", "b1")
     for rule in (
         "specification",
         "simulation-plan",
@@ -274,11 +274,11 @@ def test_plan_sidecars_invalidate_only_their_own_consumer(tmp_path, monkeypatch)
         "simulation",
         "power-analysis",
     ):
-        _valid(m, rule, 1)
+        valid(m, rule, 1)
     base = "Verification/simulation-plan"
 
-    def flip(sidecar, content):
-        _mk(m, f"{base}/{sidecar}", content)
+    def _flip(sidecar, content):
+        mk(m, f"{base}/{sidecar}", content)
         evs = store.read_events(m)
         return facts.proof_valid(m, evs, "simulation"), facts.proof_valid(
             m, evs, "power-analysis"
@@ -288,25 +288,25 @@ def test_plan_sidecars_invalidate_only_their_own_consumer(tmp_path, monkeypatch)
     assert facts.proof_valid(m, evs, "simulation")  # baseline: both start valid
     assert facts.proof_valid(m, evs, "power-analysis")
 
-    assert flip("power-scenarios.json", "[1]") == (True, False)
-    _valid(m, "power-analysis", 2)  # re-establish before the next probe
-    assert flip("tb-scaffold.json", "{}") == (False, True)
-    _valid(m, "simulation", 2)
-    assert flip("sequences.json", "[2]") == (False, False)
+    assert _flip("power-scenarios.json", "[1]") == (True, False)
+    valid(m, "power-analysis", 2)  # re-establish before the next probe
+    assert _flip("tb-scaffold.json", "{}") == (False, True)
+    valid(m, "simulation", 2)
+    assert _flip("sequences.json", "[2]") == (False, False)
 
 
 # ── Step 2 ──────────────────────────────────────────────────────────────────────
 
 
-def _triage(module, sim_run, root_cause):
+def triage(module, sim_run, root_cause):
     """Real triage dispatch+reap: crafted schema-valid result.json -> a promoted
-    canonical result.json + a minted diagnosis event (kernel _derive_triage)."""
+    canonical result.json + a minted diagnosis event (kernel derive_triage)."""
     d = kernel.cmd_dispatch(module, "simulation-triage", None, {"sim_run": sim_run})
     assert d["ok"], d
     result = {
         "stage": "simulation-triage",
         "module": module,
-        "produced_at": _now_iso(),
+        "produced_at": utc_timestamp(),
         "status": "pass",
         "artifacts": [],
         "stage_specific": {
@@ -320,7 +320,7 @@ def _triage(module, sim_run, root_cause):
             ],
         },
     }
-    _mk(module, f"{d['workdir']}/result.json", json.dumps(result))
+    mk(module, f"{d['workdir']}/result.json", json.dumps(result))
     r = kernel.cmd_reap(module, "simulation-triage", d["run"])
     assert r["ok"] and r["verdict"] == "pass", r
     return d
@@ -332,12 +332,12 @@ def test_step2_repair_direct_hash_invariance_triage_handoff(tmp_path, monkeypatc
     fail stale -> a repair forwards DIRECT to simulation, not rtl-design again."""
     monkeypatch.chdir(tmp_path)
     m = "round2"
-    _chain_through_simulation(m)
-    _valid(m, "lint-cdc", 1)  # a real lint proof, so (c) is non-vacuous
+    chain_through_simulation(m)
+    valid(m, "lint-cdc", 1)  # a real lint proof, so (c) is non-vacuous
     rtl1 = facts.latest_outcome(store.read_events(m), "rtl-design")["outputs"]
 
-    _fail(m, "simulation", 1)  # smoke fail — records matvec.v@r1 as an input
-    _triage(m, sim_run=1, root_cause="rtl-design")
+    fail(m, "simulation", 1)  # smoke fail — records matvec.v@r1 as an input
+    triage(m, sim_run=1, root_cause="rtl-design")
 
     # fresh sim fail + reliable triage diagnosis -> DISPATCH the fix owner rtl-design.
     evs = store.read_events(m)
@@ -351,14 +351,12 @@ def test_step2_repair_direct_hash_invariance_triage_handoff(tmp_path, monkeypatc
     # both the regression and the analysis that read it — the second derived from the
     # diagnosis's own subject, not stored on it — and `scope` carries the diagnosis's
     # anchors. Nothing is transcribed, and the fix owner never navigates to another stage.
-    _mk(m, "Verification/simulation/runs/1/result.json", json.dumps({"status": "fail"}))
+    mk(m, "Verification/simulation/runs/1/result.json", json.dumps({"status": "fail"}))
     dr = kernel.cmd_dispatch(
         m, "rtl-design", a["diagnosis_refs"], None, [("simulation", 1)]
     )
     assert dr["ok"], dr
-    doc = json.loads(
-        (store.module_root(m) / dr["workdir"] / "dispatch.json").read_text()
-    )
+    doc = json.loads((Path(m) / dr["workdir"] / "dispatch.json").read_text())
     assert doc["caused_by"] == [
         "Verification/simulation/runs/1/result.json",
         "Verification/simulation-triage/runs/1/result.json",
@@ -368,10 +366,10 @@ def test_step2_repair_direct_hash_invariance_triage_handoff(tmp_path, monkeypatc
     assert "matvec.v:1" not in doc.get("scope", [])
 
     # the fix lands (run 2): outcome changes ONLY matvec.v; filelist/README untouched.
-    _mk(m, "Design/rtl-design/src", "rtl-design:matvec.v:FIX")  # drift on disk
-    outputs = {rel: _fp(m, rel) for rel in _OUTPUTS["rtl-design"]}
-    inputs = _recorded_inputs(m, "rtl-design")
-    _outcome(
+    mk(m, "Design/rtl-design/src", "rtl-design:matvec.v:FIX")  # drift on disk
+    outputs = {rel: fp(m, rel) for rel in OUTPUTS["rtl-design"]}
+    inputs = recorded_inputs(m, "rtl-design")
+    outcome(
         m,
         "rtl-design",
         dr["run"],
@@ -421,13 +419,13 @@ def test_step2b_minimal_edit_on_directiveless_forward(tmp_path, monkeypatch):
     directive-LESS forward path)."""
     monkeypatch.chdir(tmp_path)
     m = "round2b"
-    _mk(m, "intent/brainstorm.md", "b1")
-    _valid(m, "specification", 1)
+    mk(m, "intent/brainstorm.md", "b1")
+    valid(m, "specification", 1)
     spec1 = facts.latest_outcome(store.read_events(m), "specification")["outputs"]
     assert facts.proof_valid(m, store.read_events(m), "specification")
 
     # a design.md prose tweak (hand-edit spec's own output) expires the proof.
-    _mk(m, "Design/specification/design.md", "design v2 — one prose sentence added")
+    mk(m, "Design/specification/design.md", "design v2 — one prose sentence added")
     assert not facts.proof_valid(m, store.read_events(m), "specification")
 
     # forward re-dispatch with NO directive.
@@ -437,10 +435,10 @@ def test_step2b_minimal_edit_on_directiveless_forward(tmp_path, monkeypatch):
 
     # the producer carries prior outputs forward: it re-runs (run 2) re-emitting every
     # untouched artifact byte-for-byte (only design.md, the tweaked file, differs).
-    inputs = _recorded_inputs(m, "specification")
-    outputs = {rel: _fp(m, rel) for rel in _OUTPUTS["specification"]}
-    _dispatch(m, "specification", 2, inputs)
-    _outcome(
+    inputs = recorded_inputs(m, "specification")
+    outputs = {rel: fp(m, rel) for rel in OUTPUTS["specification"]}
+    dispatch(m, "specification", 2, inputs)
+    outcome(
         m,
         "specification",
         2,
@@ -458,7 +456,7 @@ def test_step2b_minimal_edit_on_directiveless_forward(tmp_path, monkeypatch):
 
     # BINDING: every untouched output byte-identical to the previous run.
     touched = "Design/specification/design.md"
-    for rel in _OUTPUTS["specification"]:
+    for rel in OUTPUTS["specification"]:
         if rel == touched:
             continue
         assert spec2[rel] == spec1[rel], f"{rel} must carry forward (byte-identical)"
@@ -473,8 +471,8 @@ def test_step3_supersede_is_auditable(tmp_path, monkeypatch):
     rtl-design is re-dispatched on the new one, the supersede link on the ledger."""
     monkeypatch.chdir(tmp_path)
     m = "round3"
-    _chain_through_simulation(m)
-    _fail(m, "simulation", 1)
+    chain_through_simulation(m)
+    fail(m, "simulation", 1)
 
     # d1: original diagnosis blaming simulation-plan.
     store.append_event(
@@ -507,7 +505,7 @@ def test_step3_supersede_is_auditable(tmp_path, monkeypatch):
     evs = store.read_events(m)
     sim_out = facts.latest_outcome(evs, "simulation")
     # the old attribution goes inactive (superseded); only d2 is active.
-    active = schedule._active_diagnoses(evs, "simulation", sim_out)
+    active = schedule.active_diagnoses(evs, "simulation", sim_out)
     assert [d["id"] for d in active] == ["d2"]
     assert not any(d["id"] == "d1" for d in active)
 
@@ -524,11 +522,10 @@ def test_step3_supersede_is_auditable(tmp_path, monkeypatch):
 # ── Step 4 ──────────────────────────────────────────────────────────────────────
 
 
-def _timing_owed(module):
+def timing_owed(module):
     """Is timing-analysis still owed a fix — i.e. has its owner not been dispatched since?"""
     evs = store.read_events(module)
-    assert schedule._latest_fail(evs, "timing-analysis") is not None
-    fails = schedule._failures(module, evs)
+    fails = schedule.failures(module, evs)
     return any(f["rule"] == "timing-analysis" for f in schedule.owed(evs, fails))
 
 
@@ -538,28 +535,28 @@ def test_step4_multihop_synthesis_first_then_timing(tmp_path, monkeypatch):
     fail-freshness + condition 2 (no rework counter); never ESCALATE."""
     monkeypatch.chdir(tmp_path)
     m = "multihop"
-    _mk(m, "intent/brainstorm.md", "b1")
-    _valid(m, "specification", 1)
-    _valid(m, "rtl-design", 1)
-    _valid(m, "synthesis", 1)
-    _fail(
+    mk(m, "intent/brainstorm.md", "b1")
+    valid(m, "specification", 1)
+    valid(m, "rtl-design", 1)
+    valid(m, "synthesis", 1)
+    fail(
         m, "timing-analysis", 1, owner="synthesis"
     )  # a setup violation is synthesis's to fix
 
-    assert _timing_owed(m)  # baseline (non-vacuous)
+    assert timing_owed(m)  # baseline (non-vacuous)
 
     # rtl-design fix lands -> synthesis proof invalid (its recorded RTL input drifts), but
     # _syn.v not yet regenerated, so timing's OWN inputs have not moved. The complaint stays
     # open: an upstream rebuild two hops away does not retract what timing reported.
-    _valid(m, "rtl-design", 2)
+    valid(m, "rtl-design", 2)
     assert not facts.proof_valid(m, store.read_events(m), "synthesis")
-    assert _timing_owed(m)
+    assert timing_owed(m)
 
     # the round rebuilds the producer (synthesis) — not timing, never ESCALATE. lint-cdc goes
     # first: the RTL edit staled it too, and synthesis's advisory edge waits on it.
     a = schedule.decide(m)
     assert a["action"] == "DISPATCH" and a["rule"] == "lint-cdc"
-    _valid(m, "lint-cdc", 2)
+    valid(m, "lint-cdc", 2)
     a = schedule.decide(m)
     assert a["action"] == "DISPATCH" and a["rule"] == "synthesis"
 
@@ -568,9 +565,9 @@ def test_step4_multihop_synthesis_first_then_timing(tmp_path, monkeypatch):
     # failure: it closes, and forward re-verification takes over.
     # synthesis has now had its turn, so timing is no longer owed anything and the forward
     # step re-verifies it.
-    _valid(m, "synthesis", 2)
+    valid(m, "synthesis", 2)
     assert facts.proof_valid(m, store.read_events(m), "synthesis")
-    assert not _timing_owed(m)
+    assert not timing_owed(m)
 
     # timing re-verifies LAST.
     b = schedule.decide(m)
@@ -579,19 +576,19 @@ def test_step4_multihop_synthesis_first_then_timing(tmp_path, monkeypatch):
 
 # ── Step 5 ──────────────────────────────────────────────────────────────────────
 
-_SPEC_MAIN = ROOT / "skills/specification/scripts/spec/__main__.py"
+SPEC_MAIN = ROOT / "skills/specification/scripts/spec/__main__.py"
 
 
-def _derive_constraints(workdir):
+def derive_constraints(workdir):
     return subprocess.run(
-        ["python3", str(_SPEC_MAIN), "derive-constraints", "--workdir", str(workdir)],
+        ["python3", str(SPEC_MAIN), "derive-constraints", "--workdir", str(workdir)],
         capture_output=True,
         text=True,
         check=True,
     )
 
 
-def _spec_workdir(tmp_path):
+def spec_workdir(tmp_path):
     (tmp_path / "manifest.json").write_text(
         json.dumps(
             {
@@ -660,8 +657,8 @@ def test_step5_cold_regenerated_seed_byte_identical(tmp_path, monkeypatch):
     re-derive — derive-constraints is deterministic, so the cold-regenerated seed is
     byte-identical to the warm one. (SpyGlass verdict-equality is an EDA-gated
     design-time obligation exercised via the fixture, NOT asserted here.)"""
-    wd = _spec_workdir(tmp_path)
-    _derive_constraints(wd)
+    wd = spec_workdir(tmp_path)
+    derive_constraints(wd)
     warm_sgdc = (wd / "constraints" / "m.sgdc").read_bytes()
     warm_sdc = (wd / "constraints" / "m.sdc").read_bytes()
     # sanity: the seed is a non-trivial multi-clock SGDC (real CDC content).
@@ -670,7 +667,7 @@ def test_step5_cold_regenerated_seed_byte_identical(tmp_path, monkeypatch):
     # delete the warm cache seed, then cold-regenerate from the identical input.
     (wd / "constraints" / "m.sgdc").unlink()
     (wd / "constraints" / "m.sdc").unlink()
-    _derive_constraints(wd)
+    derive_constraints(wd)
 
     assert (wd / "constraints" / "m.sgdc").read_bytes() == warm_sgdc
     assert (wd / "constraints" / "m.sdc").read_bytes() == warm_sdc
@@ -691,26 +688,24 @@ def test_step5_lintcdc_dispatchable_and_waiver_never_cached(tmp_path, monkeypatc
 
     monkeypatch.chdir(tmp_path)
     m = "cold"
-    _mk(m, "intent/brainstorm.md", "b1")
-    _valid(m, "specification", 1)  # writes the SGDC seed constraints/top.sgdc
-    _valid(m, "rtl-design", 1)
+    mk(m, "intent/brainstorm.md", "b1")
+    valid(m, "specification", 1)  # writes the SGDC seed constraints/top.sgdc
+    valid(m, "rtl-design", 1)
     evs = store.read_events(m)
     assert facts.rule_available(m, evs, "lint-cdc")  # dispatchable cold (no cache yet)
 
     # a prior lint run's warm cache seed exists, then is deleted -> still dispatchable.
-    _mk(m, "Design/lint-cdc/scripts/constraints.sgdc", "cached-sgdc-v1")
+    mk(m, "Design/lint-cdc/scripts/constraints.sgdc", "cached-sgdc-v1")
     assert facts.rule_available(m, evs, "lint-cdc")
-    (store.module_root(m) / "Design/lint-cdc/scripts/constraints.sgdc").unlink()
+    (Path(m) / "Design/lint-cdc/scripts/constraints.sgdc").unlink()
     assert facts.rule_available(m, store.read_events(m), "lint-cdc")
 
 
 # ── The four dispatch shapes (dispatch.json) ─────────────────────────────────────
 
 
-def _dispatch_doc(module, workdir):
-    return json.loads(
-        (store.module_root(module) / workdir / "dispatch.json").read_text()
-    )
+def dispatch_doc(module, workdir):
+    return json.loads((Path(module) / workdir / "dispatch.json").read_text())
 
 
 def test_forward_redispatch_scope_names_the_drifted_inputs(tmp_path, monkeypatch):
@@ -719,19 +714,19 @@ def test_forward_redispatch_scope_names_the_drifted_inputs(tmp_path, monkeypatch
     the kernel can compute it (the fingerprint table lives in the log)."""
     monkeypatch.chdir(tmp_path)
     m = "fwd-scope"
-    _mk(m, "intent/brainstorm.md", "b1")
-    _valid(m, "specification", 1)
-    _valid(m, "rtl-design", 1)  # records design.md/child/manifest at r1 fingerprints
+    mk(m, "intent/brainstorm.md", "b1")
+    valid(m, "specification", 1)
+    valid(m, "rtl-design", 1)  # records design.md/child/manifest at r1 fingerprints
     assert facts.proof_valid(m, store.read_events(m), "rtl-design")
 
-    _valid(m, "specification", 2, tag="r2")  # spec re-runs, re-promoting those files
+    valid(m, "specification", 2, tag="r2")  # spec re-runs, re-promoting those files
     assert not facts.proof_valid(
         m, store.read_events(m), "rtl-design"
     )  # inputs drifted
 
     d = kernel.cmd_dispatch(m, "rtl-design", None)
     assert d["ok"], d
-    doc = _dispatch_doc(m, d["workdir"])
+    doc = dispatch_doc(m, d["workdir"])
     assert "Design/specification/design.md" in doc["scope"]
     assert "Design/specification/design.md" in doc["scope"]
     assert "caused_by" not in doc and "reasons" not in doc
@@ -743,28 +738,28 @@ def test_first_dispatch_carries_no_narrowing_key(tmp_path, monkeypatch):
     re-verify by whether the workdir already holds its own prior products."""
     monkeypatch.chdir(tmp_path)
     m = "fwd-first"
-    _mk(m, "intent/brainstorm.md", "b1")
-    _valid(m, "specification", 1)  # spec present so rtl-design's inputs are available
+    mk(m, "intent/brainstorm.md", "b1")
+    valid(m, "specification", 1)  # spec present so rtl-design's inputs are available
     d = kernel.cmd_dispatch(m, "rtl-design", None)
     assert d["ok"], d
-    assert list(_dispatch_doc(m, d["workdir"])) == ["inputs"]
+    assert list(dispatch_doc(m, d["workdir"])) == ["inputs"]
 
 
 def test_reverify_dispatch_carries_no_narrowing_key(tmp_path, monkeypatch):
     """An explicit recheck with unchanged inputs carries prior products without narrowing."""
     monkeypatch.chdir(tmp_path)
     m = "reverify"
-    _mk(m, "intent/brainstorm.md", "b1")
-    _valid(m, "specification", 1)
+    mk(m, "intent/brainstorm.md", "b1")
+    valid(m, "specification", 1)
     assert facts.proof_valid(m, store.read_events(m), "specification")
     assert facts.stale_inputs(m, store.read_events(m), "specification") == []
 
     d = kernel.cmd_dispatch(m, "specification", None)
     assert d["ok"], d
-    assert list(_dispatch_doc(m, d["workdir"])) == ["inputs"]
+    assert list(dispatch_doc(m, d["workdir"])) == ["inputs"]
     # carry_self brought the prior round's products in: that is the disk fact the skill
     # branches on, and it is what makes this shape distinguishable from a first delivery.
-    assert (store.module_root(m) / d["workdir"] / "design.md").is_file()
+    assert (Path(m) / d["workdir"] / "design.md").is_file()
 
 
 def test_repair_dispatch_names_what_named_the_owner_and_the_human_reasoning(
@@ -777,12 +772,12 @@ def test_repair_dispatch_names_what_named_the_owner_and_the_human_reasoning(
     path is per-run, so a later run of the same stage cannot move it."""
     monkeypatch.chdir(tmp_path)
     m = "repair-shape"
-    _mk(m, "intent/brainstorm.md", "b1")
-    _valid(m, "specification", 1)
-    _valid(m, "rtl-design", 1)
-    _fail(m, "synthesis", 1)
+    mk(m, "intent/brainstorm.md", "b1")
+    valid(m, "specification", 1)
+    valid(m, "rtl-design", 1)
+    fail(m, "synthesis", 1)
     # reap promotes a failing run's envelope, so in production this path always exists.
-    _mk(m, "Design/synthesis/runs/1/result.json", json.dumps({"status": "fail"}))
+    mk(m, "Design/synthesis/runs/1/result.json", json.dumps({"status": "fail"}))
     r = kernel.cmd_diagnose(
         m,
         "diag-unit",
@@ -798,7 +793,7 @@ def test_repair_dispatch_names_what_named_the_owner_and_the_human_reasoning(
 
     d = kernel.cmd_dispatch(m, "specification", ["diag-unit"], None, [("synthesis", 1)])
     assert d["ok"], d
-    doc = _dispatch_doc(m, d["workdir"])
+    doc = dispatch_doc(m, d["workdir"])
     assert doc["caused_by"] == ["Design/synthesis/runs/1/result.json"]
     assert "scope" not in doc
     assert doc["reasons"] == ["the area target's unit is wrong, not the RTL"]
@@ -816,11 +811,18 @@ def test_repair_dispatch_rejects_an_unresolvable_channel(tmp_path, monkeypatch):
     reasoning silently."""
     monkeypatch.chdir(tmp_path)
     m = "repair-guard"
-    _mk(m, "intent/brainstorm.md", "b1")
-    _valid(m, "specification", 1)
+    mk(m, "intent/brainstorm.md", "b1")
+    valid(m, "specification", 1)
     r = kernel.cmd_dispatch(m, "rtl-design", None, None, [("synthesis", 9)])
     assert not r["ok"] and "no result.json" in r["error"]
     r = kernel.cmd_dispatch(m, "rtl-design", ["diag-nope"], None)
     assert not r["ok"] and "unknown diagnosis ref" in r["error"]
     # neither attempt allocated a run
-    assert facts.runs_of(store.read_events(m), "rtl-design") == 0
+    assert (
+        sum(
+            1
+            for event in store.read_events(m)
+            if event["type"] == "dispatch" and event["rule"] == "rtl-design"
+        )
+        == 0
+    )

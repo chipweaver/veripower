@@ -22,7 +22,7 @@ SELECT = INFRA / "select_tests.py"
 SUMMARY = INFRA / "write_summary.py"
 REGRESS = INFRA / "run_vcs_regression.sh"
 
-_TESTS = [
+TESTS = [
     {
         "test_id": "T-01",
         "uvm_testname": "m_smoke_test",
@@ -38,16 +38,16 @@ _TESTS = [
 ]
 
 
-def _workdir(tmp_path, results):
+def workdir(tmp_path, results):
     (tmp_path / "tests").mkdir()
     (tmp_path / "tests" / "testlist.json").write_text(
-        json.dumps({"module": "m", "top": "m_top", "tests": _TESTS})
+        json.dumps({"module": "m", "top": "m_top", "tests": TESTS})
     )
     (tmp_path / "regression-log.txt").write_text("".join(f"{r}\n" for r in results))
     return tmp_path
 
 
-def _run_summary(wd, *extra):
+def run_summary(wd, *extra):
     return subprocess.run(
         [sys.executable, str(SUMMARY), "--verification-dir", str(wd), *extra],
         capture_output=True,
@@ -56,7 +56,7 @@ def _run_summary(wd, *extra):
 
 
 # ── select_tests.py ───────────────────────────────────────────────────────────
-def _select(wd, mode):
+def select(wd, mode):
     return subprocess.run(
         [sys.executable, str(SELECT), mode, str(wd / "tests/testlist.json")],
         capture_output=True,
@@ -65,38 +65,38 @@ def _select(wd, mode):
 
 
 def test_select_smoke_picks_only_the_smoke_suite(tmp_path):
-    wd = _workdir(tmp_path, [])
-    r = _select(wd, "smoke")
+    wd = workdir(tmp_path, [])
+    r = select(wd, "smoke")
     assert r.returncode == 0
     assert r.stdout.splitlines() == ["T-01|m_smoke_test"]
 
 
 def test_select_regress_picks_both(tmp_path):
-    wd = _workdir(tmp_path, [])
-    assert _select(wd, "regress").stdout.splitlines() == [
+    wd = workdir(tmp_path, [])
+    assert select(wd, "regress").stdout.splitlines() == [
         "T-01|m_smoke_test",
         "T-02|m_corner_test",
     ]
 
 
 def test_select_row_is_test_id_and_testname_only(tmp_path):
-    wd = _workdir(tmp_path, [])
-    for row in _select(wd, "regress").stdout.splitlines():
+    wd = workdir(tmp_path, [])
+    for row in select(wd, "regress").stdout.splitlines():
         assert row.count("|") == 1
 
 
 def test_select_no_match_exits_2(tmp_path):
-    wd = _workdir(tmp_path, [])
-    assert _select(wd, "nightly").returncode == 2
+    wd = workdir(tmp_path, [])
+    assert select(wd, "nightly").returncode == 2
 
 
 # ── write_summary.py ──────────────────────────────────────────────────────────
 def test_counts_land_in_case_results_json(tmp_path):
-    wd = _workdir(
+    wd = workdir(
         tmp_path,
         ["RESULT T-01 PASS uvm_testname=m_smoke_test log=logs/T-01.log"],
     )
-    r = _run_summary(wd)
+    r = run_summary(wd)
     assert r.returncode == 0, r.stderr
     counts = json.loads((wd / "case-results.json").read_text())
     assert counts["total_tests"] == 1
@@ -106,14 +106,14 @@ def test_counts_land_in_case_results_json(tmp_path):
 
 
 def test_the_rendering_agrees_with_the_json(tmp_path):
-    wd = _workdir(
+    wd = workdir(
         tmp_path,
         [
             "RESULT T-01 PASS uvm_testname=m_smoke_test log=logs/T-01.log",
             "RESULT T-02 FAIL uvm_testname=m_corner_test log=logs/T-02.log",
         ],
     )
-    assert _run_summary(wd).returncode == 0
+    assert run_summary(wd).returncode == 0
     counts = json.loads((wd / "case-results.json").read_text())
     md = (wd / "case-results-summary.md").read_text()
     assert f"| FAIL | {counts['failed_tests']} |" in md
@@ -126,20 +126,20 @@ def test_failure_rows_point_at_the_directory_the_runner_wrote(tmp_path):
     # names has to be the one run_vcs_regression.sh put the logs in: RUN_LOG_DIR, default
     # logs/. It named run_logs/ for long enough to reach a real module, where no such
     # directory has ever existed.
-    wd = _workdir(
+    wd = workdir(
         tmp_path, ["RESULT T-02 FAIL uvm_testname=m_corner_test log=logs/T-02.log"]
     )
-    assert _run_summary(wd).returncode == 0
+    assert run_summary(wd).returncode == 0
     md = (wd / "case-results-summary.md").read_text()
     assert "logs/T-02.log" in md and "run_logs" not in md
 
 
 def test_results_table_is_per_test(tmp_path):
     # Which requirement a test serves is not on this page: covers[] -> hint -> row carries it.
-    wd = _workdir(
+    wd = workdir(
         tmp_path, ["RESULT T-01 PASS uvm_testname=m_smoke_test log=logs/T-01.log"]
     )
-    assert _run_summary(wd).returncode == 0
+    assert run_summary(wd).returncode == 0
     md = (wd / "case-results-summary.md").read_text()
     assert "| T-01 | smoke,regress | **PASS** |" in md
     assert "| T-02 | regress | **NOT_RUN** |" in md
@@ -147,10 +147,10 @@ def test_results_table_is_per_test(tmp_path):
 
 
 def test_action_table_names_the_failing_test(tmp_path):
-    wd = _workdir(
+    wd = workdir(
         tmp_path, ["RESULT T-02 FAIL uvm_testname=m_corner_test log=logs/T-02.log"]
     )
-    assert _run_summary(wd).returncode == 0
+    assert run_summary(wd).returncode == 0
     md = (wd / "case-results-summary.md").read_text()
     assert "| T-02 | FAIL |" in md
 
@@ -158,10 +158,10 @@ def test_action_table_names_the_failing_test(tmp_path):
 def test_result_line_for_unknown_test_id_does_not_crash(tmp_path):
     # A log line whose test_id is not in the testlist (a stale log across a plan revision)
     # must not take the whole summary down.
-    wd = _workdir(
+    wd = workdir(
         tmp_path, ["RESULT T-GHOST FAIL uvm_testname=m_ghost_test log=logs/x.log"]
     )
-    r = _run_summary(wd)
+    r = run_summary(wd)
     assert r.returncode == 0, r.stderr
     assert "| T-GHOST | FAIL |" in (wd / "case-results-summary.md").read_text()
 
@@ -169,18 +169,18 @@ def test_result_line_for_unknown_test_id_does_not_crash(tmp_path):
 def test_one_invocation_writes_both(tmp_path):
     # make summary used to call this twice, the first time with --coverage-only, and the
     # second run rewrote everything the first had written.
-    wd = _workdir(
+    wd = workdir(
         tmp_path, ["RESULT T-01 PASS uvm_testname=m_smoke_test log=logs/T-01.log"]
     )
-    assert _run_summary(wd).returncode == 0
+    assert run_summary(wd).returncode == 0
     assert (wd / "case-results.json").is_file()
     assert (wd / "case-results-summary.md").is_file()
 
 
 def test_missing_regression_log_fails_loud(tmp_path):
-    wd = _workdir(tmp_path, [])
+    wd = workdir(tmp_path, [])
     (wd / "regression-log.txt").unlink()
-    r = _run_summary(wd)
+    r = run_summary(wd)
     assert r.returncode != 0 and "regression-log.txt" in r.stderr
 
 
@@ -205,6 +205,6 @@ def test_shell_result_line_is_parseable_by_the_summary(tmp_path):
         .replace("$log_path", "logs/T-01.log")
     )
     assert "$" not in line, f"unsubstituted shell variable in {line!r}"
-    wd = _workdir(tmp_path, [line])
-    assert _run_summary(wd).returncode == 0
+    wd = workdir(tmp_path, [line])
+    assert run_summary(wd).returncode == 0
     assert json.loads((wd / "case-results.json").read_text())["passed_tests"] == 1

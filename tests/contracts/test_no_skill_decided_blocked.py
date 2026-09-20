@@ -12,7 +12,7 @@ not statically lintable.
 
 import json
 
-from _skills_sot import PLUGIN_ROOT
+from skills_source import PLUGIN_ROOT
 
 
 def test_envelope_status_enum_is_pass_fail():
@@ -24,5 +24,4 @@ def test_envelope_status_enum_is_pass_fail():
     assert schema["properties"]["status"]["enum"] == ["pass", "fail"], (
         f"envelope.schema.json status.enum drifted: {schema['properties']['status']['enum']}. "
         "Only kernel.py program-exception paths may emit BLOCKED-class sentinels; "
-        "see memory feedback_blocked_uniform_removal."
     )

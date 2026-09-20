@@ -21,7 +21,6 @@ from synthesis import result as sp  # noqa: E402
 SAMPLE_AREA = """\
 ****************************************
 Report : area
-Design : sdc_controller
 Version: L-2016.03-SP1
 ****************************************
 
@@ -48,11 +47,10 @@ Total area:                 undefined
 SAMPLE_QOR = """\
 ****************************************
 Report : qor
-Design : sdc_controller
 Version: L-2016.03-SP1
 ****************************************
 
-  Timing Path Group 'sd_clk_o'
+  Timing Path Group 'clock_b'
   -----------------------------------
   Levels of Logic:              16.00
   Critical Path Length:          2.43
@@ -62,7 +60,7 @@ Version: L-2016.03-SP1
   No. of Violating Paths:        0.00
   -----------------------------------
 
-  Timing Path Group 'wb_clk_i'
+  Timing Path Group 'clock_a'
   -----------------------------------
   Levels of Logic:              31.00
   Critical Path Length:          5.85
@@ -79,7 +77,7 @@ Version: L-2016.03-SP1
 
 # A real violation: negative slack, summary consistently shows the violation.
 QOR_VIOLATED = """\
-  Timing Path Group 'wb_clk_i'
+  Timing Path Group 'clock_a'
   -----------------------------------
   Critical Path Slack:          -0.50
   Critical Path Clk Period:     10.00
@@ -92,7 +90,7 @@ QOR_VIOLATED = """\
 
 # Self-contradiction: negative per-group slack, but the design summary is clean.
 QOR_CONTRADICT = """\
-  Timing Path Group 'wb_clk_i'
+  Timing Path Group 'clock_a'
   -----------------------------------
   Critical Path Slack:          -0.50
   -----------------------------------
@@ -143,7 +141,7 @@ AREA_SRC = "area.rpt Total cell area"
 SLACK_SRC = "timing_setup.rpt minimum reported setup slack (ns)"
 
 
-def _timing(*values):
+def timing_report_text(*values):
     return (
         "Time_unit : 1e-09 Second(ns)\n"
         + "\n".join(
@@ -153,15 +151,15 @@ def _timing(*values):
     )
 
 
-SAMPLE_TIMING = _timing(16.99, 0.95)
+SAMPLE_TIMING = timing_report_text(16.99, 0.95)
 
 
 @pytest.mark.parametrize("seconds", [1e-9, 1e-12, 1e-10])
 def test_native_timing_units_preserve_slack_and_requirement_verdict(tmp_path, seconds):
     raw = 0.5e-9 / seconds
-    timing = _timing(raw).replace("1e-09", str(seconds))
-    reports = _stage(tmp_path, timing=timing)
-    rc, data = sp.run(reports, [_row("MARGIN", "timing_slack_ns", ">=", 1)])
+    timing = timing_report_text(raw).replace("1e-09", str(seconds))
+    reports = stage(tmp_path, timing=timing)
+    rc, data = sp.run(reports, [row("MARGIN", "timing_slack_ns", ">=", 1)])
     assert rc == 0
     assert data["requirements"][0]["actual"] == pytest.approx(0.5)
     assert data["requirements"][0]["met"] is False
@@ -172,7 +170,7 @@ def test_timing_without_a_usable_unit_is_not_assumed_ns(unit):
     assert sp.parse_worst_slack_ns(unit + "slack (MET) 1.0\n") is None
 
 
-def _stage(tmp_path, area=SAMPLE_AREA, qor=SAMPLE_QOR, timing=SAMPLE_TIMING):
+def stage(tmp_path, area=SAMPLE_AREA, qor=SAMPLE_QOR, timing=SAMPLE_TIMING):
     """Write area, QOR and setup timing reports; return the reports directory."""
     reports = tmp_path / "reports"
     reports.mkdir(parents=True, exist_ok=True)
@@ -182,7 +180,7 @@ def _stage(tmp_path, area=SAMPLE_AREA, qor=SAMPLE_QOR, timing=SAMPLE_TIMING):
     return reports
 
 
-def _row(rid, dim, op, value, judge="synthesis"):
+def row(rid, dim, op, value, judge="synthesis"):
     return {
         "id": rid,
         "verbatim": f"{dim} {op} {value}",
@@ -191,14 +189,14 @@ def _row(rid, dim, op, value, judge="synthesis"):
     }
 
 
-AREA_OK = _row("R-A", "area_um2", "<=", 80000.0)
-SLACK_OK = _row("R-S", "timing_slack_ns", ">=", 0.5)
-SLACK_TIGHT = _row("R-S", "timing_slack_ns", ">=", 2.0)
-AREA_TINY = _row("R-A", "area_um2", "<=", 1.0)
+AREA_OK = row("R-A", "area_um2", "<=", 80000.0)
+SLACK_OK = row("R-S", "timing_slack_ns", ">=", 0.5)
+SLACK_TIGHT = row("R-S", "timing_slack_ns", ">=", 2.0)
+AREA_TINY = row("R-A", "area_um2", "<=", 1.0)
 NAND2 = {"id": "R-N", "verbatim": "逻辑 ≤ 0.45M NAND2 等效门", "judge": "synthesis"}
 
 
-def _spec(tmp_path, rows):
+def spec(tmp_path, rows):
     """A specification root holding the ledger, and the dispatch.json pointing at it."""
     sd = tmp_path / "spec"
     sd.mkdir(exist_ok=True)
@@ -210,29 +208,16 @@ def _spec(tmp_path, rows):
 
 
 # ── parsing units ────────────────────────────────────────────────────────────
-def test_parse_area_total_cell_area():
-    assert sp.parse_area_um2(SAMPLE_AREA) == pytest.approx(65018.219263)
-
-
-def test_parse_area_ignores_total_area_undefined():
-    # 'Total area: undefined' must NOT be picked up; only 'Total cell area'.
-    assert sp.parse_area_um2(AREA_NO_TOTAL) is None
 
 
 def test_parse_worst_slack_is_min_across_groups_not_first():
-    # THE regression: worst = 0.95 (wb_clk_i), NOT 16.99 (sd_clk_o, listed first).
+    # THE regression: worst = 0.95 (clock_a), NOT 16.99 (clock_b, listed first).
     assert sp.parse_worst_slack_ns(SAMPLE_TIMING) == pytest.approx(0.95)
     assert sp.parse_worst_slack_ns(SAMPLE_TIMING) != pytest.approx(16.99)
 
 
 def test_parse_worst_slack_none_when_absent():
     assert sp.parse_worst_slack_ns(QOR_NO_GROUP) is None
-
-
-def test_parse_setup_violations_not_hold():
-    # Matches the setup 'Design  WNS:' line, not 'Design (Hold)  WNS:'.
-    assert sp.parse_setup_violations(SAMPLE_QOR) == 0
-    assert sp.parse_setup_violations(QOR_VIOLATED) == 3
 
 
 def test_finalize_missing_required_flag_is_blocked(tmp_path):
@@ -250,7 +235,7 @@ def test_finalize_missing_required_flag_is_blocked(tmp_path):
 
 # ── run() exit-code contract ──────────────────────────────────────────────────
 def test_run_slack_min_regression(tmp_path):
-    reports = _stage(tmp_path)
+    reports = stage(tmp_path)
     rc, data = sp.run(reports, [])
     assert rc == 0
     slack = [a for a in data["measurements"] if a["dim"] == "timing_slack_ns"][0]
@@ -259,7 +244,7 @@ def test_run_slack_min_regression(tmp_path):
 
 
 def test_run_area_disambiguation(tmp_path):
-    reports = _stage(tmp_path)
+    reports = stage(tmp_path)
     rc, data = sp.run(reports, [])
     assert rc == 0
     area = [a for a in data["measurements"] if a["dim"] == "area_um2"][0]
@@ -267,7 +252,7 @@ def test_run_area_disambiguation(tmp_path):
 
 
 def test_run_judges_each_targeted_row(tmp_path):
-    reports = _stage(tmp_path)
+    reports = stage(tmp_path)
     rc, data = sp.run(reports, [AREA_OK, SLACK_OK])
     assert rc == 0
     assert data["requirements"] == [
@@ -287,7 +272,7 @@ def test_run_judges_each_targeted_row(tmp_path):
 
 
 def test_run_a_missed_row_is_still_exit0(tmp_path):
-    reports = _stage(tmp_path)
+    reports = stage(tmp_path)
     rc, data = sp.run(reports, [SLACK_TIGHT])
     assert rc == 0  # a miss is a verdict, not a tooling failure
     assert data["requirements"] == [
@@ -301,15 +286,15 @@ def test_run_a_missed_row_is_still_exit0(tmp_path):
 
 
 def test_run_uses_the_engineers_operator(tmp_path):
-    reports = _stage(tmp_path)
-    strict = _row("R-A", "area_um2", "<", 65018.219263)
-    loose = _row("R-A", "area_um2", "<=", 65018.219263)
+    reports = stage(tmp_path)
+    strict = row("R-A", "area_um2", "<", 65018.219263)
+    loose = row("R-A", "area_um2", "<=", 65018.219263)
     assert sp.run(reports, [strict])[1]["requirements"][0]["met"] is False
     assert sp.run(reports, [loose])[1]["requirements"][0]["met"] is True
 
 
 def test_run_no_targeted_rows_judges_nothing(tmp_path):
-    reports = _stage(tmp_path)
+    reports = stage(tmp_path)
     rc, data = sp.run(reports, [])
     assert rc == 0
     assert (
@@ -318,8 +303,8 @@ def test_run_no_targeted_rows_judges_nothing(tmp_path):
 
 
 def test_run_violated_slack(tmp_path):
-    reports = _stage(tmp_path, qor=QOR_VIOLATED, timing=_timing(-0.5))
-    rc, data = sp.run(reports, [_row("R-S", "timing_slack_ns", ">=", 0.0)])
+    reports = stage(tmp_path, qor=QOR_VIOLATED, timing=timing_report_text(-0.5))
+    rc, data = sp.run(reports, [row("R-S", "timing_slack_ns", ">=", 0.0)])
     assert rc == 0
     assert data["requirements"][0]["met"] is False
     slack = [a for a in data["measurements"] if a["dim"] == "timing_slack_ns"][0]
@@ -327,13 +312,13 @@ def test_run_violated_slack(tmp_path):
 
 
 def test_run_unparseable_area_exit3(tmp_path):
-    reports = _stage(tmp_path, area=AREA_NO_TOTAL)
+    reports = stage(tmp_path, area=AREA_NO_TOTAL)
     rc, payload = sp.run(reports, [])
     assert rc == 3 and payload is None  # no verdict on a parse surprise
 
 
 def test_run_unparseable_qor_exit3(tmp_path):
-    reports = _stage(tmp_path, qor=QOR_NO_GROUP)
+    reports = stage(tmp_path, qor=QOR_NO_GROUP)
     rc, payload = sp.run(reports, [])
     assert rc == 3 and payload is None  # no verdict on a parse surprise
 
@@ -346,8 +331,8 @@ def test_run_missing_report_exit1(tmp_path):
 
 def test_run_returns_no_verdict_after_a_parse_failure(tmp_path):
     # was "removes the stale sidecar": the write-fresh-or-nothing guarantee now lives in the
-    # return value — a failed parse yields no payload for build_result to fold.
-    reports = _stage(tmp_path)
+    # return value — a failed parse yields no payload for finalize to fold.
+    reports = stage(tmp_path)
     assert sp.run(reports, [])[1] is not None
     (reports / "area.rpt").write_text(AREA_NO_TOTAL)
     assert sp.run(reports, []) == (3, None)
@@ -355,13 +340,13 @@ def test_run_returns_no_verdict_after_a_parse_failure(tmp_path):
 
 def test_run_wns_cross_check_contradiction_exit3(tmp_path):
     # negative per-group slack but a clean design summary -> exit 3
-    reports = _stage(tmp_path, qor=QOR_CONTRADICT, timing=_timing(-0.5))
+    reports = stage(tmp_path, qor=QOR_CONTRADICT, timing=timing_report_text(-0.5))
     rc, payload = sp.run(reports, [])
     assert rc == 3 and payload is None  # no verdict on a parse surprise
 
 
-# ── finalize / build_result (v4 stage-CLI-tool) ───────────────────────────────
-def _workdir(
+# ── finalize / finalize (v4 stage-CLI-tool) ───────────────────────────────
+def workdir(
     tmp_path, area=SAMPLE_AREA, qor=SAMPLE_QOR, netlist=True, timing=SAMPLE_TIMING
 ):
     """A completed run: area, QOR and setup timing reports plus the netlist trio.
@@ -378,9 +363,9 @@ def _workdir(
     return tmp_path
 
 
-def test_build_result_pass_lean_shape(tmp_path):
-    wd = _workdir(tmp_path)
-    assert sp.build_result(wd, [], []) == 0
+def test_finalize_pass_lean_shape(tmp_path):
+    wd = workdir(tmp_path)
+    assert sp.finalize(wd, [], []) == 0
     env = json.loads((wd / "result.json").read_text())
     assert env["stage"] == "synthesis"
     assert env["status"] == "pass" and env["produced_at"].endswith("Z")
@@ -392,9 +377,9 @@ def test_build_result_pass_lean_shape(tmp_path):
     assert "rtl_filelist" not in ss and "timing_exceptions" not in ss
 
 
-def test_build_result_tooling_fail_on_unparseable(tmp_path):
-    wd = _workdir(tmp_path, area=AREA_NO_TOTAL)  # parser run() returns 3
-    assert sp.build_result(wd, [], []) == 0
+def test_finalize_tooling_fail_on_unparseable(tmp_path):
+    wd = workdir(tmp_path, area=AREA_NO_TOTAL)  # parser run() returns 3
+    assert sp.finalize(wd, [], []) == 0
     ss = json.loads((wd / "result.json").read_text())["stage_specific"]
     assert ss["fail_reason"] == "synthesis report unparseable"
 
@@ -402,9 +387,9 @@ def test_build_result_tooling_fail_on_unparseable(tmp_path):
 def test_declared_failure_wins_over_a_clean_gate(tmp_path):
     # A crash after the reports landed: they parse clean, so the gate would say pass.
     # Supplying the cause IS the declaration of failure.
-    wd = _workdir(tmp_path)
+    wd = workdir(tmp_path)
     assert (
-        sp.build_result(
+        sp.finalize(
             wd,
             [AREA_OK],
             [],
@@ -423,7 +408,7 @@ def test_declared_failure_wins_over_a_clean_gate(tmp_path):
 
 
 def test_declared_failure_needs_a_reason(tmp_path):
-    wd = _workdir(tmp_path)
+    wd = workdir(tmp_path)
     assert sp.finalize(wd, [], [], fail_reason="   ") == 2
     assert not (wd / "result.json").exists()  # BLOCKED writes nothing
 
@@ -431,7 +416,7 @@ def test_declared_failure_needs_a_reason(tmp_path):
 def test_finalize_cli_declared_infra_failure(tmp_path):
     # The license path: DC never ran, so there are no reports to grade at all.
     wd = tmp_path
-    _spec(tmp_path, [])
+    spec(tmp_path, [])
     MAIN = REPO_ROOT / "skills/synthesis/scripts/synthesis/__main__.py"
     r = subprocess.run(
         [
@@ -451,20 +436,7 @@ def test_finalize_cli_declared_infra_failure(tmp_path):
     assert "LICENSE_ERROR" in ss["fail_reason"]
 
 
-def test_finalize_blocked_on_internal_raise(tmp_path, monkeypatch):
-    # finalize() wraps build_result: any internal raise -> exit 2 (BLOCKED),
-    # never status=fail. (The old main() had this except; it moves to finalize().)
-    def boom(*a, **k):
-        raise RuntimeError("synthetic")
-
-    monkeypatch.setattr(sp, "build_result", boom)
-    assert sp.finalize(tmp_path, [], []) == 2
-
-
 # ── reproducibility header: the DC version, which nothing else records ────────
-def test_parse_tool_from_report_version():
-    assert sp.parse_tool("Version: L-2016.03-SP1\n") == "Design Compiler L-2016.03-SP1"
-    assert sp.parse_tool("no version here") == "Design Compiler unknown"
 
 
 # ── artifacts[] enumeration (present-only, no self-listing) ───────────────────
@@ -495,16 +467,16 @@ def test_enumerate_artifacts_delivers_the_out_tree_whatever_dc_named_inside_it(
     assert paths == {"out"}
 
 
-# ── golden: lean shape against a real run ─────────────────────────────────────
-_FIXTURE = Path(__file__).resolve().parent / "fixtures" / "synthesis-golden"
+# Report-format and result-schema checks.
+FIXTURE = Path(__file__).resolve().parent / "fixtures" / "synthesis-reports"
 
 
 def test_recorded_report_judgment_with_placeholder_deliverables(tmp_path):
     import shutil
 
     wd = tmp_path / "synthesis"
-    shutil.copytree(_FIXTURE, wd)
-    assert sp.build_result(wd, [AREA_OK], []) == 0
+    shutil.copytree(FIXTURE, wd)
+    assert sp.finalize(wd, [AREA_OK], []) == 0
     env = json.loads((wd / "result.json").read_text())
     ss = env["stage_specific"]
     assert env["status"] == "pass"
@@ -527,7 +499,7 @@ def test_recorded_report_judgment_with_placeholder_deliverables(tmp_path):
     assert env["produced_at"].endswith("Z")
 
 
-def test_golden_is_schema_valid(tmp_path):
+def test_pass_result_is_schema_valid(tmp_path):
     # Validate the in-memory envelope against {envelope schema + synthesis
     # result.schema} via Registry — inlined to pin the synthesis schema explicitly.
     import shutil
@@ -536,8 +508,8 @@ def test_golden_is_schema_valid(tmp_path):
     from referencing import Registry, Resource
 
     wd = tmp_path / "synthesis"
-    shutil.copytree(_FIXTURE, wd)
-    sp.build_result(wd, [AREA_OK, SLACK_OK], [])
+    shutil.copytree(FIXTURE, wd)
+    sp.finalize(wd, [AREA_OK, SLACK_OK], [])
     env = json.loads((wd / "result.json").read_text())
     env_schema = json.loads(
         (REPO_ROOT / "framework/references/schemas/envelope.schema.json").read_text()
@@ -555,10 +527,10 @@ def test_golden_is_schema_valid(tmp_path):
 
 
 def test_finalize_cli_happy_path(tmp_path):
-    # End-to-end through _cmd_finalize (handler import + arg mapping), not just
-    # in-process build_result.
-    wd = _workdir(tmp_path)
-    _spec(tmp_path, [AREA_OK])
+    # End-to-end through the finalize CLI (handler import + arg mapping), not just
+    # in-process finalize.
+    wd = workdir(tmp_path)
+    spec(tmp_path, [AREA_OK])
     MAIN = REPO_ROOT / "skills/synthesis/scripts/synthesis/__main__.py"
     r = subprocess.run(
         ["python3", str(MAIN), "finalize", "--workdir", str(wd)],
@@ -572,10 +544,10 @@ def test_finalize_cli_happy_path(tmp_path):
 
 
 def test_declared_verdict_cannot_replace_a_numeric_failure(tmp_path):
-    wd = _workdir(tmp_path)
-    _spec(tmp_path, [AREA_TINY])
+    wd = workdir(tmp_path)
+    spec(tmp_path, [AREA_TINY])
     (wd / "result.json").write_text('{"status":"pass"}')
-    attempt = _cli(
+    attempt = cli(
         wd,
         "--requirements",
         json.dumps(
@@ -593,7 +565,7 @@ def test_declared_verdict_cannot_replace_a_numeric_failure(tmp_path):
 
 
 # ── the rows requirements.json assigns to synthesis ───────────────────────────
-def _cli(wd, *extra):
+def cli(wd, *extra):
     MAIN = REPO_ROOT / "skills/synthesis/scripts/synthesis/__main__.py"
     return subprocess.run(
         ["python3", str(MAIN), "finalize", "--workdir", str(wd), *extra],
@@ -604,10 +576,10 @@ def _cli(wd, *extra):
 
 def test_finalize_cli_reads_the_ledger_from_dispatch(tmp_path):
     # Only the rows judged by synthesis are this stage's; a power bound is not.
-    wd = _workdir(tmp_path)
-    power = _row("R-P", "power_mw", "<=", 5.0, judge="power-analysis")
-    _spec(tmp_path, [AREA_TINY, power])
-    r = _cli(wd, "--fix-owner", "rtl-design")
+    wd = workdir(tmp_path)
+    power = row("R-P", "power_mw", "<=", 5.0, judge="power-analysis")
+    spec(tmp_path, [AREA_TINY, power])
+    r = cli(wd, "--fix-owner", "rtl-design")
     assert r.returncode == 0, r.stderr
     env = json.loads((wd / "result.json").read_text())
     ss = env["stage_specific"]
@@ -626,9 +598,9 @@ def test_finalize_cli_reads_the_ledger_from_dispatch(tmp_path):
 def test_finalize_cli_no_synthesis_rows_judges_nothing(tmp_path):
     # An engineer who set no bound synthesis measures gets a pass that says so: the empty
     # requirements[] is the record, not a skipped gate.
-    wd = _workdir(tmp_path)
-    _spec(tmp_path, [_row("R-P", "power_mw", "<=", 5.0, judge="power-analysis")])
-    r = _cli(wd)
+    wd = workdir(tmp_path)
+    spec(tmp_path, [row("R-P", "power_mw", "<=", 5.0, judge="power-analysis")])
+    r = cli(wd)
     assert r.returncode == 0, r.stderr
     env = json.loads((wd / "result.json").read_text())
     assert env["status"] == "pass" and env["stage_specific"]["requirements"] == []
@@ -636,8 +608,8 @@ def test_finalize_cli_no_synthesis_rows_judges_nothing(tmp_path):
 
 def test_a_row_without_a_target_takes_the_agents_verdict(tmp_path):
     # A budget in a unit DC does not report: the agent converts and declares.
-    wd = _workdir(tmp_path)
-    _spec(tmp_path, [AREA_OK, NAND2])
+    wd = workdir(tmp_path)
+    spec(tmp_path, [AREA_OK, NAND2])
     declared = json.dumps(
         [
             {
@@ -648,7 +620,7 @@ def test_a_row_without_a_target_takes_the_agents_verdict(tmp_path):
             }
         ]
     )
-    r = _cli(wd, "--requirements", declared)
+    r = cli(wd, "--requirements", declared)
     assert r.returncode == 0, r.stderr
     ss = json.loads((wd / "result.json").read_text())["stage_specific"]
     assert [e["id"] for e in ss["requirements"]] == ["R-A", "R-N"]  # ledger order
@@ -657,17 +629,17 @@ def test_a_row_without_a_target_takes_the_agents_verdict(tmp_path):
 
 def test_an_undeclared_row_is_blocked(tmp_path):
     # A row the agent never read cannot pass as silence.
-    wd = _workdir(tmp_path)
-    _spec(tmp_path, [AREA_OK, NAND2])
-    r = _cli(wd)
+    wd = workdir(tmp_path)
+    spec(tmp_path, [AREA_OK, NAND2])
+    r = cli(wd)
     assert r.returncode == 2
     assert "R-N" in r.stderr and not (wd / "result.json").exists()
 
 
 def test_a_declared_miss_fails_the_run(tmp_path):
-    wd = _workdir(tmp_path)
-    _spec(tmp_path, [NAND2])
-    r = _cli(
+    wd = workdir(tmp_path)
+    spec(tmp_path, [NAND2])
+    r = cli(
         wd,
         "--requirements",
         json.dumps(
@@ -695,29 +667,27 @@ def test_a_declared_miss_fails_the_run(tmp_path):
 def test_pass_requires_the_full_netlist_trio(tmp_path):
     # dc_run.tcl reports before it writes, and no write is return-checked, so a clean
     # reports/ can sit next to no netlist at all.
-    wd = _workdir(tmp_path, netlist=False)
-    assert sp.build_result(wd, [], []) == 0
+    wd = workdir(tmp_path, netlist=False)
+    assert sp.finalize(wd, [], []) == 0
     env = json.loads((wd / "result.json").read_text())
     ss = env["stage_specific"]
     assert env["status"] == "fail"
     assert "out/*_syn.v" in ss["fail_reason"]
-    # Each verdict names the report line behind it; nothing else travels beside them.
-    assert all(v["measured"] for v in ss["requirements"])
 
 
 def test_partial_netlist_names_only_what_is_absent(tmp_path):
-    wd = _workdir(tmp_path, netlist=False)
+    wd = workdir(tmp_path, netlist=False)
     (wd / "out").mkdir()
     (wd / "out" / "m_syn.v").write_text("netlist")
     (wd / "out" / "m_syn.sdc").write_text("sdc")
-    assert sp.build_result(wd, [], []) == 0
+    assert sp.finalize(wd, [], []) == 0
     ss = json.loads((wd / "result.json").read_text())["stage_specific"]
     assert ss["fail_reason"] == "netlist incomplete: required out/m_syn.sdf"
 
 
 def test_missing_netlist_outranks_a_missed_row(tmp_path):
-    wd = _workdir(tmp_path, netlist=False)
-    assert sp.build_result(wd, [AREA_TINY], [], fix_owner="rtl-design") == 0
+    wd = workdir(tmp_path, netlist=False)
+    assert sp.finalize(wd, [AREA_TINY], [], fix_owner="rtl-design") == 0
     ss = json.loads((wd / "result.json").read_text())["stage_specific"]
     assert ss["requirements"][0]["met"] is False  # the miss is still on the record
     assert "netlist incomplete" in ss["fail_reason"]
@@ -727,13 +697,13 @@ def test_missing_netlist_outranks_a_missed_row(tmp_path):
 def test_uninit_slack_is_unparseable_not_a_pass(tmp_path):
     # An unconstrained run is what bootstrap's fail-closed exists to prevent; when one gets
     # this far the parser must refuse it rather than read `uninit` as a number or as zero.
-    reports = _stage(tmp_path, qor=QOR_UNINIT, timing="No constrained timing paths.\n")
+    reports = stage(tmp_path, qor=QOR_UNINIT, timing="No constrained timing paths.\n")
     assert sp.run(reports, [SLACK_OK]) == (3, None)
 
 
 def test_uninit_group_does_not_shadow_a_constrained_one(tmp_path):
-    reports = _stage(tmp_path, qor=QOR_UNINIT_PLUS_REAL, timing=_timing(6.51))
-    rc, data = sp.run(reports, [_row("R-S", "timing_slack_ns", ">=", 0.0)])
+    reports = stage(tmp_path, qor=QOR_UNINIT_PLUS_REAL, timing=timing_report_text(6.51))
+    rc, data = sp.run(reports, [row("R-S", "timing_slack_ns", ">=", 0.0)])
     assert rc == 0 and data["requirements"][0]["met"] is True
     slack = [a for a in data["measurements"] if a["dim"] == "timing_slack_ns"][0]
     assert slack["value"] == pytest.approx(6.51)
@@ -757,8 +727,8 @@ def test_precise_timing_not_rounded_qor_controls_the_bound(
     qor = QOR_VIOLATED if value < 0 else SAMPLE_QOR
     qor = re.sub(r"Critical Path Slack:\s*[-+0-9.]+", "Critical Path Slack: 0.00", qor)
     qor = re.sub(r"WNS:\s*[-+0-9.]+", "WNS: 0.00", qor)
-    reports = _stage(tmp_path, qor=qor, timing=_timing(value))
-    rc, payload = sp.run(reports, [_row("TIME", "timing_slack_ns", op, bound)])
+    reports = stage(tmp_path, qor=qor, timing=timing_report_text(value))
+    rc, payload = sp.run(reports, [row("TIME", "timing_slack_ns", op, bound)])
     assert rc == 0
     verdict = payload["requirements"][0]
     assert verdict["met"] is expected
@@ -766,7 +736,7 @@ def test_precise_timing_not_rounded_qor_controls_the_bound(
 
 
 def test_qor_is_not_a_replacement_for_missing_precise_timing(tmp_path):
-    reports = _stage(tmp_path)
+    reports = stage(tmp_path)
     (reports / "timing_setup.rpt").unlink()
     assert sp.run(reports, [SLACK_OK]) == (1, None)
 

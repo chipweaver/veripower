@@ -6,12 +6,12 @@ Stage CLIs construct the envelopes; their generated field inventory need not be 
 import re
 
 import pytest
-from _skills_sot import PLUGIN_ROOT, load_stage_schema
+from skills_source import PLUGIN_ROOT, load_stage_schema
 
 from framework.scripts.rules import FORWARD_PRIORITY
 
 
-def _schema_all_stage_specific_props(stage: str) -> set[str]:
+def schema_all_stage_specific_props(stage: str) -> set[str]:
     """Return every property declared under stage_specific (required or not)."""
     schema = load_stage_schema(stage)
     props: set[str] = set()
@@ -21,15 +21,15 @@ def _schema_all_stage_specific_props(stage: str) -> set[str]:
     return props
 
 
-def _all_known_stage_specific_props() -> set[str]:
+def all_known_stage_specific_props() -> set[str]:
     """Union of stage_specific.properties across every stage's schema."""
     seen: set[str] = set()
     for stage in FORWARD_PRIORITY:
-        seen.update(_schema_all_stage_specific_props(stage))
+        seen.update(schema_all_stage_specific_props(stage))
     return seen
 
 
-_STAGE_SPECIFIC_TOKEN_RE = re.compile(r"stage_specific\.([a-zA-Z_][a-zA-Z0-9_]*)")
+STAGE_SPECIFIC_TOKEN_RE = re.compile(r"stage_specific\.([a-zA-Z_][a-zA-Z0-9_]*)")
 
 
 @pytest.mark.parametrize("stage", FORWARD_PRIORITY)
@@ -38,11 +38,11 @@ def test_skill_stage_specific_tokens_exist_in_schema(stage: str) -> None:
     skill_text = (PLUGIN_ROOT / "skills" / stage / "SKILL.md").read_text(
         encoding="utf-8"
     )
-    cited = set(_STAGE_SPECIFIC_TOKEN_RE.findall(skill_text))
+    cited = set(STAGE_SPECIFIC_TOKEN_RE.findall(skill_text))
     if not cited:
         pytest.skip(f"{stage} SKILL.md cites no stage_specific.* tokens")
 
-    known = _all_known_stage_specific_props()
+    known = all_known_stage_specific_props()
     orphans = sorted(cited - known)
     assert not orphans, (
         f"skill {stage}: SKILL.md cites stage_specific.{{{', '.join(orphans)}}} "

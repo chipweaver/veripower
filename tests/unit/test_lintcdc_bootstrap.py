@@ -9,7 +9,7 @@ on the CWD (matching kernel.py and the stage-subagent contract), independent of 
 the skill code lives. Neither verb shells out to any Tier-2 script — bootstrap is a
 pure deploy.
 
-`_make_tree` pre-populates workdir/dispatch.json (rtl/annotations/sgdc_seed keys) the way
+`make_tree` pre-populates workdir/dispatch.json (rtl/annotations/sgdc_seed keys) the way
 kernel.py dispatch injects it at dispatch time, and (when given `carried_local` /
 `carried_waiver`) pre-places files directly into workdir/scripts/ the way kernel.py's
 carry_self does before this verb runs — bootstrap reads upstream locations from
@@ -23,17 +23,17 @@ import sys
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-_MAIN = REPO_ROOT / "skills" / "lint-cdc" / "scripts" / "lintcdc" / "__main__.py"
+MAIN = REPO_ROOT / "skills" / "lint-cdc" / "scripts" / "lintcdc" / "__main__.py"
 sys.path.insert(0, str(REPO_ROOT / "skills" / "lint-cdc" / "scripts"))
 
 
 # ── inference helpers (in-process, precise — copied from synthesis) ────────────
-def _rtl_dir(workdir: Path) -> Path:
-    """The rtl-design dir for a workdir built by _make_tree (.../Design/lint-cdc/runs/N)."""
+def rtl_dir(workdir: Path) -> Path:
+    """The rtl-design dir for a workdir built by make_tree (.../Design/lint-cdc/runs/N)."""
     return workdir.parents[3] / "Design" / "rtl-design"
 
 
-def _make_tree(
+def make_tree(
     tmp_path,
     *,
     top="dut",
@@ -104,10 +104,10 @@ def _make_tree(
             }
         )
     )
-    return m, workdir, _MAIN
+    return m, workdir, MAIN
 
 
-def _run(workdir, main, extra=None, cwd=None):
+def run(workdir, main, extra=None, cwd=None):
     if cwd is None:
         # The bootstrap anchors the design tree on the CWD; the tree root is the
         # prefix of the (absolute) workdir up to the 'asic/' component.
@@ -128,8 +128,8 @@ def _run(workdir, main, extra=None, cwd=None):
 def test_deploys_and_substitutes_template_branch(tmp_path):
     # No warm/cold seed -> template branch: env.sh MY_TOP -> top, and the copytree'd
     # template constraints.sgdc IS MY_TOP-substituted.
-    m, workdir, main = _make_tree(tmp_path)
-    r = _run(workdir, main, extra=["--top", "dut"])
+    m, workdir, main = make_tree(tmp_path)
+    r = run(workdir, main, extra=["--top", "dut"])
     assert r.returncode == 0, r.stderr
     assert (workdir / "Makefile").is_file()
     env_sh = (workdir / "env.sh").read_text()
@@ -144,16 +144,16 @@ def test_deploys_and_substitutes_template_branch(tmp_path):
 def test_carried_waiver_survives_template_deploy(tmp_path):
     # Pre-place a carried scripts/waiver.tcl (as kernel.py's carry_self would, BEFORE
     # this verb runs), then deploy: the no-clobber template deploy must NOT clobber it.
-    m, workdir, main = _make_tree(tmp_path, carried_waiver="HUMAN AUDITED")
-    r = _run(workdir, main, extra=["--top", "dut"])
+    m, workdir, main = make_tree(tmp_path, carried_waiver="HUMAN AUDITED")
+    r = run(workdir, main, extra=["--top", "dut"])
     assert r.returncode == 0, r.stderr
     assert (workdir / "scripts" / "waiver.tcl").read_text() == "HUMAN AUDITED"
 
 
 def test_no_carried_waiver_keeps_substituted_template(tmp_path):
     # No carried waiver -> the no-clobber-deployed template waiver.tcl stays, MY_TOP-substituted.
-    m, workdir, main = _make_tree(tmp_path)
-    r = _run(workdir, main, extra=["--top", "dut"])
+    m, workdir, main = make_tree(tmp_path)
+    r = run(workdir, main, extra=["--top", "dut"])
     assert r.returncode == 0, r.stderr
     tpl = (workdir / "scripts" / "waiver.tcl").read_text()
     assert "MY_TOP" not in tpl
@@ -163,11 +163,11 @@ def test_filelist_synced_and_rebased(tmp_path):
     # rtl-design/filelist.txt -> scripts/filelist.txt with the +incdir + re-anchored
     # ABSOLUTE paths. Skip set is {#, blank} ONLY: a comment is dropped, real .v lines
     # are re-anchored.
-    m, workdir, main = _make_tree(
+    m, workdir, main = make_tree(
         tmp_path, rtl_files={"files": ["rtl/dut.v", "rtl/sub/u.sv"]}
     )
-    rtl_root = _rtl_dir(workdir)
-    r = _run(workdir, main, extra=["--top", "dut"])
+    rtl_root = rtl_dir(workdir)
+    r = run(workdir, main, extra=["--top", "dut"])
     assert r.returncode == 0, r.stderr
     gen = (workdir / "scripts" / "filelist.txt").read_text()
     # the search path is exactly what the child declared — nothing outside the tree
@@ -183,9 +183,9 @@ def test_filelist_reanchors_to_absolute_rtl(tmp_path):
     # Bootstrap reads the upstream rtl-design location from the injected
     # dispatch.json "rtl" key — not by self-navigating tree_root/asic/<module>/....
     # scripts/filelist.txt must bake the ABSOLUTE rtl root, never a relative climb.
-    m, workdir, main = _make_tree(tmp_path, rtl_files={"files": ["rtl/dut.v"]})
-    rtl_root = _rtl_dir(workdir)
-    r = _run(workdir, main, extra=["--top", "dut"])
+    m, workdir, main = make_tree(tmp_path, rtl_files={"files": ["rtl/dut.v"]})
+    rtl_root = rtl_dir(workdir)
+    r = run(workdir, main, extra=["--top", "dut"])
     assert r.returncode == 0, r.stderr
     src = (workdir / "scripts" / "filelist.txt").read_text()
     assert str(rtl_root) in src
@@ -194,9 +194,9 @@ def test_filelist_reanchors_to_absolute_rtl(tmp_path):
 
 def test_empty_filelist_fail_closed(tmp_path):
     # rtl-files.json listing no files -> exit 1.
-    m, workdir, main = _make_tree(tmp_path, rtl_files={"files": []})
+    m, workdir, main = make_tree(tmp_path, rtl_files={"files": []})
     # --top given so we reach the filelist generation.
-    r = _run(workdir, main, extra=["--top", "dut"])
+    r = run(workdir, main, extra=["--top", "dut"])
     assert r.returncode == 1
     assert "lists no RTL files" in r.stderr
 
@@ -205,25 +205,25 @@ def test_no_rtl_filelist_fail_closed(tmp_path):
     # rtl-design/rtl-files.json absent -> exit 1, same as one that lists no files.
     # Succeeding here would deploy an empty sourcelist, and SpyGlass reports a clean
     # run on one of those: a pass that analyzed no RTL.
-    m, workdir, main = _make_tree(tmp_path, rtl_files=None)
-    r = _run(workdir, main, extra=["--top", "dut"])
+    m, workdir, main = make_tree(tmp_path, rtl_files=None)
+    r = run(workdir, main, extra=["--top", "dut"])
     assert r.returncode == 1
     assert "rtl-files.json not found" in r.stderr
 
 
 def test_cant_read_top_fail_closed(tmp_path):
     # No --top and no manifest -> exit 1; nothing else is consulted.
-    m, workdir, main = _make_tree(tmp_path)
+    m, workdir, main = make_tree(tmp_path)
     spec = tmp_path / "asic" / m / "Design" / "specification"
     (spec / "manifest.json").unlink()
-    r = _run(workdir, main)  # no --top
+    r = run(workdir, main)  # no --top
     assert r.returncode == 1
     assert "cannot read top" in r.stderr
 
 
 def test_reprepare_preserves_authored_setup_and_refreshes_upstream_inputs(tmp_path):
-    _, workdir, main = _make_tree(tmp_path)
-    assert _run(workdir, main).returncode == 0
+    unused, workdir, main = make_tree(tmp_path)
+    assert run(workdir, main).returncode == 0
     authored = (
         "env.sh",
         "Makefile",
@@ -233,11 +233,11 @@ def test_reprepare_preserves_authored_setup_and_refreshes_upstream_inputs(tmp_pa
     )
     for name in authored:
         (workdir / name).write_text("# MY_TOP is authored literal\n")
-    rtl = _rtl_dir(workdir)
+    rtl = rtl_dir(workdir)
     (rtl / "rtl-files.json").write_text('{"files":["src/new.sv"]}')
     seed = workdir.parents[2] / "specification/constraints/dut.sgdc"
     seed.write_text("current_design dut\nclock -name clk -period 20\n")
-    r2 = _run(workdir, main)
+    r2 = run(workdir, main)
     assert r2.returncode == 0, r2.stderr
     for name in authored:
         assert (workdir / name).read_text() == "# MY_TOP is authored literal\n"
@@ -248,12 +248,12 @@ def test_reprepare_preserves_authored_setup_and_refreshes_upstream_inputs(tmp_pa
 def test_missing_template_dir_fail_closed(tmp_path):
     # Run a skill COPY whose templates/ has been removed -> fail-closed before any
     # mutation. The design tree itself is valid under the CWD.
-    m, workdir, _ = _make_tree(tmp_path)
+    m, workdir, unused = make_tree(tmp_path)
     skill_copy = tmp_path / "skills" / "lint-cdc"
     shutil.copytree(REPO_ROOT / "skills" / "lint-cdc", skill_copy)
     shutil.rmtree(skill_copy / "templates")
     main = skill_copy / "scripts" / "lintcdc" / "__main__.py"
-    r = _run(workdir, main, extra=["--top", "dut"])
+    r = run(workdir, main, extra=["--top", "dut"])
     assert r.returncode == 1
     assert "missing template directory" in r.stderr
     assert not (workdir / "Makefile").exists()  # fail-closed before any mutation
@@ -262,7 +262,7 @@ def test_missing_template_dir_fail_closed(tmp_path):
 def test_relative_workdir_with_trailing_slash(tmp_path):
     # A relative --workdir resolves against the CWD (the design-tree root), and
     # the trailing slash is dropped before deploy.
-    m, workdir, main = _make_tree(tmp_path)
+    m, workdir, main = make_tree(tmp_path)
     proc = subprocess.run(
         [
             "python3",
@@ -283,7 +283,7 @@ def test_relative_workdir_with_trailing_slash(tmp_path):
 
 
 # ── the assembled SGDC ────────────────────────────────────────────────────────────────
-_ANN = {
+ANN = {
     "b_child": {
         "sgdc": {
             "sync_cell": ["sync2ff"],
@@ -314,13 +314,13 @@ _ANN = {
 
 
 def test_seed_and_annotations_are_separate_from_carried_local(tmp_path):
-    m, workdir, main = _make_tree(
+    m, workdir, main = make_tree(
         tmp_path,
         cold="# SEED\ncurrent_design dut\nreset -name rst -value 0\n",
         carried_local="# LOCAL\nabstract_port -ports rst -clock clk -reset rst\n",
-        annotations=_ANN,
+        annotations=ANN,
     )
-    r = _run(workdir, main, extra=["--top", "dut"])
+    r = run(workdir, main, extra=["--top", "dut"])
     assert r.returncode == 0, r.stderr
     out = (workdir / "scripts" / "constraints.sgdc").read_text()
     assert out.index("# SEED") < out.index("sync_cell")
@@ -334,8 +334,8 @@ def test_seed_and_annotations_are_separate_from_carried_local(tmp_path):
 def test_annotations_are_generated_from_the_sidecar_not_transcribed(tmp_path):
     """All four categories, every child, in the sidecar's own spelling. A transcriber who
     silently corrected a wrong name would hide a defect that belongs to its author."""
-    m, workdir, main = _make_tree(tmp_path, annotations=_ANN)
-    r = _run(workdir, main, extra=["--top", "dut"])
+    m, workdir, main = make_tree(tmp_path, annotations=ANN)
+    r = run(workdir, main, extra=["--top", "dut"])
     assert r.returncode == 0, r.stderr
     out = (workdir / "scripts" / "constraints.sgdc").read_text()
     for line in (
@@ -350,12 +350,12 @@ def test_annotations_are_generated_from_the_sidecar_not_transcribed(tmp_path):
 def test_a_corrected_seed_reaches_the_tool_without_the_stage_acting(tmp_path):
     """The defect this replaces: the seed was read once, on round 1, so a specification-side
     correction landed in a file the stage never opened again."""
-    m, workdir, main = _make_tree(
+    m, workdir, main = make_tree(
         tmp_path,
         cold="# seed v2\ncurrent_design dut\nreset -name rst -value 0\n",
         carried_local="# carried local, untouched\n",
     )
-    r = _run(workdir, main, extra=["--top", "dut"])
+    r = run(workdir, main, extra=["--top", "dut"])
     assert r.returncode == 0, r.stderr
     out = (workdir / "scripts" / "constraints.sgdc").read_text()
     assert "reset -name rst -value 0" in out
@@ -369,8 +369,10 @@ def test_project_reads_local_edits_on_each_invocation(tmp_path):
 
     Real SpyGlass runs separately verify its SGDC semantics.
     """
-    _, workdir, main = _make_tree(tmp_path, cold="current_design dut\n", annotations={})
-    r = _run(workdir, main, extra=["--top", "dut"])
+    unused, workdir, main = make_tree(
+        tmp_path, cold="current_design dut\n", annotations={}
+    )
+    r = run(workdir, main, extra=["--top", "dut"])
     assert r.returncode == 0, r.stderr
     local = workdir / "scripts/local.sgdc"
     stub = local.read_text()
@@ -406,14 +408,14 @@ puts "observed=$observed design=$design"
 def test_missing_seed_fail_closed(tmp_path):
     """SpyGlass reading a design with no clock declared reports a clean run, so there is no
     tolerable default here."""
-    m, workdir, main = _make_tree(tmp_path, cold=None)
-    r = _run(workdir, main, extra=["--top", "dut"])
+    m, workdir, main = make_tree(tmp_path, cold=None)
+    r = run(workdir, main, extra=["--top", "dut"])
     assert r.returncode == 1
     assert "SGDC source of truth not found" in r.stderr
 
 
 def test_missing_annotations_fail_closed(tmp_path):
-    m, workdir, main = _make_tree(tmp_path, annotations=None)
-    r = _run(workdir, main, extra=["--top", "dut"])
+    m, workdir, main = make_tree(tmp_path, annotations=None)
+    r = run(workdir, main, extra=["--top", "dut"])
     assert r.returncode == 1
     assert "constraint-annotations.json" in r.stderr

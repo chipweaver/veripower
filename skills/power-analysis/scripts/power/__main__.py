@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Power experiment setup, execution, calculation and closure."""
+"""Command-line operations for the power stage."""
 
 import argparse
 import json
@@ -15,94 +15,79 @@ from pathlib import Path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 
-def _inputs(workdir) -> dict:
-    """The injected `inputs` table from `<workdir>/dispatch.json`. Every upstream
-    location this stage reads is in here, so none of them is a path the caller types."""
-    return json.loads((Path(workdir) / "dispatch.json").read_text(encoding="utf-8"))[
-        "inputs"
-    ]
-
-
-def _cmd_bootstrap(a: argparse.Namespace) -> int:
-    from power import bootstrap
-
-    return bootstrap.run(a.workdir, top=a.top)
-
-
-def _cmd_finalize(a: argparse.Namespace) -> int:
-    (Path(a.workdir) / "result.json").unlink(missing_ok=True)
-    from power import requirements, result
-
-    return result.finalize(
-        a.workdir,
-        _inputs(a.workdir)["plan"],
-        requirements.mine(requirements.load(a.workdir)),
-        requirements.parse_declared(a.requirements),
-        a.fix_owner,
-        a.fail_reason,
-    )
-
-
-def _cmd_execute(a):
-    from power.execute import run
-
-    return run(a.workdir, a.cmd)
-
-
 def build_parser() -> argparse.ArgumentParser:
-    p = argparse.ArgumentParser(prog="power", description="power-analysis-stage CLI")
-    sub = p.add_subparsers(dest="cmd", required=True)
+    parser = argparse.ArgumentParser(
+        prog="power", description="power-analysis-stage CLI"
+    )
+    subcommands = parser.add_subparsers(dest="cmd", required=True)
 
-    sp = sub.add_parser(
+    command_parser = subcommands.add_parser(
         "bootstrap", help="prepare editable setup; execution checks its own inputs"
     )
-    sp.add_argument("--workdir", required=True, type=Path)
-    sp.add_argument(
+    command_parser.add_argument("--workdir", required=True, type=Path)
+    command_parser.add_argument(
         "--top",
         default=None,
         help="top module; inferred from the injected synthesis netlist's out/<TOP>_syn.v when omitted",
     )
-    sp.set_defaults(func=_cmd_bootstrap)
 
     for mode in ("compile", "simulate", "calculate"):
-        sp = sub.add_parser(mode)
-        sp.add_argument("--workdir", required=True, type=Path)
-        sp.set_defaults(func=_cmd_execute)
+        command_parser = subcommands.add_parser(mode)
+        command_parser.add_argument("--workdir", required=True, type=Path)
 
-    sp = sub.add_parser(
+    command_parser = subcommands.add_parser(
         "finalize", help="parse PT-PX reports, judge power_mw PPA, assemble result.json"
     )
-    sp.add_argument("--workdir", required=True, type=Path)
-    sp.add_argument(
+    command_parser.add_argument("--workdir", required=True, type=Path)
+    command_parser.add_argument(
         "--fix-owner",
         default=None,
         help="on a failure, the rule that must act (you name it; the reports cannot)",
     )
-    sp.add_argument(
+    command_parser.add_argument(
         "--fail-reason",
         default=None,
         help="unresolved reason the measurement is invalid or incomplete, even if reports "
         "contain numbers; declares failure without qualifying those measurements",
     )
-    sp.add_argument(
+    command_parser.add_argument(
         "--requirements",
         default=None,
         help="judgments for power-analysis rows without numeric targets: JSON array entries "
         "require id, met and measured; actual is optional. Numeric targets are computed",
     )
-    sp.set_defaults(func=_cmd_finalize)
 
-    return p
+    return parser
 
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     try:
-        return args.func(args)
-    except Exception as exc:  # noqa: BLE001 — any failure to operate is BLOCKED
-        print(
-            f"[power {args.cmd}] BLOCKED: {type(exc).__name__}: {exc}", file=sys.stderr
-        )
+        if args.cmd == "bootstrap":
+            from power import bootstrap
+
+            return bootstrap.run(args.workdir, top=args.top)
+        elif args.cmd == "finalize":
+            inputs = json.loads((Path(args.workdir) / "dispatch.json").read_text())[
+                "inputs"
+            ]
+            (Path(args.workdir) / "result.json").unlink(missing_ok=True)
+            from power import requirements, result
+
+            return result.finalize(
+                args.workdir,
+                inputs["plan"],
+                requirements.load_requirements(args.workdir),
+                requirements.parse_declared(args.requirements),
+                args.fix_owner,
+                args.fail_reason,
+            )
+        else:
+            from power.execute import run
+
+            return run(args.workdir, args.cmd)
+    except (OSError, ValueError) as error:
+        print(f"[power {args.cmd}] BLOCKED: {error}", file=sys.stderr)
         return 2
 
 

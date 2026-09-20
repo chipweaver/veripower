@@ -26,40 +26,10 @@ from lintcdc import requirements
 STAGE = "lint-cdc"
 
 
-def _now_iso() -> str:
-    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-
-
-def _envelope(*, status, stage_specific, artifacts) -> dict:
-    return {
-        "stage": STAGE,
-        "produced_at": _now_iso(),
-        "status": status,
-        "artifacts": artifacts,
-        "stage_specific": stage_specific,
-    }
-
-
-def _write(workdir: Path, env: dict) -> None:
-    tmp = workdir / "result.json.tmp"
-    tmp.write_text(json.dumps(env, indent=2) + "\n")
-    tmp.replace(workdir / "result.json")  # atomic: never observed half-written
-    sys.stdout.write(
-        f"[lintcdc finalize] Written: {workdir / 'result.json'}"
-        f" (status={env['status']})\n"
-    )
-
-
-def _load_violations(path: Path):
-    """Return the collect_report.py JSON, or None if absent (write-fresh-or-nothing unlinks
-    it on a parser fail, so absence == that kind did not produce a clean report)."""
-    return json.loads(path.read_text()) if path.is_file() else None
-
-
 GATED = ("error", "warning")
 
 
-def _gated_violations(doc: dict) -> list[dict]:
+def gated_violations(doc: dict) -> list[dict]:
     """Reshape the gate-counted rows to the schema's {id, rule, severity, reason} (+
     file/line/message kept as additionalProperties). Gated rows only, so this is empty
     on every pass: the full all-severity account stays in the promoted sidecar."""
@@ -82,70 +52,7 @@ def _gated_violations(doc: dict) -> list[dict]:
     return out
 
 
-def _gated_count(doc: dict) -> int:
-    """How many messages the gate counts in one sidecar. A `counts` block the parser did
-    not write reads as 0 here and the missing-sidecar branch is what fails that run."""
-    counts = (doc or {}).get("counts") or {}
-    return sum(counts.get(sev) or 0 for sev in GATED)
-
-
-def run(workdir, rows, declared, *, fix_owner=None, fail_reason=None) -> int:
-    workdir = Path(workdir)
-    lint = _load_violations(workdir / "lint-violations.json")
-    cdc = _load_violations(workdir / "cdc-violations.json")
-    tool = parse_tool(workdir)
-    artifacts = enumerate_artifacts(workdir)
-
-    # AND gate: both *-violations.json present (== both make runs reached collect_report
-    # cleanly) AND neither counts an error- or warning-severity message. A missing file
-    # means that kind's make did not produce a clean report, which is a fail on its own.
-    lint_bad = _gated_count(lint)
-    cdc_bad = _gated_count(cdc)
-    violations = _gated_violations(lint) + _gated_violations(cdc)
-    if fail_reason or lint is None or cdc is None or lint_bad or cdc_bad:
-        # A caller-supplied reason wins: it comes from the agent that watched `make`
-        # fail and read the parser's stderr, which is strictly more than this verb can
-        # reconstruct from a report that is not on disk.
-        ss: dict = {
-            "tool": tool,
-            "fail_reason": fail_reason or _gate_fail_reason(lint, cdc),
-        }
-        if violations:
-            # violations[] IS the failure account: every row carries rule + file:line +
-            # reason. A summary field derived from it would restate it one key away, and a
-            # rule prefix cannot answer the question that is NOT in it — whose artifact must
-            # change. That answer is fix_owner, which the agent names.
-            ss["violations"] = violations
-        if fix_owner:
-            ss["fix_owner"] = fix_owner
-        _write(
-            workdir,
-            _envelope(status="fail", stage_specific=ss, artifacts=artifacts),
-        )
-        return 0
-    # The tool gate is clean; now the rows requirements.json says lint-cdc establishes. None
-    # carries a number SpyGlass reports, so every verdict is the agent's, and merge refuses a
-    # row it did not judge.
-    judged = requirements.merge(rows, [], declared)
-    unmet = requirements.unmet(judged)
-    # No per-severity counts here: they are a reduction of the two promoted, fingerprinted
-    # *-violations.json, and nothing in the tree reads them. violations[] stays because
-    # synthesis reads it out of this envelope when a round routes off a lint-cdc failure.
-    ss = {"tool": tool, "violations": violations, "requirements": judged}
-    if unmet:
-        ss["fail_reason"] = f"requirement(s) not met: {', '.join(unmet)}"
-        if fix_owner:
-            ss["fix_owner"] = fix_owner
-    _write(
-        workdir,
-        _envelope(
-            status="fail" if unmet else "pass", stage_specific=ss, artifacts=artifacts
-        ),
-    )
-    return 0
-
-
-def _gate_fail_reason(lint, cdc) -> str:
+def gate_fail_reason(lint, cdc) -> str:
     # Both gate-fail shapes: a sidecar the parser never wrote, and gated rows in one it
     # did. Only reached when the caller passed no --fail-reason, so the wording stays
     # generic on purpose: whoever watched `make` fail knows more than this, and saying it
@@ -168,21 +75,7 @@ def _gate_fail_reason(lint, cdc) -> str:
 # Derivation helpers
 # ---------------------------------------------------------------------------
 
-_VERSION_RE = re.compile(r"SpyGlass Version\s*:\s*SpyGlass_(\S+)")
-
-
-def parse_tool(workdir: Path) -> str:
-    """The ruleset version the report itself states. The kernel's reap-time
-    identity record reads only the library env vars,
-    so the envelope is the one place the ruleset that produced the proof is written down."""
-    rpt = Path(workdir) / "lint-report.txt"
-    if rpt.is_file():
-        m = _VERSION_RE.search(rpt.read_text(errors="replace"))
-        if m:
-            return (
-                f"SpyGlass {m.group(1)}"  # SpyGlass_vL-2016.06 -> SpyGlass vL-2016.06
-            )
-    return "SpyGlass unknown"
+VERSION_RE = re.compile(r"SpyGlass Version\s*:\s*SpyGlass_(\S+)")
 
 
 def enumerate_artifacts(workdir: Path) -> list[dict]:
@@ -200,21 +93,86 @@ def enumerate_artifacts(workdir: Path) -> list[dict]:
 
 
 def finalize(workdir, rows, declared, fix_owner=None, fail_reason=None) -> int:
-    """Assemble the lean lint-cdc result.json from the two *-violations.json + headers, then
-    judge the rows requirements.json assigns to this stage. exit 0 = result.json written
-    (status pass or fail); exit 2 = BLOCKED (an empty --fail-reason, a
-    row nobody judged, or any internal raise), never a status=fail."""
+    """Assess the stage and write its result. Input or I/O errors leave no current result."""
     (Path(workdir) / "result.json").unlink(missing_ok=True)
-    if fail_reason is not None and not fail_reason.strip():
+    if fail_reason is not None and (not fail_reason.strip()):
         print(
             "[lintcdc finalize] BLOCKED: --fail-reason must be a non-empty one-line reason",
             file=sys.stderr,
         )
         return 2
+
+    def _write_result(*, status, stage_specific, artifacts):
+        result = {
+            "stage": STAGE,
+            "produced_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "status": status,
+            "artifacts": artifacts,
+            "stage_specific": stage_specific,
+        }
+        result_path = Path(workdir) / "result.json"
+        temporary_path = result_path.with_suffix(".json.tmp")
+        temporary_path.write_text(json.dumps(result, indent=2) + "\n")
+        temporary_path.replace(result_path)
+        print(f"[lintcdc finalize] Written: {result_path} (status={status})")
+        return 0
+
     try:
-        return run(
-            workdir, rows, declared, fix_owner=fix_owner, fail_reason=fail_reason
+        workdir = Path(workdir)
+        lint_path = workdir / "lint-violations.json"
+        cdc_path = workdir / "cdc-violations.json"
+        lint = json.loads(lint_path.read_text()) if lint_path.is_file() else None
+        cdc = json.loads(cdc_path.read_text()) if cdc_path.is_file() else None
+        report_path = workdir / "lint-report.txt"
+        report_text = (
+            report_path.read_text(errors="replace") if report_path.is_file() else ""
         )
-    except Exception as exc:  # noqa: BLE001 — any failure to operate is BLOCKED
+        version_match = VERSION_RE.search(report_text)
+        tool = (
+            f"SpyGlass {version_match.group(1)}"
+            if version_match
+            else "SpyGlass unknown"
+        )
+        artifacts = enumerate_artifacts(workdir)
+        lint_bad = (
+            sum(lint["counts"][severity] for severity in GATED)
+            if lint is not None
+            else 0
+        )
+        cdc_bad = (
+            sum(cdc["counts"][severity] for severity in GATED) if cdc is not None else 0
+        )
+        violations = gated_violations(lint) + gated_violations(cdc)
+        if fail_reason or lint is None or cdc is None or lint_bad or cdc_bad:
+            stage_specific: dict = {
+                "tool": tool,
+                "fail_reason": fail_reason or gate_fail_reason(lint, cdc),
+            }
+            if violations:
+                stage_specific["violations"] = violations
+            if fix_owner:
+                stage_specific["fix_owner"] = fix_owner
+            return _write_result(
+                status="fail", stage_specific=stage_specific, artifacts=artifacts
+            )
+        judged = requirements.merge(rows, [], declared)
+        unmet = [entry["id"] for entry in judged if not entry["met"]]
+        stage_specific = {
+            "tool": tool,
+            "violations": violations,
+            "requirements": judged,
+        }
+        if unmet:
+            stage_specific["fail_reason"] = (
+                f"requirement(s) not met: {', '.join(unmet)}"
+            )
+            if fix_owner:
+                stage_specific["fix_owner"] = fix_owner
+        return _write_result(
+            status="fail" if unmet else "pass",
+            stage_specific=stage_specific,
+            artifacts=artifacts,
+        )
+    except (OSError, ValueError) as exc:
         print(f"[lintcdc finalize] BLOCKED: {exc}", file=sys.stderr)
         return 2

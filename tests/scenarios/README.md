@@ -52,4 +52,4 @@ Do not manufacture pressure merely to make a baseline fail.
 
 Record the actual platform/model, supplied context, observed behavior and limitations
 of a new experiment. Keep the task and useful findings reproducible; temporary runs
-and raw transcripts belong outside tracked files (`results/` is ignored).
+and raw transcripts belong outside the repository.

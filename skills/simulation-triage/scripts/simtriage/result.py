@@ -23,31 +23,21 @@ from jsonschema import Draft202012Validator
 
 STAGE = "simulation-triage"
 
-_RESULT_SCHEMA_PATH = (
+RESULT_SCHEMA_PATH = (
     Path(__file__).resolve().parent.parent.parent / "references" / "result.schema.json"
 )
 
 
-def _stage_specific_schema() -> dict:
-    """The bare analysis-fields schema, extracted from result.schema.json's stage_specific
-    subschema. The agent hands over stage_specific alone, so validating it needs the subschema
-    on its own; the whole envelope is re-validated against the same file at reap."""
-    doc = json.loads(_RESULT_SCHEMA_PATH.read_text())
-    for sub in doc["allOf"]:
-        props = sub.get("properties", {})
-        if "stage_specific" in props:
-            return props["stage_specific"]
-    raise ValueError("result.schema.json: no stage_specific subschema found in allOf")
-
-
-def _now_iso() -> str:
-    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-
-
 def validate_analysis(payload: dict) -> list[str]:
     """Schema-violation messages (empty list = valid) against the stage_specific contract."""
+    result_schema = json.loads(RESULT_SCHEMA_PATH.read_text())
+    analysis_schema = next(
+        component["properties"]["stage_specific"]
+        for component in result_schema["allOf"]
+        if "stage_specific" in component.get("properties", {})
+    )
     errors = sorted(
-        Draft202012Validator(_stage_specific_schema()).iter_errors(payload),
+        Draft202012Validator(analysis_schema).iter_errors(payload),
         key=lambda e: list(e.absolute_path),
     )
     return [
@@ -81,11 +71,7 @@ def finalize(workdir, json_file, json_stdin) -> int:
         print(f"analysis is not valid JSON: {e}", file=sys.stderr)
         return 2
 
-    try:
-        errors = validate_analysis(payload)
-    except Exception as e:  # noqa: BLE001 — unreadable/malformed schema file
-        print(f"validation internal error: {type(e).__name__}: {e}", file=sys.stderr)
-        return 2
+    errors = validate_analysis(payload)
     if errors:
         for msg in errors:
             print(msg, file=sys.stderr)
@@ -93,7 +79,7 @@ def finalize(workdir, json_file, json_stdin) -> int:
 
     env = {
         "stage": STAGE,
-        "produced_at": _now_iso(),
+        "produced_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "status": "pass",
         "artifacts": (
             [{"path": "experiment"}] if (Path(workdir) / "experiment").is_dir() else []
@@ -102,9 +88,11 @@ def finalize(workdir, json_file, json_stdin) -> int:
     }
     try:
         workdir_path = Path(workdir)
-        tmp = workdir_path / "result.json.tmp"
-        tmp.write_text(json.dumps(env, indent=2) + "\n")
-        tmp.replace(workdir_path / "result.json")  # atomic: never observed half-written
+        temporary_path = workdir_path / "result.json.tmp"
+        temporary_path.write_text(json.dumps(env, indent=2) + "\n")
+        temporary_path.replace(
+            workdir_path / "result.json"
+        )  # atomic: never observed half-written
     except OSError as e:
         print(f"result.json write error: {e}", file=sys.stderr)
         return 2

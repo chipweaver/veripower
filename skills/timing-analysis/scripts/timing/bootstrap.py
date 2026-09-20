@@ -14,11 +14,11 @@ from pathlib import Path
 # The kernel hands this verb an ABSOLUTE workdir, so nothing here depends on where it
 # was launched from. A relative --workdir is still resolved against the CWD, for a
 # human running the verb by hand from inside the module.
-_HERE = Path(__file__).resolve()
-_TEMPLATE_DIR = _HERE.parents[2] / "templates"
+SCRIPT_PATH = Path(__file__).resolve()
+TEMPLATE_DIR = SCRIPT_PATH.parents[2] / "templates"
 
 
-def _err(msg: str) -> None:
+def report_error(msg: str) -> None:
     print(f"[timing bootstrap] {msg}", file=sys.stderr)
 
 
@@ -34,8 +34,8 @@ def infer_top(syn_dir: Path) -> str | None:
 
 def run(workdir, top: str | None = None) -> int:
     (Path(workdir) / "result.json").unlink(missing_ok=True)
-    if not _TEMPLATE_DIR.is_dir():
-        _err(f"missing {_TEMPLATE_DIR}")
+    if not TEMPLATE_DIR.is_dir():
+        report_error(f"missing {TEMPLATE_DIR}")
         return 1
 
     # The design tree is the CWD (kernel.py + stage-subagent contract). Resolve a
@@ -56,18 +56,18 @@ def run(workdir, top: str | None = None) -> int:
     if top is None:
         top = infer_top(syn_dir)
         if top is None:
-            _err(f"cannot infer top from {syn_dir}/out/*_syn.v; pass --top")
+            report_error(f"cannot infer top from {syn_dir}/out/*_syn.v; pass --top")
             return 1
 
     # Verify the canonical netlist + SDC the TCL reads.
     for f in (syn_dir / "out" / f"{top}_syn.v", syn_dir / "out" / f"{top}_syn.sdc"):
         if not f.is_file():
-            _err(f"missing external reference: {f}")
+            report_error(f"missing external reference: {f}")
             return 1
 
     workdir.mkdir(parents=True, exist_ok=True)
-    for source in _TEMPLATE_DIR.rglob("*"):
-        target = workdir / source.relative_to(_TEMPLATE_DIR)
+    for source in TEMPLATE_DIR.rglob("*"):
+        target = workdir / source.relative_to(TEMPLATE_DIR)
         if source.is_file() and not target.exists():
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(source, target)

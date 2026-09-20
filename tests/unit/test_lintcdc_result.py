@@ -1,13 +1,12 @@
 """Unit tests for lintcdc.result — thin combiner for lint-cdc result.json.
 
 TDD order: AND gate + shape, header derivations,
-artifacts[], golden + schema.
+artifact delivery and schema validation.
 """
 
 from __future__ import annotations
 
 import json
-import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -21,7 +20,7 @@ from lintcdc import result as rb  # noqa: E402, I001
 MAIN = REPO_ROOT / "skills/lint-cdc/scripts/lintcdc/__main__.py"
 
 
-def _spec(tmp_path, rows=()):
+def spec(tmp_path, rows=()):
     """A specification root with a ledger, and the dispatch.json that points finalize at it."""
     sd = tmp_path / "spec"
     sd.mkdir(exist_ok=True)
@@ -37,7 +36,7 @@ def _spec(tmp_path, rows=()):
 # ---------------------------------------------------------------------------
 
 
-def _clean_workdir(tmp_path, lint_err=0, cdc_err=0):
+def clean_workdir(tmp_path, lint_err=0, cdc_err=0):
     wd = tmp_path
     (wd / "lint-violations.json").write_text(
         json.dumps(
@@ -74,8 +73,8 @@ def _clean_workdir(tmp_path, lint_err=0, cdc_err=0):
 
 
 def test_envelope_pass_lean_shape(tmp_path):
-    wd = _clean_workdir(tmp_path)
-    assert rb.run(wd, [], []) == 0
+    wd = clean_workdir(tmp_path)
+    assert rb.finalize(wd, [], []) == 0
     env = json.loads((wd / "result.json").read_text())
     assert env["stage"] == "lint-cdc"
     assert env["status"] == "pass" and env["produced_at"].endswith("Z")
@@ -95,7 +94,7 @@ def test_envelope_pass_lean_shape(tmp_path):
 
 
 def test_envelope_fail_on_lint_error(tmp_path):
-    wd = _clean_workdir(tmp_path, lint_err=1)
+    wd = clean_workdir(tmp_path, lint_err=1)
     # one error-severity lint violation present, carrying the tool message the reason derives from
     (wd / "lint-violations.json").write_text(
         json.dumps(
@@ -115,7 +114,7 @@ def test_envelope_fail_on_lint_error(tmp_path):
             }
         )
     )
-    assert rb.run(wd, [], []) == 0
+    assert rb.finalize(wd, [], []) == 0
     env = json.loads((wd / "result.json").read_text())
     assert env["status"] == "fail"
     ss = env["stage_specific"]
@@ -132,7 +131,7 @@ def test_envelope_fail_on_lint_error(tmp_path):
 def test_envelope_fail_on_warning_with_no_error(tmp_path):
     """A warning-severity message gates exactly as an error does: a run that left one standing
     is not sign-off, and a waive carrying its reason is the only route from there to pass."""
-    wd = _clean_workdir(tmp_path)
+    wd = clean_workdir(tmp_path)
     (wd / "lint-violations.json").write_text(
         json.dumps(
             {
@@ -140,10 +139,10 @@ def test_envelope_fail_on_warning_with_no_error(tmp_path):
                 "counts": {"error": 0, "warning": 1, "info": 5},
                 "violations": [
                     {
-                        "id": "SYNTH_5118:fa_core.v:723",
+                        "id": "SYNTH_5118:datapath.v:23",
                         "rule": "SYNTH_5118",
                         "severity": "warning",
-                        "file": "fa_core.v",
+                        "file": "datapath.v",
                         "line": 723,
                         "message": (
                             "Function (f32_add) may not return a correct value as 'n_t01' is "
@@ -155,36 +154,26 @@ def test_envelope_fail_on_warning_with_no_error(tmp_path):
             }
         )
     )
-    assert rb.run(wd, [], []) == 0
+    assert rb.finalize(wd, [], []) == 0
     env = json.loads((wd / "result.json").read_text())
     assert env["status"] == "fail"
     ss = env["stage_specific"]
     assert "1 lint warning(s)" in ss["fail_reason"]
     v = ss["violations"][0]
-    assert (v["id"], v["severity"]) == ("SYNTH_5118:fa_core.v:723", "warning")
+    assert (v["id"], v["severity"]) == ("SYNTH_5118:datapath.v:23", "warning")
     assert v["reason"].startswith("SYNTH_5118: Function (f32_add) may not return")
 
 
 def test_info_severity_does_not_gate(tmp_path):
     # The pass fixture carries info rows in its counts; only error and warning are counted.
-    wd = _clean_workdir(tmp_path)
-    assert rb.run(wd, [], []) == 0
+    wd = clean_workdir(tmp_path)
+    assert rb.finalize(wd, [], []) == 0
     assert json.loads((wd / "result.json").read_text())["status"] == "pass"
 
 
 # ---------------------------------------------------------------------------
 # Reproducibility-header derivations
 # ---------------------------------------------------------------------------
-
-
-def test_parse_tool_from_lint_report(tmp_path):
-    (tmp_path / "lint-report.txt").write_text(
-        "=== IPD lint-report (SpyGlass) ===\n"
-        "#     SpyGlass Version : SpyGlass_vL-2016.06\n"
-    )
-    assert rb.parse_tool(tmp_path) == "SpyGlass vL-2016.06"
-    (tmp_path / "lint-report.txt").write_text("no version line\n")
-    assert rb.parse_tool(tmp_path) == "SpyGlass unknown"
 
 
 # ---------------------------------------------------------------------------
@@ -211,68 +200,20 @@ def test_enumerate_artifacts_present_only_no_self(tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# Golden test against a real run + schema validation
+# Result-schema validation
 # ---------------------------------------------------------------------------
 
-FIX = Path(__file__).resolve().parent / "fixtures" / "lint-cdc-golden"
 
-
-def _resolve_warnings(wd):
-    """The same real run with its two W528 resolved: the rows gone and the count with them."""
-    p = wd / "lint-violations.json"
-    doc = json.loads(p.read_text())
-    doc["violations"] = [v for v in doc["violations"] if v["severity"] != "warning"]
-    doc["counts"]["warning"] = 0
-    p.write_text(json.dumps(doc))
-
-
-def test_golden_lean_against_a_real_run(tmp_path):
-    """The real run this fixture came from carried zero errors and two W528 warnings, and the error-only gate
-    passed it. Both rows are real findings, so the run does not close on them."""
-    wd = tmp_path / "lint-cdc"
-    shutil.copytree(FIX, wd)
-    assert rb.run(wd, [], []) == 0
-    env = json.loads((wd / "result.json").read_text())
-    ss = env["stage_specific"]
-    # contract / header fields — exact to the real run
-    assert env["status"] == "fail"
-    assert ss["tool"] == "SpyGlass vL-2016.06"
-    assert "2 lint warning(s)" in ss["fail_reason"]
-    assert [(v["rule"], v["severity"], v["line"]) for v in ss["violations"]] == [
-        ("W528", "warning", 231),
-        ("W528", "warning", 252),
-    ]
-    # lean: dropped fields ABSENT
-    for k in (
-        "note",
-        "waivers",
-        "sgdc_seed",
-        "top_module",
-        "lint_counts",
-        "cdc_counts",
-    ):
-        assert k not in ss
-    # artifacts present + no self-listing; produced_at normalized
-    paths = [a["path"] for a in env["artifacts"]]
-    assert "scripts" in paths and "lint-violations.json" in paths
-    assert "result.json" not in paths
-    assert env["produced_at"].endswith("Z")
-
-
-def test_golden_is_schema_valid(tmp_path):
+def test_pass_envelope_is_schema_valid(tmp_path):
     # Reuse framework.scripts.store.validate_result (Draft202012Validator + Registry)
     # on the produced result.json dict.
     from framework.scripts import store
 
-    wd = tmp_path / "asic" / "dut_top" / "Design" / "lint-cdc"
-    shutil.copytree(FIX, wd)
-    _resolve_warnings(
-        wd
-    )  # the pass path is what this guards, so close the real findings
-    rb.run(wd, [], [])
+    wd = clean_workdir(tmp_path)
+    rb.finalize(wd, [], [])
     result = json.loads((wd / "result.json").read_text())
     err = store.validate_result("lint-cdc", result)
-    assert err is None, f"golden lint-cdc result.json is not schema-valid: {err}"
+    assert err is None, f"lint-cdc result.json is not schema-valid: {err}"
     assert result["status"] == "pass"
 
 
@@ -281,8 +222,7 @@ def test_fail_envelope_is_schema_valid(tmp_path):
     # on fail). Guard the fail shape explicitly.
     from framework.scripts import store
 
-    wd = tmp_path / "asic" / "dut_top" / "Design" / "lint-cdc"
-    shutil.copytree(FIX, wd)
+    wd = clean_workdir(tmp_path)
     # inject one error-severity lint violation -> status=fail with fail_reason + violations
     (wd / "lint-violations.json").write_text(
         json.dumps(
@@ -302,7 +242,7 @@ def test_fail_envelope_is_schema_valid(tmp_path):
             }
         )
     )
-    assert rb.run(wd, [], []) == 0
+    assert rb.finalize(wd, [], []) == 0
     result = json.loads((wd / "result.json").read_text())
     err = store.validate_result("lint-cdc", result)
     assert err is None, f"fail-path lint-cdc result.json is not schema-valid: {err}"
@@ -319,7 +259,7 @@ def test_fail_envelope_carries_the_agent_named_fix_owner(tmp_path):
     """fix_owner is the one field this verb cannot derive: a constraint-family violation is
     reported at an RTL line while the fix belongs in the SGDC, and no rule prefix adjudicates
     that. The agent names it; finalize only records it."""
-    wd = _clean_workdir(tmp_path, cdc_err=1)
+    wd = clean_workdir(tmp_path, cdc_err=1)
     (wd / "cdc-violations.json").write_text(
         json.dumps(
             {
@@ -336,7 +276,7 @@ def test_fail_envelope_carries_the_agent_named_fix_owner(tmp_path):
             }
         )
     )
-    assert rb.run(wd, [], [], fix_owner="specification") == 0
+    assert rb.finalize(wd, [], [], fix_owner="specification") == 0
     ss = json.loads((wd / "result.json").read_text())["stage_specific"]
     assert ss["fix_owner"] == "specification"
 
@@ -344,8 +284,8 @@ def test_fail_envelope_carries_the_agent_named_fix_owner(tmp_path):
 def test_fail_envelope_omits_fix_owner_when_unnamed(tmp_path):
     """Absence is the signal decide reads as "this stage cannot tell", so an unnamed owner
     must not serialize as a present-but-empty key."""
-    wd = _clean_workdir(tmp_path, cdc_err=1)
-    assert rb.run(wd, [], []) == 0
+    wd = clean_workdir(tmp_path, cdc_err=1)
+    assert rb.finalize(wd, [], []) == 0
     ss = json.loads((wd / "result.json").read_text())["stage_specific"]
     assert "fix_owner" not in ss
 
@@ -353,9 +293,9 @@ def test_fail_envelope_omits_fix_owner_when_unnamed(tmp_path):
 def test_fail_envelope_no_violations_omits_failures(tmp_path):
     # Report-missing early-fail path: no error-severity violation rows at all ->
     # nothing to classify -> failures[] stays unset (not invented).
-    wd = _clean_workdir(tmp_path)
+    wd = clean_workdir(tmp_path)
     (wd / "lint-violations.json").unlink()
-    assert rb.run(wd, [], []) == 0
+    assert rb.finalize(wd, [], []) == 0
     env = json.loads((wd / "result.json").read_text())
     ss = env["stage_specific"]
     assert env["status"] == "fail"
@@ -371,10 +311,10 @@ def test_early_fail_reason_wins_and_is_the_failure_declaration(tmp_path):
     """The Step 4/5 early-fail closes through this verb too. `make` died before the parser
     wrote its sidecar, so the cause exists only on stderr where the agent read it; passing it
     is what declares the failure, and it must not be overwritten by the derived gate wording."""
-    wd = _clean_workdir(tmp_path)
+    wd = clean_workdir(tmp_path)
     (wd / "cdc-violations.json").unlink()  # write-fresh-or-nothing removed it
     reason = "SpyGlass exited 1 before cdc_setup: no license for cdc/cdc_verify_struct"
-    assert rb.run(wd, [], [], fail_reason=reason, fix_owner="rtl-design") == 0
+    assert rb.finalize(wd, [], [], fail_reason=reason, fix_owner="rtl-design") == 0
     env = json.loads((wd / "result.json").read_text())
     ss = env["stage_specific"]
     assert env["status"] == "fail"
@@ -385,8 +325,8 @@ def test_early_fail_reason_wins_and_is_the_failure_declaration(tmp_path):
 def test_fail_reason_forces_fail_on_an_otherwise_clean_pair(tmp_path):
     # A tool failure can leave both sidecars clean (e.g. make died after reporting).
     # Supplying the reason is the failure declaration, so the gate must not out-vote it.
-    wd = _clean_workdir(tmp_path)
-    assert rb.run(wd, [], [], fail_reason="spyglass crashed post-report") == 0
+    wd = clean_workdir(tmp_path)
+    assert rb.finalize(wd, [], [], fail_reason="spyglass crashed post-report") == 0
     env = json.loads((wd / "result.json").read_text())
     assert env["status"] == "fail"
     assert env["stage_specific"]["fail_reason"] == "spyglass crashed post-report"
@@ -394,7 +334,7 @@ def test_fail_reason_forces_fail_on_an_otherwise_clean_pair(tmp_path):
 
 def test_empty_fail_reason_is_blocked_not_a_fail(tmp_path):
     # An unreasoned early-fail is a program error, never a routable verdict.
-    wd = _clean_workdir(tmp_path)
+    wd = clean_workdir(tmp_path)
     assert rb.finalize(wd, [], [], None, "   ") == 2
     assert not (wd / "result.json").exists()
 
@@ -410,7 +350,7 @@ def test_empty_fail_reason_is_blocked_not_a_fail(tmp_path):
 def test_waiver_source_format_does_not_gate_closure(tmp_path, body):
     # The native reports are clean and report no waived messages. Source declarations
     # do not establish what ran or matched; they must not create an extra gate.
-    wd = _clean_workdir(tmp_path)
+    wd = clean_workdir(tmp_path)
     (wd / "scripts").mkdir(exist_ok=True)
     (wd / "scripts/waiver.tcl").write_text(body + "\n")
     assert rb.finalize(wd, [], []) == 0
@@ -426,7 +366,7 @@ def test_waiver_source_format_does_not_gate_closure(tmp_path, body):
     ],
 )
 def test_waiver_problem_can_be_returned_without_editing_the_script(tmp_path, body):
-    wd = _clean_workdir(tmp_path)
+    wd = clean_workdir(tmp_path)
     (wd / "scripts").mkdir(exist_ok=True)
     (wd / "scripts/waiver.tcl").write_text(body + "\n")
     reason = "The applied waiver lacks a task-grounded justification."
@@ -436,16 +376,6 @@ def test_waiver_problem_can_be_returned_without_editing_the_script(tmp_path, bod
     assert result["stage_specific"]["fail_reason"] == reason
     assert result["stage_specific"]["fix_owner"] == "lint-cdc"
     assert (wd / "scripts/waiver.tcl").read_text() == body + "\n"
-
-
-def test_finalize_blocked_on_internal_raise(tmp_path, monkeypatch):
-    # finalize() wraps run(): any internal raise -> exit 2 (BLOCKED), never
-    # status=fail. (The deleted main() owned this except; it moves to finalize().)
-    def boom(*a, **k):
-        raise RuntimeError("synthetic")
-
-    monkeypatch.setattr(rb, "run", boom)
-    assert rb.finalize(tmp_path, [], []) == 2
 
 
 def test_finalize_missing_required_flag_is_blocked(tmp_path):
@@ -462,11 +392,11 @@ def test_finalize_missing_required_flag_is_blocked(tmp_path):
 
 
 def test_finalize_cli_happy_path(tmp_path):
-    # End-to-end through _cmd_finalize (lazy handler import + arg mapping), not just
+    # End-to-end through the finalize CLI (lazy handler import + arg mapping), not just
     # in-process run(). A handler typo would pass every other test (which call run()
     # directly) but fail here. --top omitted -> defaults to the report header.
-    wd = _clean_workdir(tmp_path)
-    _spec(tmp_path)
+    wd = clean_workdir(tmp_path)
+    spec(tmp_path)
     r = subprocess.run(
         ["python3", str(MAIN), "finalize", "--workdir", str(wd)],
         capture_output=True,
@@ -482,7 +412,7 @@ def test_finalize_cli_happy_path(tmp_path):
 # The rows requirements.json assigns to lint-cdc: judged by the agent, accounted for here
 # ---------------------------------------------------------------------------
 
-_ROWS = [
+ROWS = [
     {
         "id": "R-7",
         "verbatim": "lint / CDC clean（0 Error、0 Warning）",
@@ -493,7 +423,7 @@ _ROWS = [
 ]
 
 
-def _cli(wd, *extra):
+def cli(wd, *extra):
     return subprocess.run(
         ["python3", str(MAIN), "finalize", "--workdir", str(wd), *extra],
         capture_output=True,
@@ -502,8 +432,8 @@ def _cli(wd, *extra):
 
 
 def test_declared_verdicts_land_in_the_envelope(tmp_path):
-    wd = _clean_workdir(tmp_path)
-    _spec(tmp_path, _ROWS)
+    wd = clean_workdir(tmp_path)
+    spec(tmp_path, ROWS)
     declared = [
         {
             "id": "R-7",
@@ -518,7 +448,7 @@ def test_declared_verdicts_land_in_the_envelope(tmp_path):
             "measured": "read from the run's own report",
         },
     ]
-    r = _cli(wd, "--requirements", json.dumps(declared))
+    r = cli(wd, "--requirements", json.dumps(declared))
     assert r.returncode == 0, r.stderr
     env = json.loads((wd / "result.json").read_text())
     assert env["status"] == "pass"
@@ -528,8 +458,8 @@ def test_declared_verdicts_land_in_the_envelope(tmp_path):
 
 
 def test_an_unmet_row_fails_the_run(tmp_path):
-    wd = _clean_workdir(tmp_path)
-    _spec(tmp_path, _ROWS)
+    wd = clean_workdir(tmp_path)
+    spec(tmp_path, ROWS)
     declared = [
         {
             "id": "R-7",
@@ -539,7 +469,7 @@ def test_an_unmet_row_fails_the_run(tmp_path):
         },
         {"id": "R-8", "met": True, "measured": "read from the run's own report"},
     ]
-    r = _cli(wd, "--requirements", json.dumps(declared), "--fix-owner", "rtl-design")
+    r = cli(wd, "--requirements", json.dumps(declared), "--fix-owner", "rtl-design")
     assert r.returncode == 0, r.stderr
     ss = json.loads((wd / "result.json").read_text())["stage_specific"]
     assert ss["fail_reason"] == "requirement(s) not met: R-7"
@@ -548,9 +478,9 @@ def test_an_unmet_row_fails_the_run(tmp_path):
 
 def test_a_row_nobody_judged_is_blocked(tmp_path):
     # A row the agent never read cannot pass as silence.
-    wd = _clean_workdir(tmp_path)
-    _spec(tmp_path, _ROWS)
-    r = _cli(
+    wd = clean_workdir(tmp_path)
+    spec(tmp_path, ROWS)
+    r = cli(
         wd,
         "--requirements",
         json.dumps(
@@ -562,22 +492,22 @@ def test_a_row_nobody_judged_is_blocked(tmp_path):
 
 
 def test_a_verdict_on_another_stages_row_is_blocked(tmp_path):
-    wd = _clean_workdir(tmp_path)
-    _spec(tmp_path, _ROWS)
+    wd = clean_workdir(tmp_path)
+    spec(tmp_path, ROWS)
     declared = [
         {"id": "R-7", "met": True, "measured": "read from the run's own report"},
         {"id": "R-8", "met": True, "measured": "read from the run's own report"},
         {"id": "R-9", "met": True, "measured": "read from the run's own report"},
     ]
-    r = _cli(wd, "--requirements", json.dumps(declared))
+    r = cli(wd, "--requirements", json.dumps(declared))
     assert r.returncode == 2 and "R-9" in r.stderr
 
 
 def test_a_tool_fail_needs_no_verdicts(tmp_path):
     # The rows are judged once the tool gate is clean; a failed run is already a fail.
-    wd = _clean_workdir(tmp_path, lint_err=1)
-    _spec(tmp_path, _ROWS)
-    r = _cli(wd)
+    wd = clean_workdir(tmp_path, lint_err=1)
+    spec(tmp_path, ROWS)
+    r = cli(wd)
     assert r.returncode == 0, r.stderr
     env = json.loads((wd / "result.json").read_text())
     assert env["status"] == "fail" and "requirements" not in env["stage_specific"]

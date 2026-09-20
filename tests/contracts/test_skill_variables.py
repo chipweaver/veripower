@@ -17,7 +17,7 @@ import re
 from pathlib import Path
 
 import pytest
-from _skills_sot import PLUGIN_ROOT, SKILL_DIRS
+from skills_source import PLUGIN_ROOT, SKILL_DIRS
 
 CANONICAL_VARS: set[str] = {
     "workdir",
@@ -33,7 +33,7 @@ HARDCODE_PATTERNS = [
 PLACEHOLDER_PATTERN = re.compile(r"\{([a-z_]+)\}")
 
 
-def _audit_skill(skill_md: Path) -> list[str]:
+def audit_skill(skill_md: Path) -> list[str]:
     """Return the list of violations; empty list = compliant."""
     text = skill_md.read_text(encoding="utf-8")
     violations = []
@@ -56,7 +56,7 @@ def _audit_skill(skill_md: Path) -> list[str]:
 def test_skill_variables(skill_name):
     """Placeholders ⊆ canonical 4; no hardcoded paths."""
     skill_md = PLUGIN_ROOT / "skills" / skill_name / "SKILL.md"
-    violations = _audit_skill(skill_md)
+    violations = audit_skill(skill_md)
     assert not violations, f"skill {skill_name}: " + "; ".join(violations)
 
 

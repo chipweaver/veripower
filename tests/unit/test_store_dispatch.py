@@ -10,7 +10,7 @@ import rules  # noqa: E402
 import store  # noqa: E402
 
 
-def _read(wd):
+def read_dispatch(wd):
     return json.loads((wd / "dispatch.json").read_text())
 
 
@@ -18,8 +18,8 @@ def test_inject_upstream_keys_are_producer_stage_roots(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     wd = tmp_path / "m" / "Design" / "synthesis" / "runs" / "1"
     wd.mkdir(parents=True)
-    store.write_dispatch(store.module_root("m"), "synthesis", wd)
-    table = _read(wd)["inputs"]
+    store.write_dispatch(Path("m"), "synthesis", wd)
+    table = read_dispatch(wd)["inputs"]
     base = str((tmp_path / "m").resolve())
     assert table["rtl"] == base + "/Design/rtl-design"
     assert table["sdc"] == base + "/Design/specification"
@@ -35,8 +35,8 @@ def test_every_rule_reaches_the_intent_tree(tmp_path, monkeypatch):
     for rule, r in rules.RULES.items():
         wd = tmp_path / "m" / Path(*r.workdir_root) / "runs" / "1"
         wd.mkdir(parents=True, exist_ok=True)
-        store.write_dispatch(store.module_root("m"), rule, wd)
-        assert _read(wd)["inputs"]["intent"] == intent, rule
+        store.write_dispatch(Path("m"), rule, wd)
+        assert read_dispatch(wd)["inputs"]["intent"] == intent, rule
 
 
 def test_inject_pipeline_input_resolves_to_the_container_not_the_module_root(
@@ -48,8 +48,8 @@ def test_inject_pipeline_input_resolves_to_the_container_not_the_module_root(
     monkeypatch.chdir(tmp_path)
     wd = tmp_path / "m" / "Design" / "specification" / "runs" / "1"
     wd.mkdir(parents=True)
-    store.write_dispatch(store.module_root("m"), "specification", wd)
-    table = _read(wd)["inputs"]
+    store.write_dispatch(Path("m"), "specification", wd)
+    table = read_dispatch(wd)["inputs"]
     assert table["intent"] == str((tmp_path / "m" / "intent").resolve())
     assert table["intent"] != str((tmp_path / "m").resolve())
 
@@ -58,11 +58,9 @@ def test_inject_sim_run_key_and_guard(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     wd = tmp_path / "m" / "Verification" / "simulation-triage" / "runs" / "1"
     wd.mkdir(parents=True)
-    store.write_dispatch(
-        store.module_root("m"), "simulation-triage", wd, params={"sim_run": "3"}
-    )
+    store.write_dispatch(Path("m"), "simulation-triage", wd, params={"sim_run": "3"})
     sim_root = str((tmp_path / "m" / "Verification" / "simulation").resolve())
-    assert _read(wd)["inputs"]["sim_run"] == sim_root + "/runs/3"
+    assert read_dispatch(wd)["inputs"]["sim_run"] == sim_root + "/runs/3"
 
 
 def test_narrowing_keys_absent_when_empty(tmp_path, monkeypatch):
@@ -72,8 +70,8 @@ def test_narrowing_keys_absent_when_empty(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     wd = tmp_path / "m" / "Design" / "synthesis" / "runs" / "1"
     wd.mkdir(parents=True)
-    store.write_dispatch(store.module_root("m"), "synthesis", wd, None, [], [], [])
-    assert list(_read(wd)) == ["inputs"]
+    store.write_dispatch(Path("m"), "synthesis", wd, None, [], [], [])
+    assert list(read_dispatch(wd)) == ["inputs"]
 
 
 def test_narrowing_keys_written_when_present(tmp_path, monkeypatch):
@@ -81,7 +79,7 @@ def test_narrowing_keys_written_when_present(tmp_path, monkeypatch):
     wd = tmp_path / "m" / "Design" / "rtl-design" / "runs" / "2"
     wd.mkdir(parents=True)
     store.write_dispatch(
-        store.module_root("m"),
+        Path("m"),
         "rtl-design",
         wd,
         None,
@@ -89,7 +87,7 @@ def test_narrowing_keys_written_when_present(tmp_path, monkeypatch):
         ["Design/synthesis/runs/1/result.json"],
         ["the area target's unit was wrong, not the RTL"],
     )
-    doc = _read(wd)
+    doc = read_dispatch(wd)
     assert doc["scope"] == ["Design/specification/child_a.md", "mac.v:42"]
     assert doc["caused_by"] == ["Design/synthesis/runs/1/result.json"]
     assert doc["reasons"] == ["the area target's unit was wrong, not the RTL"]
@@ -98,4 +96,4 @@ def test_narrowing_keys_written_when_present(tmp_path, monkeypatch):
 @pytest.mark.parametrize("bad", ["0", "-1", "abc", "1/../2", "../9"])
 def test_resolve_sim_run_rejects(tmp_path, bad):
     with pytest.raises(ValueError):
-        store._resolve_sim_run(Path(tmp_path) / "asic" / "m", bad)
+        store.resolve_sim_run(Path(tmp_path) / "asic" / "m", bad)

@@ -23,7 +23,7 @@ from framework.scripts import store
 ROOT = Path(__file__).resolve().parents[2]
 
 # stage -> (CLI, the argv that declares a failure with no reason behind it)
-_DECLARE_FAILURE = {
+DECLARE_FAILURE = {
     "synthesis": (
         "skills/synthesis/scripts/synthesis/__main__.py",
         ["--fail-reason", ""],
@@ -44,9 +44,9 @@ _DECLARE_FAILURE = {
 }
 
 
-@pytest.mark.parametrize("stage", sorted(_DECLARE_FAILURE))
+@pytest.mark.parametrize("stage", sorted(DECLARE_FAILURE))
 def test_empty_reason_never_reaches_disk_as_a_fail_envelope(stage, tmp_path):
-    cli, argv = _DECLARE_FAILURE[stage]
+    cli, argv = DECLARE_FAILURE[stage]
     wd = tmp_path / stage
     wd.mkdir()
     proc = subprocess.run(

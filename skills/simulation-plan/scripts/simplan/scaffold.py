@@ -8,8 +8,8 @@ import json
 import sys
 from pathlib import Path
 
-from simplan._plan import PlanError, load_plan
 from simplan.hints import HintsError, load_check_hints
+from simplan.plan import PlanError, load_plan
 
 
 def semantic_errors(scaffold: dict) -> list:

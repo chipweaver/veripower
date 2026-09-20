@@ -13,8 +13,8 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-from sim._gate import materialization_errors
-from sim._plan import load_plan
+from sim.checks import materialization_errors
+from sim.plan import load_plan
 
 
 def run(workdir, plan_dir) -> int:

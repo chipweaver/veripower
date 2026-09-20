@@ -1,0 +1,15 @@
+(SAIFILE
+(SAIFVERSION "2.0")
+(TIMESCALE 1 ns)
+(DURATION 100)
+(INSTANCE tb
+   (INSTANCE dut
+      (NET
+      (signal0 (T0 50) (T1 50) (TX 0) (TC 0) (IG 0))
+      (signal1 (T0 50) (T1 50) (TX 0) (TC 0) (IG 0))
+      (signal2 (T0 50) (T1 50) (TX 0) (TC 0) (IG 0))
+      (signal3 (T0 50) (T1 50) (TX 0) (TC 0) (IG 0))
+      )
+   )
+)
+)

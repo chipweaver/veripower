@@ -18,7 +18,7 @@ import store
 
 
 class TestPromoteAtomic:
-    def _setup_run(
+    def setup_run(
         self,
         tmp_path,
         monkeypatch,
@@ -30,7 +30,11 @@ class TestPromoteAtomic:
         """Set up a run dir with result.json + optional file/dir artifacts.
         Returns (run_dir)."""
         monkeypatch.chdir(tmp_path)
-        run_dir = store._result_path("foo", stage).parent / "runs" / str(run_n)
+        run_dir = (
+            Path("foo", *store.rules.RULES[stage].workdir_root, "result.json").parent
+            / "runs"
+            / str(run_n)
+        )
         run_dir.mkdir(parents=True)
         if artifacts_list is None:
             artifacts_list = []
@@ -63,11 +67,13 @@ class TestPromoteAtomic:
 
     def test_promote_creates_canonical_view(self, tmp_path, monkeypatch):
         """Promote run → canonical has hardlinks to result.json + artifacts."""
-        run_dir = self._setup_run(
+        run_dir = self.setup_run(
             tmp_path, monkeypatch, "lint-cdc", 1, artifacts_list=["report.txt"]
         )
         store.promote("foo", "lint-cdc", 1)
-        canonical_rj = store._result_path("foo", "lint-cdc")
+        canonical_rj = Path(
+            "foo", *store.rules.RULES["lint-cdc"].workdir_root, "result.json"
+        )
         canonical_artifact = canonical_rj.parent / "report.txt"
         assert canonical_rj.exists()
         assert canonical_artifact.exists()
@@ -80,11 +86,16 @@ class TestPromoteAtomic:
     def test_promote_handles_directory_artifact(self, tmp_path, monkeypatch):
         """directory artifacts must work via cp_al
         (tree hardlinks)."""
-        run_dir = self._setup_run(
+        run_dir = self.setup_run(
             tmp_path, monkeypatch, "lint-cdc", 1, dir_artifacts=["reports"]
         )
         store.promote("foo", "lint-cdc", 1)
-        canonical_dir = store._result_path("foo", "lint-cdc").parent / "reports"
+        canonical_dir = (
+            Path(
+                "foo", *store.rules.RULES["lint-cdc"].workdir_root, "result.json"
+            ).parent
+            / "reports"
+        )
         assert canonical_dir.is_dir()
         assert (canonical_dir / "child.txt").exists()
         assert (canonical_dir / "child.txt").stat().st_ino == (
@@ -93,12 +104,18 @@ class TestPromoteAtomic:
 
     def test_promote_replaces_old_canonical(self, tmp_path, monkeypatch):
         """Run 2 promote replaces run 1's canonical view (file artifact)."""
-        self._setup_run(
+        self.setup_run(
             tmp_path, monkeypatch, "lint-cdc", 1, artifacts_list=["report.txt"]
         )
         store.promote("foo", "lint-cdc", 1)
         # run 2 with different content
-        run2 = store._result_path("foo", "lint-cdc").parent / "runs" / "2"
+        run2 = (
+            Path(
+                "foo", *store.rules.RULES["lint-cdc"].workdir_root, "result.json"
+            ).parent
+            / "runs"
+            / "2"
+        )
         run2.mkdir()
         (run2 / "report.txt").write_text("v2 content")
         rj = {
@@ -111,7 +128,9 @@ class TestPromoteAtomic:
         }
         (run2 / "result.json").write_text(json.dumps(rj))
         store.promote("foo", "lint-cdc", 2)
-        canonical_rj = store._result_path("foo", "lint-cdc")
+        canonical_rj = Path(
+            "foo", *store.rules.RULES["lint-cdc"].workdir_root, "result.json"
+        )
         # canonical now reflects run 2
         assert canonical_rj.read_text() == (run2 / "result.json").read_text()
         assert (canonical_rj.parent / "report.txt").read_text() == "v2 content"
@@ -119,10 +138,16 @@ class TestPromoteAtomic:
     def test_promote_replaces_non_empty_directory_artifact(self, tmp_path, monkeypatch):
         """second promote on a dir artifact must work
         (POSIX rename(2) on non-empty target returns ENOTEMPTY; need rmtree-then-rename)."""
-        self._setup_run(tmp_path, monkeypatch, "lint-cdc", 1, dir_artifacts=["reports"])
+        self.setup_run(tmp_path, monkeypatch, "lint-cdc", 1, dir_artifacts=["reports"])
         store.promote("foo", "lint-cdc", 1)
         # run 2 with different content in reports/
-        run2 = store._result_path("foo", "lint-cdc").parent / "runs" / "2"
+        run2 = (
+            Path(
+                "foo", *store.rules.RULES["lint-cdc"].workdir_root, "result.json"
+            ).parent
+            / "runs"
+            / "2"
+        )
         run2.mkdir()
         (run2 / "reports").mkdir()
         (run2 / "reports" / "v2-area.txt").write_text("v2 area report")
@@ -137,7 +162,12 @@ class TestPromoteAtomic:
         }
         (run2 / "result.json").write_text(json.dumps(rj))
         store.promote("foo", "lint-cdc", 2)  # KEY: should not raise ENOTEMPTY
-        canonical_dir = store._result_path("foo", "lint-cdc").parent / "reports"
+        canonical_dir = (
+            Path(
+                "foo", *store.rules.RULES["lint-cdc"].workdir_root, "result.json"
+            ).parent
+            / "reports"
+        )
         # canonical reports/ now reflects run 2 (v1 child.txt gone, v2 files present)
         assert (canonical_dir / "v2-area.txt").exists()
         assert (canonical_dir / "v2-timing.txt").exists()
@@ -147,12 +177,18 @@ class TestPromoteAtomic:
     def test_promote_failure_leaves_canonical_intact(self, tmp_path, monkeypatch):
         """promote step 1 failure (e.g., missing artifact) → .promote-tmp cleared,
         canonical fully intact."""
-        self._setup_run(
+        self.setup_run(
             tmp_path, monkeypatch, "lint-cdc", 1, artifacts_list=["report.txt"]
         )
         store.promote("foo", "lint-cdc", 1)
         # run 2: artifact references non-existent file
-        run2 = store._result_path("foo", "lint-cdc").parent / "runs" / "2"
+        run2 = (
+            Path(
+                "foo", *store.rules.RULES["lint-cdc"].workdir_root, "result.json"
+            ).parent
+            / "runs"
+            / "2"
+        )
         run2.mkdir()
         rj = {
             "stage": "lint-cdc",
@@ -167,7 +203,9 @@ class TestPromoteAtomic:
         with pytest.raises((FileNotFoundError, OSError)):
             store.promote("foo", "lint-cdc", 2)
         # canonical still reflects run 1 (run 1's produced_at is 00:00, run 2's 01:00)
-        canonical_rj = store._result_path("foo", "lint-cdc")
+        canonical_rj = Path(
+            "foo", *store.rules.RULES["lint-cdc"].workdir_root, "result.json"
+        )
         canonical_data = json.loads(canonical_rj.read_text())
         assert canonical_data["produced_at"] == "2026-04-27T00:00:00Z"
         # .promote-tmp cleaned up
@@ -177,13 +215,15 @@ class TestPromoteAtomic:
         """A producer that self-lists result.json in artifacts[] must NOT crash
         promote with FileExistsError — result.json is already hardlinked at the
         top of the canonical view. Regression for the 11x promote_failed churn
-        in the sdc_controller-20260529 run."""
-        run_dir = self._setup_run(
+        when a later run omitted that artifact."""
+        run_dir = self.setup_run(
             tmp_path, monkeypatch, "lint-cdc", 1, artifacts_list=["result.json"]
         )
         # Must not raise FileExistsError.
         store.promote("foo", "lint-cdc", 1)
-        canonical_rj = store._result_path("foo", "lint-cdc")
+        canonical_rj = Path(
+            "foo", *store.rules.RULES["lint-cdc"].workdir_root, "result.json"
+        )
         assert canonical_rj.exists()
         # Single link — canonical result.json IS the run's result.json (same inode).
         assert canonical_rj.stat().st_ino == (run_dir / "result.json").stat().st_ino
@@ -195,7 +235,7 @@ class TestPromoteAtomic:
         """Defense-in-depth: promote() itself rejects an artifacts[] path that
         escapes runs/<N>/ (lexically), even though validate_result also rejects it
         upstream. Mirrors the self-listing primitive guard in promote()."""
-        run_dir = self._setup_run(tmp_path, monkeypatch, "lint-cdc", 1)
+        run_dir = self.setup_run(tmp_path, monkeypatch, "lint-cdc", 1)
         rj = run_dir / "result.json"
         data = json.loads(rj.read_text())
         data["artifacts"] = [{"path": bad_path}]
@@ -204,11 +244,14 @@ class TestPromoteAtomic:
             store.promote("foo", "lint-cdc", 1)
         # tmp cleaned up by the except-handler; canonical untouched
         assert not (
-            store._result_path("foo", "lint-cdc").parent / ".promote-tmp"
+            Path(
+                "foo", *store.rules.RULES["lint-cdc"].workdir_root, "result.json"
+            ).parent
+            / ".promote-tmp"
         ).exists()
 
     def test_promote_symlink_does_not_traverse(self, tmp_path, monkeypatch):
-        """_cp_al must not follow dir-symlinks during
+        """copy_artifact must not follow dir-symlinks during
         recursive copy (would cause traversal outside runs/<N>/).
         Symlinks are hardlinked at the symlink level (preserved as-is).
         """
@@ -218,7 +261,13 @@ class TestPromoteAtomic:
         external.mkdir()
         (external / "should_not_traverse.txt").write_text("EXTERNAL")
         # Create a run with a symlinked dir artifact pointing outside
-        run_dir = store._result_path("foo", "lint-cdc").parent / "runs" / "1"
+        run_dir = (
+            Path(
+                "foo", *store.rules.RULES["lint-cdc"].workdir_root, "result.json"
+            ).parent
+            / "runs"
+            / "1"
+        )
         run_dir.mkdir(parents=True)
         (run_dir / "real_dir").mkdir()
         (run_dir / "real_dir" / "child.txt").write_text("inside")
@@ -236,7 +285,9 @@ class TestPromoteAtomic:
         # promote should succeed without traversing into external/
         store.promote("foo", "lint-cdc", 1)
         # canonical/real_dir/child.txt copied (hardlink)
-        canonical = store._result_path("foo", "lint-cdc").parent
+        canonical = Path(
+            "foo", *store.rules.RULES["lint-cdc"].workdir_root, "result.json"
+        ).parent
         assert (canonical / "real_dir" / "child.txt").exists()
         # canonical/symlink_to_external is a symlink (preserved as-is, not traversed)
         sym = canonical / "symlink_to_external"
@@ -293,14 +344,14 @@ def test_failed_publish_restores_previous_view(tmp_path, monkeypatch, failed_mov
     rename = store.os.rename
     count = 0
 
-    def interrupt_move(source, target):
+    def _interrupt_move(source, target):
         nonlocal count
         count += 1
         if count == failed_move:
             raise OSError("injected move failure")
         return rename(source, target)
 
-    monkeypatch.setattr(store.os, "rename", interrupt_move)
+    monkeypatch.setattr(store.os, "rename", _interrupt_move)
     with pytest.raises(OSError, match="injected move failure"):
         store.promote(tmp_path, "lint-cdc", 2)
     assert {name: (stage / name).read_bytes() for name in before} == before
@@ -351,12 +402,12 @@ def test_failed_restoration_retains_staging_evidence(tmp_path, monkeypatch):
     store.promote(tmp_path, "lint-cdc", 1)
     rename = store.os.rename
 
-    def fail_publication_and_restoration(source, target):
+    def _fail_publication_and_restoration(source, target):
         if Path(source).parent.name in {"ready", "previous"}:
             raise OSError("move unavailable")
         return rename(source, target)
 
-    monkeypatch.setattr(store.os, "rename", fail_publication_and_restoration)
+    monkeypatch.setattr(store.os, "rename", _fail_publication_and_restoration)
     with pytest.raises(OSError, match="move unavailable"):
         store.promote(tmp_path, "lint-cdc", 2)
     saved = list(stage.glob(".promote-*/previous/design.txt"))

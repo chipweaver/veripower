@@ -45,24 +45,30 @@ from pathlib import Path
 # trailing File Line(int) Wt(int) Message; the field between Rule and File is
 # "alias... severity" (severity = its last whitespace token, so empty and multi-word
 # aliases both parse).
-_ROW = re.compile(
+MESSAGE_ROW_PATTERN = re.compile(
     r"^\[(\w+)\][ \t]+(\S+)[ \t]+(.*?)[ \t]+(\S+)[ \t]+(\d+)[ \t]+(\d+)[ \t]+(.*\S)[ \t]*$",
     re.M,
 )
-_BRACKET = re.compile(r"^\[\w+\]", re.M)
+MESSAGE_ID_PATTERN = re.compile(r"^\[\w+\]", re.M)
 
-_HDR_GENERATED = re.compile(r"Number of Generated Messages[ \t]*:[ \t]*(\d+)", re.I)
-_HDR_WAIVED = re.compile(r"Number of Waived Messages[ \t]*:[ \t]*(\d+)", re.I)
-_HDR_REPORTED = re.compile(r"Number of Reported Messages[ \t]*:[ \t]*(\d+)", re.I)
-_HDR_OVERLIMIT = re.compile(r"Number of Overlimit Messages[ \t]*:[ \t]*(\d+)", re.I)
+GENERATED_COUNT_PATTERN = re.compile(
+    r"Number of Generated Messages[ \t]*:[ \t]*(\d+)", re.I
+)
+WAIVED_COUNT_PATTERN = re.compile(r"Number of Waived Messages[ \t]*:[ \t]*(\d+)", re.I)
+REPORTED_COUNT_PATTERN = re.compile(
+    r"Number of Reported Messages[ \t]*:[ \t]*(\d+)", re.I
+)
+OVERLIMIT_COUNT_PATTERN = re.compile(
+    r"Number of Overlimit Messages[ \t]*:[ \t]*(\d+)", re.I
+)
 
 # ── Source-report location ─────────────────────────────────────────────────
-_LINT_CANDIDATES = [
+LINT_CANDIDATES = [
     ("/lint/lint_rtl/", "moresimple.rpt"),
     ("_lint_lint_rtl", "moresimple.rpt"),
     ("/lint/lint_rtl/", "elab_summary.rpt"),
 ]
-_CDC_CANDIDATES = [
+CDC_CANDIDATES = [
     # Both locations hold structural verification results; setup is a different goal.
     ("/cdc/cdc_verify_struct/", "moresimple.rpt"),
     ("_cdc_cdc_verify_struct", "moresimple.rpt"),
@@ -71,7 +77,7 @@ _CDC_CANDIDATES = [
 
 def locate(kind: str, work: Path) -> Path | None:
     """First existing report in priority order, or None."""
-    candidates = _LINT_CANDIDATES if kind == "lint" else _CDC_CANDIDATES
+    candidates = LINT_CANDIDATES if kind == "lint" else CDC_CANDIDATES
     for frag, name in candidates:
         for p in sorted(work.rglob(name)):
             if frag in p.as_posix():
@@ -80,7 +86,7 @@ def locate(kind: str, work: Path) -> Path | None:
 
 
 # ── Parsing ──────────────────────────────────────────────────────────────
-def _sev(token: str) -> str | None:
+def normalize_severity(token: str) -> str | None:
     """Map a SpyGlass severity token to the schema enum, or None if unrecognized.
 
     Substring-based, so compound tokens classify correctly (SynthesisError -> error,
@@ -113,19 +119,19 @@ def parse_header(text: str) -> dict | None:
     None when their line is absent (reported is the required structural anchor ->
     its absence means an unrecognized report, caller exits 3 FAIL=unparseable).
     """
-    m_rep = _HDR_REPORTED.search(text)
+    m_rep = REPORTED_COUNT_PATTERN.search(text)
     if not m_rep:
         return None
 
-    def g(rx):
+    def _header_count(rx):
         m = rx.search(text)
         return int(m.group(1)) if m else None
 
     return {
-        "generated": g(_HDR_GENERATED),
-        "waived": g(_HDR_WAIVED),
+        "generated": _header_count(GENERATED_COUNT_PATTERN),
+        "waived": _header_count(WAIVED_COUNT_PATTERN),
         "reported": int(m_rep.group(1)),
-        "overlimit": g(_HDR_OVERLIMIT),
+        "overlimit": _header_count(OVERLIMIT_COUNT_PATTERN),
     }
 
 
@@ -136,7 +142,15 @@ def parse_rows(text: str) -> list[dict]:
     an empty or multi-word alias both parse correctly.
     """
     out: list[dict] = []
-    for native_id, rule, alias_sev, fname, line, _wt, msg in _ROW.findall(text):
+    for (
+        native_id,
+        rule,
+        alias_sev,
+        fname,
+        line,
+        weight,
+        msg,
+    ) in MESSAGE_ROW_PATTERN.findall(text):
         toks = alias_sev.split()
         out.append(
             {
@@ -155,7 +169,7 @@ def count_raw(rows: list[dict]) -> dict | None:
     """Per-severity tally from rows; None if any row's severity is unrecognized."""
     c = {"error": 0, "warning": 0, "info": 0}
     for r in rows:
-        s = _sev(r["sev_token"])
+        s = normalize_severity(r["sev_token"])
         if s is None:
             return None
         c[s] += 1
@@ -180,7 +194,7 @@ def build_violations(rows: list[dict]) -> list[dict]:
                 "id": base if n == 1 else f"{base}#{n}",
                 "native_id": r["native_id"],
                 "rule": r["rule"],
-                "severity": _sev(r["sev_token"]),
+                "severity": normalize_severity(r["sev_token"]),
                 "file": r["file"],
                 "line": r["line"],
                 "message": r["message"],
@@ -209,17 +223,6 @@ def read_top(root: Path) -> str:
         if m:
             return m.group(1)
     return "UNKNOWN"
-
-
-def render_human(kind: str, src: Path, top: str, body: str) -> str:
-    return (
-        f"=== IPD {kind}-report (SpyGlass) ===\n"
-        f"date: {datetime.now().isoformat()}\n"
-        f"cwd:  {Path.cwd()}\n"
-        f"top:  {top}\n\n"
-        f"=== source: {src} ===\n"
-        f"{body}"
-    )
 
 
 # ── Orchestration ────────────────────────────────────────────────────────
@@ -254,7 +257,7 @@ def run(kind: str, root: Path) -> int:
         return 3
 
     rows = parse_rows(text)
-    n_bracket = len(_BRACKET.findall(text))
+    n_bracket = len(MESSAGE_ID_PATTERN.findall(text))
     if len(rows) != n_bracket:
         print(
             f"[collect_report] FAIL=unparseable {kind} report: "
@@ -301,7 +304,13 @@ def run(kind: str, root: Path) -> int:
         )
         return 3
 
-    report = render_human(kind, src, read_top(root), text)
+    report = (
+        f"=== IPD {kind}-report (SpyGlass) ===\n"
+        f"date: {datetime.now().isoformat()}\n"
+        f"cwd:  {Path.cwd()}\n"
+        f"top:  {read_top(root)}\n\n"
+        f"=== source: {src} ===\n{text}"
+    )
     if header["waived"]:
         waiver_path = src.with_name("waiver.rpt")
         if not waiver_path.is_file():
@@ -313,7 +322,7 @@ def run(kind: str, root: Path) -> int:
         waiver_text = waiver_path.read_text(encoding="utf-8")
         waiver_header = parse_header(waiver_text)
         # Count distinct native messages, not waiver declarations.
-        waived_ids = set(_BRACKET.findall(waiver_text))
+        waived_ids = set(MESSAGE_ID_PATTERN.findall(waiver_text))
         if (
             waiver_header is None
             or waiver_header["waived"] != header["waived"]

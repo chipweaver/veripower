@@ -21,8 +21,8 @@ docs/retrospective/
 # Design notes + their measurement harnesses: working notes for one change, kept local
 docs/design/
 
-# Local test outputs
-tests/scenarios/results/
+# Local experiment outputs
+experiments/results/
 
 # grill-with-docs outputs — glossary/ADRs kept out of VCS by convention
 CONTEXT.md

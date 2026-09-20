@@ -1,12 +1,7 @@
 import json
-import sys
 from pathlib import Path
 
 from spec.sidecar import read_sidecar
-
-
-def _fail(msg: str):
-    sys.exit(f"[spec derive-constraints] {msg}")
 
 
 def load_clocks(workdir: Path) -> list[dict]:
@@ -14,54 +9,59 @@ def load_clocks(workdir: Path) -> list[dict]:
     cannot express — exactly one `primary` — is enforced here, because derive-constraints
     runs before the design.md gate and is therefore the earliest feedback point."""
     clocks = read_sidecar(workdir, "clocks.json")
-    names = [c["name"] for c in clocks]
-    dup = sorted({n for n in names if names.count(n) > 1})
-    if dup:
+    names = [clock["name"] for clock in clocks]
+    duplicate_names = sorted({n for n in names if names.count(n) > 1})
+    if duplicate_names:
         # Each entry becomes its own create_clock / clock line, so a repeated name emits the
         # constraint twice and the tools take whichever they read last. The schema types the
         # name but cannot say it is unique, which is why it is caught on read.
-        _fail(f"clocks.json declares {dup} more than once — a name is one clock")
-    primaries = [c["name"] for c in clocks if c["relationship"] == "primary"]
+        raise ValueError(
+            f"clocks.json declares {duplicate_names} more than once — a name is one clock"
+        )
+    primaries = [
+        clock["name"] for clock in clocks if clock["relationship"] == "primary"
+    ]
     if len(primaries) != 1:
-        _fail(
+        raise ValueError(
             f"clocks.json must declare exactly one relationship=='primary' clock "
             f"(found {len(primaries)}: {primaries}) — it identifies the primary clock reference; refusing to "
             "let a downstream reader pick one arbitrarily"
         )
-    for c in clocks:
-        c.setdefault("generated", False)
+    for clock in clocks:
+        clock.setdefault("generated", False)
     return clocks
 
 
-def _ports(workdir: Path) -> list[dict]:
-    """Top-level IO from top-io.json. Shape, enums, the conditional requirement on a reset
-    row (it declares polarity and kind) and the width-vs-name rule are validated on read;
-    check-crossrefs owns only the cross-file joins."""
-    return read_sidecar(workdir, "top-io.json")
-
-
-def _clock_partition(clocks: list[dict]) -> tuple[list[str], list[str]]:
+def clock_partition(clocks: list[dict]) -> tuple[list[str], list[str]]:
     """The single source of grouping truth shared by BOTH emitters: partition the
     non-generated clocks.json entries into (sync_names, async_names), preserving table order.
-    `_async_clock_groups` (SDC) and `_sgdc_clock_domains` (SGDC) must render this ONE
+    `async_clock_groups` (SDC) and `sgdc_clock_domains` (SGDC) must render this ONE
     partition in their respective native syntaxes — computing it twice is how the two
     formats silently diverge, the exact defect this prevents. ([], []) when there is nothing
     to declare (fewer than 2 non-generated clocks, or none async), which both callers render
     as their own empty result."""
-    non_gen = [c for c in clocks if not c["generated"]]
-    async_names = [c["name"] for c in non_gen if c["relationship"] == "async"]
-    if not (async_names and len(non_gen) >= 2):
+    non_generated_clocks = [clock for clock in clocks if not clock["generated"]]
+    async_names = [
+        clock["name"]
+        for clock in non_generated_clocks
+        if clock["relationship"] == "async"
+    ]
+    if not (async_names and len(non_generated_clocks) >= 2):
         return [], []
-    sync_names = [c["name"] for c in non_gen if c["relationship"] != "async"]
+    sync_names = [
+        clock["name"]
+        for clock in non_generated_clocks
+        if clock["relationship"] != "async"
+    ]
     return sync_names, async_names
 
 
-def _async_clock_groups(clocks: list[dict]) -> list[str]:
+def async_clock_groups(clocks: list[dict]) -> list[str]:
     """`-group ...` fragments for `set_clock_groups -asynchronous` (SDC only — see
-    `_sgdc_clock_domains` for the SGDC-native equivalent; SpyGlass's SGDC parser rejects
+    `sgdc_clock_domains` for the SGDC-native equivalent; SpyGlass's SGDC parser rejects
     `set_clock_groups` as an unknown command, confirmed on SpyGlass_vL-2016.06). Renders
-    the shared `_clock_partition`."""
-    sync_names, async_names = _clock_partition(clocks)
+    the shared `clock_partition`."""
+    sync_names, async_names = clock_partition(clocks)
     groups = []
     if sync_names:
         groups.append("-group [get_clocks {" + " ".join(sync_names) + "}]")
@@ -69,9 +69,9 @@ def _async_clock_groups(clocks: list[dict]) -> list[str]:
     return groups
 
 
-def _sgdc_clock_domains(clocks: list[dict]) -> dict[str, str]:
+def sgdc_clock_domains(clocks: list[dict]) -> dict[str, str]:
     """`clock -name ... -domain <D>` domain assignment — the SGDC-native equivalent of
-    `_async_clock_groups`, since SpyGlass's SGDC parser has no `set_clock_groups` command
+    `async_clock_groups`, since SpyGlass's SGDC parser has no `set_clock_groups` command
     (SGDCSTX_002 "Use of unknown SGDC command", confirmed on SpyGlass_vL-2016.06:
     `set_clock_groups` inside `constraints.sgdc` is a fatal setup error, not a
     CDC violation). All `primary`/`synchronous-related` clocks share one domain (so SpyGlass
@@ -79,10 +79,10 @@ def _sgdc_clock_domains(clocks: list[dict]) -> dict[str, str]:
     gets its own distinct domain (its own name — SpyGlass already treats separately-named
     clocks with no `-domain` as separate domains by default, so this makes that relationship
     explicit/self-documenting rather than changing the CDC verdict). Renders the shared
-    `_clock_partition`."""
-    sync_names, async_names = _clock_partition(clocks)
-    domains = {name: sync_names[0] for name in sync_names}
-    domains.update({name: name for name in async_names})
+    `clock_partition`."""
+    sync_names, async_names = clock_partition(clocks)
+    domains = {clock_name: sync_names[0] for clock_name in sync_names}
+    domains.update({clock_name: clock_name for clock_name in async_names})
     return domains
 
 
@@ -93,74 +93,80 @@ def generate_sdc(top: str, clocks: list[dict], ports: list[dict]) -> str:
         f"# Note: clock periods MUST match {top}.sgdc.",
         "",
         "# Convert authored ns to the linked design's native time unit.",
-        "redirect -variable _vp_units {report_units}",
-        r"if {![regexp {Time_unit\s*:\s*([0-9.eE+-]+)\s+Second} $_vp_units -> _vp_time_unit]} {",
+        "redirect -variable unit_report {report_units}",
+        r"if {![regexp {Time_unit\s*:\s*([0-9.eE+-]+)\s+Second} $unit_report time_unit_match seconds_per_time_unit]} {",
         '    error "report_units did not provide the design time unit"',
         "}",
-        "set _vp_ns [expr {1e-9 / $_vp_time_unit}]",
+        "set time_units_per_ns [expr {1e-9 / $seconds_per_time_unit}]",
         "",
     ]
-    non_gen = [c for c in clocks if not c["generated"]]
-    for c in clocks:
-        if c["generated"]:
+    non_generated_clocks = [clock for clock in clocks if not clock["generated"]]
+    for clock in clocks:
+        if clock["generated"]:
             out.append(
-                f"# create_generated_clock {c['name']}: deferred to RTL (clock-gen pin not yet known)"
+                f"# create_generated_clock {clock['name']}: deferred to RTL (clock-gen pin not yet known)"
             )
             continue
         out.append(
-            f"create_clock -name {c['name']} -period [expr {{{c['period_ns']} * $_vp_ns}}] [get_ports {c['name']}]"
+            f"create_clock -name {clock['name']} -period [expr {{{clock['period_ns']} * $time_units_per_ns}}] [get_ports {clock['name']}]"
         )
-    groups = _async_clock_groups(clocks)
+    groups = async_clock_groups(clocks)
     if groups:
         out.append("set_clock_groups -asynchronous " + " ".join(groups))
     out.append("")
     # Split -setup / -hold rather than one value for both: a single value would apply the
     # setup margin to hold too, turning every pre-CTS path into a false hold-VIOLATED.
     out.append(
-        "set_clock_uncertainty -setup [expr {0.2 * $_vp_ns}] [all_clocks]   ;# 0.2 ns placeholder; replace per process library"
+        "set_clock_uncertainty -setup [expr {0.2 * $time_units_per_ns}] [all_clocks]   ;# 0.2 ns placeholder; replace per process library"
     )
     out.append(
         "set_clock_uncertainty -hold  0.0 [all_clocks]   ;# pre-CTS hold = 0; replace per CTS skew"
     )
     out.append("")
     # An unallocated external budget is timed at zero and identified in the SDC.
-    unstated = sorted(c["name"] for c in non_gen if "io_delay_ns" not in c)
-    delay_of = {c["name"]: c.get("io_delay_ns", 0.0) for c in non_gen}
+    unstated = sorted(
+        clock["name"] for clock in non_generated_clocks if "io_delay_ns" not in clock
+    )
+    io_delays_ns = {
+        clock["name"]: clock.get("io_delay_ns", 0.0) for clock in non_generated_clocks
+    }
     if unstated:
         out.append(
             "# no requirements row gives an arrival budget for clock(s) "
             + ", ".join(unstated)
             + ": timed at 0 below — the whole period is available at the pins."
         )
-    for p in ports:
+    for port in ports:
         # A clock is constrained by create_clock and an async reset is not timed against one.
         # A SYNC reset is: it is sampled by the same edge as every data input, so leaving it
         # out left a timed input unconstrained — invisible to dc_shell, and reported as
         # unconstrained by timing-analysis.
-        if p["role"] == "clock" or (
-            p["role"] == "reset" and p["reset_kind"] == "async"
+        if port["role"] == "clock" or (
+            port["role"] == "reset" and port["reset_kind"] == "async"
         ):
             continue
-        delay = delay_of.get(p["clock_domain"])
-        if delay is None:
+        io_delay_ns = io_delays_ns.get(port["clock_domain"])
+        if io_delay_ns is None:
             # Synthesis completes this delay beside the implemented generated clock.
             out.append(
-                f"# set_{'input' if p['direction'] == 'input' else 'output'}_delay "
-                f"{p['name']}: deferred — clock {p['clock_domain']} is generated, so "
+                f"# set_{'input' if port['direction'] == 'input' else 'output'}_delay "
+                f"{port['name']}: deferred — clock {port['clock_domain']} is generated, so "
                 f"synthesis completes this next to its create_generated_clock"
             )
             continue
         # An inout is both, and used to be neither: the branch tested the two unidirectional
         # values and let the third enum member fall through unconstrained.
-        if p["direction"] in ("input", "inout"):
+        if port["direction"] in ("input", "inout"):
             out.append(
-                f"set_input_delay  [expr {{{delay} * $_vp_ns}}] -clock {p['clock_domain']} [get_ports {{{p['name']}}}]"
+                f"set_input_delay  [expr {{{io_delay_ns} * $time_units_per_ns}}] -clock {port['clock_domain']} [get_ports {{{port['name']}}}]"
             )
-        if p["direction"] in ("output", "inout"):
+        if port["direction"] in ("output", "inout"):
             out.append(
-                f"set_output_delay [expr {{{delay} * $_vp_ns}}] -clock {p['clock_domain']} [get_ports {{{p['name']}}}]"
+                f"set_output_delay [expr {{{io_delay_ns} * $time_units_per_ns}}] -clock {port['clock_domain']} [get_ports {{{port['name']}}}]"
             )
-    out.append("unset _vp_units _vp_time_unit _vp_ns")
+    out.append(
+        "unset unit_report time_unit_match seconds_per_time_unit time_units_per_ns"
+    )
     return "\n".join(out) + "\n"
 
 
@@ -173,40 +179,46 @@ def generate_sgdc(top: str, clocks: list[dict], ports: list[dict]) -> str:
         f"current_design {top}",
         "",
     ]
-    domains = _sgdc_clock_domains(clocks)
-    for c in clocks:
-        if c["generated"]:
+    domains = sgdc_clock_domains(clocks)
+    for clock in clocks:
+        if clock["generated"]:
             continue
-        half = round(c["period_ns"] / 2, 4)
-        domain_flag = f" -domain {domains[c['name']]}" if c["name"] in domains else ""
+        half_period_ns = round(clock["period_ns"] / 2, 4)
+        domain_flag = (
+            f" -domain {domains[clock['name']]}" if clock["name"] in domains else ""
+        )
         out.append(
-            f"clock -name {c['name']} -period {c['period_ns']} -edge {{0 {half}}}{domain_flag}"
+            f"clock -name {clock['name']} -period {clock['period_ns']} -edge {{0 {half_period_ns}}}{domain_flag}"
         )
     out.append("")
-    for p in ports:
-        if p["role"] != "reset":
+    for port in ports:
+        if port["role"] != "reset":
             continue
-        async_flag = " -async" if p["reset_kind"] == "async" else ""
-        out.append(f"reset -name {p['name']} -value {p['reset_polarity']}{async_flag}")
+        async_flag = " -async" if port["reset_kind"] == "async" else ""
         out.append(
-            f"abstract_port -ports {p['name']} -clock {p['clock_domain']} -reset {p['name']}"
+            f"reset -name {port['name']} -value {port['reset_polarity']}{async_flag}"
         )
-    if any(p["role"] == "reset" for p in ports):
+        out.append(
+            f"abstract_port -ports {port['name']} -clock {port['clock_domain']} -reset {port['name']}"
+        )
+    if any(port["role"] == "reset" for port in ports):
         out.append("")
-    clock_names = {c["name"] for c in clocks if not c["generated"]}
+    clock_names = {clock["name"] for clock in clocks if not clock["generated"]}
     by_domain: dict[str, list[str]] = {}
     deferred: list[str] = []
-    for p in ports:
-        if p["role"] == "data":
-            if p["clock_domain"] not in clock_names:
+    for port in ports:
+        if port["role"] == "data":
+            if port["clock_domain"] not in clock_names:
                 # A generated clock has no `clock` line here to associate against. Named
                 # rather than skipped: without an association CDC cannot see the driver
                 # side of a crossing into this port, and it reads as clean.
-                deferred.append(p["name"])
+                deferred.append(port["name"])
                 continue
-            by_domain.setdefault(p["clock_domain"], []).append(p["name"])
-    for dom, sigs in by_domain.items():
-        out.append(f"abstract_port -ports {{{' '.join(sigs)}}} -clock {dom}")
+            by_domain.setdefault(port["clock_domain"], []).append(port["name"])
+    for clock_domain, port_names in by_domain.items():
+        out.append(
+            f"abstract_port -ports {{{' '.join(port_names)}}} -clock {clock_domain}"
+        )
     if deferred:
         out.append(
             f"# abstract_port deferred for {{{' '.join(deferred)}}}: their clock_domain is "
@@ -220,7 +232,7 @@ def derive_constraints(workdir: Path) -> dict:
     manifest = json.loads((workdir / "manifest.json").read_text(encoding="utf-8"))
     top = manifest["module"]  # <TOP> pinned to manifest.module (== finalize top_module)
     clocks = load_clocks(workdir)
-    ports = _ports(workdir)
+    ports = read_sidecar(workdir, "top-io.json")
     sdc = generate_sdc(top, clocks, ports)
     sgdc = generate_sgdc(top, clocks, ports)
     cdir = workdir / "constraints"

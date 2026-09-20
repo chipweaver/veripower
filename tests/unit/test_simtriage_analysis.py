@@ -15,7 +15,7 @@ MAIN = ROOT / "skills/simulation-triage/scripts/simtriage/__main__.py"
 RESULT_SCHEMA = ROOT / "skills/simulation-triage/references/result.schema.json"
 
 
-def _stage_specific() -> dict:
+def stage_specific() -> dict:
     doc = json.loads(RESULT_SCHEMA.read_text())
     for sub in doc["allOf"]:
         if "stage_specific" in sub.get("properties", {}):
@@ -23,7 +23,7 @@ def _stage_specific() -> dict:
     raise AssertionError("result.schema.json: no stage_specific subschema found")
 
 
-def _run(tmp_path, payload: dict, *, workdir=None):
+def run(tmp_path, payload: dict, *, workdir=None):
     argv = [
         sys.executable,
         str(MAIN),
@@ -46,7 +46,7 @@ def test_result_schema_has_no_standalone_analysis_schema_file():
 
 
 def test_minimal_complete_accepted(tmp_path):
-    r = _run(
+    r = run(
         tmp_path,
         {
             "findings": [
@@ -58,7 +58,7 @@ def test_minimal_complete_accepted(tmp_path):
 
 
 def test_minimal_complete_writes_result_json_with_envelope(tmp_path):
-    r = _run(
+    r = run(
         tmp_path,
         {
             "findings": [
@@ -92,7 +92,7 @@ def test_minimal_complete_writes_result_json_with_envelope(tmp_path):
 
 
 def test_unresolved_analysis_is_a_completed_result(tmp_path):
-    r = _run(
+    r = run(
         tmp_path,
         {"findings": [], "reason": "input incomplete: no fail_reason"},
     )
@@ -103,14 +103,14 @@ def test_unresolved_analysis_is_a_completed_result(tmp_path):
 
 
 def test_missing_findings_exits_nonzero_no_write(tmp_path):
-    r = _run(tmp_path, {"reason": "x"})
+    r = run(tmp_path, {"reason": "x"})
     assert r.returncode == 1
     assert "findings" in r.stderr
     assert not (tmp_path / "result.json").exists()
 
 
 def test_finding_without_root_cause_exits_nonzero(tmp_path):
-    r = _run(tmp_path, {"findings": [{"anchor": "a.v:1", "reason": "why"}]})
+    r = run(tmp_path, {"findings": [{"anchor": "a.v:1", "reason": "why"}]})
     assert r.returncode == 1
     assert "root_cause" in r.stderr
 
@@ -118,7 +118,7 @@ def test_finding_without_root_cause_exits_nonzero(tmp_path):
 def test_finding_without_anchor_exits_nonzero(tmp_path):
     """The anchor is where the fix owner starts — the diagnosis names the rule, this file
     names the line — so a finding must never be missing one."""
-    r = _run(tmp_path, {"findings": [{"root_cause": "rtl-design", "reason": "why"}]})
+    r = run(tmp_path, {"findings": [{"root_cause": "rtl-design", "reason": "why"}]})
     assert r.returncode == 1
     assert "anchor" in r.stderr
 
@@ -126,19 +126,19 @@ def test_finding_without_anchor_exits_nonzero(tmp_path):
 def test_finding_without_reason_exits_nonzero(tmp_path):
     """This file is the whole account the fix owner is handed. A finding with no argument is
     a coordinate it cannot check, and it will act on it anyway."""
-    r = _run(tmp_path, {"findings": [{"anchor": "a.v:1", "root_cause": "rtl-design"}]})
+    r = run(tmp_path, {"findings": [{"anchor": "a.v:1", "root_cause": "rtl-design"}]})
     assert r.returncode == 1
     assert "reason" in r.stderr
 
 
 def test_no_attribution_without_reason_exits_nonzero(tmp_path):
-    r = _run(tmp_path, {"findings": []})
+    r = run(tmp_path, {"findings": []})
     assert r.returncode == 1
     assert "reason" in r.stderr
 
 
 def test_root_cause_outside_enum_exits_nonzero(tmp_path):
-    r = _run(
+    r = run(
         tmp_path,
         {"findings": [{"anchor": "a.v:1", "root_cause": "synthesis", "reason": "why"}]},
     )
@@ -146,7 +146,7 @@ def test_root_cause_outside_enum_exits_nonzero(tmp_path):
 
 
 def test_unknown_top_level_key_rejected_by_additional_properties_false(tmp_path):
-    r = _run(tmp_path, {"findings": [], "reason": "x", "groups": [{"fault_type": "x"}]})
+    r = run(tmp_path, {"findings": [], "reason": "x", "groups": [{"fault_type": "x"}]})
     assert r.returncode == 1
     assert "groups" in r.stderr or "additional" in r.stderr.lower()
 
@@ -154,7 +154,7 @@ def test_unknown_top_level_key_rejected_by_additional_properties_false(tmp_path)
 def test_prose_names_no_stage_specific_key_the_schema_rejects():
     """stage_specific is additionalProperties:false, so prose that instructs writing a key the
     schema dropped costs the agent a rejected finalize. This pins the whole class."""
-    ss = _stage_specific()
+    ss = stage_specific()
     legal = set(ss["properties"])
     legal |= set(ss["properties"]["findings"]["items"]["properties"])
 

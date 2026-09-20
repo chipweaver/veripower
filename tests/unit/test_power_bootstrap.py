@@ -139,13 +139,13 @@ def test_interrupted_calculation_does_not_publish_partial_report(workdir, monkey
         (workdir / "saif" / f"{sid}.saif").write_text("activity")
         (workdir / "saif" / f"{sid}.status").write_text("PASS")
 
-    def interrupted(command, **kwargs):
+    def _interrupted(command, **kwargs):
         (Path(kwargs["env"]["REPORTS_DIR"]) / "power_flat.rpt").write_text(
             "partial report"
         )
         raise KeyboardInterrupt
 
-    monkeypatch.setattr(execute.subprocess, "run", interrupted)
+    monkeypatch.setattr(execute.subprocess, "run", _interrupted)
     with pytest.raises(KeyboardInterrupt):
         execute.run(workdir, "calculate")
     assert not (workdir / "reports_ptpx/idle/power_flat.rpt").exists()
@@ -191,12 +191,12 @@ def test_pt_error_with_zero_exit_is_not_published(workdir, monkeypatch, message)
         (workdir / "saif" / f"{sid}.saif").write_text("activity")
         (workdir / "saif" / f"{sid}.status").write_text("PASS")
 
-    def calculate(command, **kwargs):
+    def _calculate(command, **kwargs):
         (Path(kwargs["env"]["REPORTS_DIR"]) / "power_flat.rpt").write_text("report")
         kwargs["stdout"].write(message)
         return subprocess.CompletedProcess(command, 0)
 
-    monkeypatch.setattr(execute.subprocess, "run", calculate)
+    monkeypatch.setattr(execute.subprocess, "run", _calculate)
     assert execute.run(workdir, "calculate") == int(bool(message))
     for sid in ("idle", "busy"):
         assert (workdir / f"reports_ptpx/{sid}/power_flat.rpt").exists() == (

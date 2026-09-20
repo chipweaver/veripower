@@ -1,160 +1,94 @@
-#!/usr/bin/env python3
-"""Validate the delivered RTL file set and record the stage owner's acceptance judgment.
-
-The owner assesses requirement and review evidence. File presence alone cannot establish
-semantic correctness; --fail-reason records unresolved violations or incomplete work.
-"""
-
-from __future__ import annotations
+"""Validate successful RTL deliveries and retain the evidence of failed work."""
 
 import datetime
 import json
 import sys
 from pathlib import Path
 
-from rtl._ledger import (
-    ANNOTATIONS_NAME,
-    FILES_NAME,
-    SRC_DIR,
-    LedgerError,
-    load_ledger,
-)
+from jsonschema import Draft202012Validator
 
-STAGE = "rtl-design"
-REVIEW_DIR = "semantic-review"
+REFERENCES = Path(__file__).resolve().parents[2] / "references"
 
 
-def _now_iso() -> str:
-    return datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+class RTLInputError(ValueError):
+    """An RTL file list or implementation annotation is missing or invalid."""
 
 
-def _envelope(*, status, stage_specific, artifacts, fix_owner=None) -> dict:
-    """fix_owner rides on a failure only, and only when the caller named one: its ABSENCE is
-    what decide reads as "this stage cannot tell", so it must never serialize empty."""
-    if status == "fail" and fix_owner:
-        stage_specific = {**stage_specific, "fix_owner": fix_owner}
-    return {
-        "stage": STAGE,
-        "produced_at": _now_iso(),
-        "status": status,
-        "artifacts": artifacts,
-        "stage_specific": stage_specific,
-    }
-
-
-def _write_result(workdir: Path, env: dict) -> None:
-    tmp = workdir / "result.json.tmp"
-    tmp.write_text(json.dumps(env, indent=2) + "\n")
-    tmp.replace(workdir / "result.json")  # atomic: never observed half-written
-    sys.stdout.write(
-        f"[rtl finalize] Written: {workdir / 'result.json'} (status={env['status']})\n"
-    )
-
-
-def _reviews(workdir: Path) -> list:
-    """The review directory, as one tree entry. How the wave splits the RTL between reviewers —
-    and so how many files they write, and what they call them — is theirs to decide, so this
-    delivers the directory rather than a file list: everything they left in it is promoted and
-    versioned together."""
-    d = workdir / REVIEW_DIR
-    return [{"path": REVIEW_DIR}] if d.is_dir() else []
-
-
-def _caller_reported_artifacts(workdir: Path) -> list:
-    """artifacts[] for a caller-reported failure, whose whole premise is that the on-disk state
-    cannot yield a verdict. A fail envelope promotes exactly like a passing one and promote
-    treats artifacts[] as the new canonical view, so enumerate whatever the sidecars still hold
-    rather than drop a readable prior baseline. Unreadable sidecars yield [], all that is knowable.
-    """
-    try:
-        files = ledger_artifacts(workdir)
-    except LedgerError:
-        files = []
-    return files + _reviews(workdir)
-
-
-def _ledger_files(ledger: dict) -> list:
-    return ledger["files"] + ledger.get("sim_only", [])
-
-
-def _artifacts(workdir: Path) -> list:
-    """The RTL tree as ONE directory artifact, plus the two sidecars, in the envelope shape.
-
-    `src/` is the unit a consumer depends on, not the files inside it: its version is a merkle
-    over every path under it, so a header, a file in a subdirectory and a file the sidecars do
-    not name are all covered without the kernel ever matching a filename. Omitted when the
-    round wrote no tree at all — promote raises on an absent entry, which happens BEFORE the
-    outcome event is appended, so the round would hang with nothing in the log to repair from."""
-    arts = [SRC_DIR] if (workdir / SRC_DIR).is_dir() else []
-    return [{"path": p} for p in arts + [FILES_NAME, ANNOTATIONS_NAME]]
-
-
-def ledger_artifacts(workdir: Path) -> list:
-    """The artifacts[] enumeration off disk. Loads the sidecars for their validation — an
-    unreadable one is a LedgerError here, not a degraded envelope — and delivers the tree."""
-    load_ledger(workdir)
-    return _artifacts(Path(workdir))
-
-
-def exit_artifacts(workdir: Path) -> list:
-    """artifacts[] for a passing round: the RTL tree plus the two sidecars.
-
-    Raises LedgerError when the workdir cannot yield one — a sidecar that is unreadable or
-    schema-invalid, or a file the sidecars name and nobody wrote. Either would promote a
-    canonical view short of the RTL it claims to hold.
-    """
-    ledger = load_ledger(workdir)
-
-    absent = [f for f in _ledger_files(ledger) if not (workdir / f).is_file()]
-    if absent:
-        raise LedgerError(
-            f"{FILES_NAME} names files that are not in the workdir: "
-            + ", ".join(absent)
-            + " — re-dispatch the child that owns them"
+def read_rtl_inputs(workdir: Path) -> dict:
+    """Validate both input documents and return the ordered compilation inputs."""
+    documents = {}
+    for filename in ("rtl-files.json", "constraint-annotations.json"):
+        path = Path(workdir) / filename
+        try:
+            document = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as error:
+            raise RTLInputError(f"cannot read {path}: {error}") from error
+        schema_path = REFERENCES / f"{path.stem}.schema.json"
+        schema = json.loads(schema_path.read_text(encoding="utf-8"))
+        errors = sorted(
+            Draft202012Validator(schema).iter_errors(document),
+            key=lambda error: list(error.absolute_path),
         )
-
-    return _artifacts(workdir)
-
-
-def build_result(workdir, fail_reason=None, fix_owner=None) -> int:
-    """Build the lean rtl-design result.json from the on-disk workdir. The caller supplies
-    only what no on-disk state can express: `fail_reason` for an early exit, and `fix_owner` for
-    the rule that must act on a failure. Returns 0 (result.json written, pass or fail); a raise
-    → exit 2 (BLOCKED)."""
-    workdir = Path(workdir)
-
-    if fail_reason:
-        # An early exit outside the derivable set: a child could not deliver, or a sidecar is
-        # malformed, so no verdict can be re-derived. Record the caller's one-line reason.
-        _write_result(
-            workdir,
-            _envelope(
-                status="fail",
-                stage_specific={"fail_reason": fail_reason},
-                artifacts=_caller_reported_artifacts(workdir),
-                fix_owner=fix_owner,
-            ),
-        )
-        return 0
-
-    artifacts = exit_artifacts(workdir) + _reviews(workdir)
-    _write_result(
-        workdir,
-        _envelope(status="pass", stage_specific={}, artifacts=artifacts),
-    )
-    return 0
+        if errors:
+            error = errors[0]
+            location = "$" + "".join(
+                f"[{part!r}]" if isinstance(part, int) else f".{part}"
+                for part in error.absolute_path
+            )
+            raise RTLInputError(
+                f"{filename} schema violation at {location}: {error.message}"
+            )
+        documents[filename] = document
+    return documents["rtl-files.json"]
 
 
 def finalize(workdir, fail_reason=None, fix_owner=None) -> int:
-    """Build the lean rtl-design result.json from the on-disk workdir.
-    exit 0 = result.json written (status pass or fail); exit 2 = BLOCKED (any internal
-    raise) — never conflated with status=fail. (Owns the policy the deleted main() had.)"""
-    (Path(workdir) / "result.json").unlink(missing_ok=True)
+    """Write a pass/fail result; invalid successful-delivery inputs leave no result."""
+    workdir = Path(workdir)
+    result_path = workdir / "result.json"
+    result_path.unlink(missing_ok=True)
     if fail_reason is not None and not fail_reason.strip():
         print("[rtl finalize] BLOCKED: empty --fail-reason", file=sys.stderr)
         return 2
     try:
-        return build_result(workdir, fail_reason=fail_reason, fix_owner=fix_owner)
-    except Exception as exc:  # noqa: BLE001 — any failure to operate is BLOCKED
-        print(f"[rtl finalize] BLOCKED: {exc}", file=sys.stderr)
+        if not fail_reason:
+            file_list = read_rtl_inputs(workdir)
+            missing_sources = [
+                filename
+                for filename in file_list["files"] + file_list.get("sim_only", [])
+                if not (workdir / filename).is_file()
+            ]
+            if missing_sources:
+                raise RTLInputError(
+                    "rtl-files.json names files that are not in the workdir: "
+                    + ", ".join(missing_sources)
+                )
+        stage_specific = {"fail_reason": fail_reason} if fail_reason else {}
+        if fail_reason and fix_owner:
+            stage_specific["fix_owner"] = fix_owner
+        result = {
+            "stage": "rtl-design",
+            "produced_at": datetime.datetime.now(datetime.timezone.utc).strftime(
+                "%Y-%m-%dT%H:%M:%SZ"
+            ),
+            "status": "fail" if fail_reason else "pass",
+            "stage_specific": stage_specific,
+            "artifacts": [
+                {"path": name}
+                for name in (
+                    "src",
+                    "rtl-files.json",
+                    "constraint-annotations.json",
+                    "semantic-review",
+                )
+                if (workdir / name).exists()
+            ],
+        }
+        temporary_path = workdir / "result.json.tmp"
+        temporary_path.write_text(json.dumps(result, indent=2) + "\n")
+        temporary_path.replace(result_path)
+        print(f"[rtl finalize] Written: {result_path} (status={result['status']})")
+        return 0
+    except (OSError, ValueError) as error:
+        print(f"[rtl finalize] BLOCKED: {error}", file=sys.stderr)
         return 2

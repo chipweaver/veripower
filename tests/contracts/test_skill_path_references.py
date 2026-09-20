@@ -25,12 +25,12 @@ diagnostics today. Reconsider when the bracket convention is tightened.
 import re
 
 import pytest
-from _skills_sot import PLUGIN_ROOT, SKILL_DIRS
+from skills_source import PLUGIN_ROOT, SKILL_DIRS
 
 # Match backtick-quoted paths that include a slash and a recognized extension.
 # The slash filters out bare-name runtime artifacts (design.md, brainstorm.md,
 # etc.) which legitimately live nowhere in the source tree.
-_PATH_RE = re.compile(
+PATH_RE = re.compile(
     r"`(?:<skill>/)?("
     r"references/[a-zA-Z0-9_./-]+"
     r"|framework/[a-zA-Z0-9_./-]+"
@@ -39,7 +39,7 @@ _PATH_RE = re.compile(
 )
 
 
-def _resolve(skill_name: str, raw: str):
+def resolve(skill_name: str, raw: str):
     """Return the absolute Path the raw citation should resolve to."""
     if raw.startswith("references/"):
         return PLUGIN_ROOT / "skills" / skill_name / raw
@@ -53,9 +53,9 @@ def test_path_references_resolve(skill_name: str) -> None:
     text = skill_md.read_text(encoding="utf-8")
 
     missing: list[tuple[str, str]] = []
-    for m in _PATH_RE.finditer(text):
+    for m in PATH_RE.finditer(text):
         cited = m.group(1)
-        target = _resolve(skill_name, cited)
+        target = resolve(skill_name, cited)
         if not target.exists():
             missing.append((cited, str(target.relative_to(PLUGIN_ROOT))))
 
@@ -78,9 +78,9 @@ def test_reference_md_path_references_resolve(skill_name: str) -> None:
         pytest.skip("no references/ dir")
     missing: list[tuple[str, str, str]] = []
     for md in sorted(ref_dir.glob("*.md")):
-        for m in _PATH_RE.finditer(md.read_text(encoding="utf-8")):
+        for m in PATH_RE.finditer(md.read_text(encoding="utf-8")):
             cited = m.group(1)
-            target = _resolve(skill_name, cited)
+            target = resolve(skill_name, cited)
             if not target.exists():
                 missing.append((md.name, cited, str(target.relative_to(PLUGIN_ROOT))))
     assert not missing, (
@@ -96,9 +96,9 @@ def test_template_md_path_references_resolve(skill_name: str) -> None:
         pytest.skip("no templates/ dir")
     missing: list[tuple[str, str, str]] = []
     for md in sorted(tmpl_dir.rglob("*.md")):
-        for m in _PATH_RE.finditer(md.read_text(encoding="utf-8")):
+        for m in PATH_RE.finditer(md.read_text(encoding="utf-8")):
             cited = m.group(1)
-            target = _resolve(skill_name, cited)
+            target = resolve(skill_name, cited)
             if not target.exists():
                 missing.append(
                     (

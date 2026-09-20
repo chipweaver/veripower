@@ -15,18 +15,11 @@ import json
 import sys
 from pathlib import Path
 
-from sim import (
-    _render,
-)  # write_text is reached through the module so a test can patch it
-from sim._boundary import Boundary
-from sim._guards import dut_port_map
-from sim._plan import load_plan
-from sim._plan import paths as plan_paths
-from sim._render import (
-    _field_declarations,
-    _field_macros,
-    _render_template_file,
-    _signal_declarations,
+from sim.boundary import Boundary, dut_port_map
+from sim.plan import load_plan
+from sim.rendering import (
+    render_template_file,
+    signal_declarations,
 )
 
 
@@ -89,19 +82,22 @@ def run_scaffold(plan_dir, template_dir: Path, out_dir: Path, spec_dir) -> int:
         aname = agent["name"]
         mode = agent["mode"]
         # Data ports come from the agent groups; clocks and resets connect separately at tb_top.
-        signals = boundary.signals_for(agent.get("interface_groups") or [])
-        fields = [{**sig, "type": "logic", "rand": True} for sig in signals]
+        signals = [
+            port
+            for group in agent["interface_groups"]
+            for port in boundary.groups.get(group, [])
+        ]
 
         base = {"MODULE": module, "TOP": top, "AGENT_NAME": aname}
 
         # Interface: the clocking blocks are authored, the signal list is not.
-        content = _render_template_file(template_dir, "agent_if.sv", base)
+        content = render_template_file(template_dir, "agent_if.sv", base)
         dest = out_dir / "tb" / "uvm" / "interface" / f"{module}_{aname}_if.sv"
         pending.append((dest, content))
-        content = _render_template_file(
+        content = render_template_file(
             template_dir,
             "agent_signals.svh",
-            {**base, "SIGNAL_DECLARATIONS": _signal_declarations(signals)},
+            {**base, "SIGNAL_DECLARATIONS": signal_declarations(signals)},
         )
         derived.append(
             (
@@ -111,24 +107,32 @@ def run_scaffold(plan_dir, template_dir: Path, out_dir: Path, spec_dir) -> int:
         )
 
         # Transaction: the debug formatter is authored, the field list is not.
-        content = _render_template_file(template_dir, "agent_txn.sv", base)
+        content = render_template_file(template_dir, "agent_txn.sv", base)
         dest = out_dir / "tb" / "uvm" / "transaction" / f"{module}_{aname}_txn.sv"
         pending.append((dest, content))
         for tmpl, slot, val, suffix in (
             (
                 "agent_fields.svh",
                 "FIELD_DECLARATIONS",
-                _field_declarations(fields),
+                "\n".join(
+                    f"  rand logic [{signal['width'] - 1}:0] {signal['name']};"
+                    if signal["width"] > 1
+                    else f"  rand logic        {signal['name']};"
+                    for signal in signals
+                ),
                 "fields",
             ),
             (
                 "agent_field_macros.svh",
                 "FIELD_MACROS",
-                _field_macros(fields),
+                "\n".join(
+                    f"    `uvm_field_int({signal['name']}, UVM_ALL_ON)"
+                    for signal in signals
+                ),
                 "field_macros",
             ),
         ):
-            content = _render_template_file(template_dir, tmpl, {**base, slot: val})
+            content = render_template_file(template_dir, tmpl, {**base, slot: val})
             derived.append(
                 (
                     out_dir
@@ -141,14 +145,14 @@ def run_scaffold(plan_dir, template_dir: Path, out_dir: Path, spec_dir) -> int:
             )
 
         # Monitor (all agents have a monitor)
-        content = _render_template_file(template_dir, "agent_monitor.sv", base)
+        content = render_template_file(template_dir, "agent_monitor.sv", base)
         dest = out_dir / "tb" / "uvm" / "agent" / f"{module}_{aname}_monitor.sv"
         pending.append((dest, content))
 
         # Driver (rendered for every agent so agent_agent.sv's `m_driver` type
         # declaration always resolves; a passive agent's driver class compiles but is
         # never instantiated -- agent_agent.sv guards creation with get_is_active()).
-        content = _render_template_file(
+        content = render_template_file(
             template_dir,
             "agent_driver.sv",
             {
@@ -162,14 +166,14 @@ def run_scaffold(plan_dir, template_dir: Path, out_dir: Path, spec_dir) -> int:
         pending.append((dest, content))
 
         # Agent assembly
-        content = _render_template_file(template_dir, "agent_agent.sv", base)
+        content = render_template_file(template_dir, "agent_agent.sv", base)
         dest = out_dir / "tb" / "uvm" / "agent" / f"{module}_{aname}_agent.sv"
         pending.append((dest, content))
 
     # --- Sequences ---
     for seq in sequences:
         seq_agent = seq.get("agent", agents[0]["name"])
-        content = _render_template_file(
+        content = render_template_file(
             template_dir,
             "seq.sv",
             {
@@ -218,7 +222,7 @@ def run_scaffold(plan_dir, template_dir: Path, out_dir: Path, spec_dir) -> int:
             f"  endfunction\n"
         )
 
-    content = _render_template_file(
+    content = render_template_file(
         template_dir,
         "rule_rm.sv",
         {
@@ -236,7 +240,7 @@ def run_scaffold(plan_dir, template_dir: Path, out_dir: Path, spec_dir) -> int:
     pending.append((dest, content))
 
     # --- Scoreboard ---
-    content = _render_template_file(
+    content = render_template_file(
         template_dir,
         "scoreboard.sv",
         {
@@ -282,7 +286,7 @@ def run_scaffold(plan_dir, template_dir: Path, out_dir: Path, spec_dir) -> int:
                 f"    m_{aname}_agent.ap.connect(m_scoreboard.rm.ai_{aname});"
             )
 
-    content = _render_template_file(
+    content = render_template_file(
         template_dir,
         "env.sv",
         {
@@ -323,7 +327,7 @@ def run_scaffold(plan_dir, template_dir: Path, out_dir: Path, spec_dir) -> int:
             "\n".join(seq_calls) if seq_calls else "    // TODO: Start sequences here."
         )
 
-        content = _render_template_file(
+        content = render_template_file(
             template_dir,
             "test.sv",
             {
@@ -397,7 +401,7 @@ def run_scaffold(plan_dir, template_dir: Path, out_dir: Path, spec_dir) -> int:
     )
     dut_connections = (control_ports + port_map).lstrip(",\n")
 
-    content = _render_template_file(
+    content = render_template_file(
         template_dir,
         "tb_top.sv",
         {
@@ -421,7 +425,7 @@ def run_scaffold(plan_dir, template_dir: Path, out_dir: Path, spec_dir) -> int:
     # The reset schedule, which tb_top includes. Authored, so it is a stub: tb_top is derived
     # from the plan and rewritten every round, and a reset placed to reach a state the design
     # only passes through has to outlive that.
-    content = _render_template_file(
+    content = render_template_file(
         template_dir,
         "reset.svh",
         {
@@ -453,7 +457,7 @@ def run_scaffold(plan_dir, template_dir: Path, out_dir: Path, spec_dir) -> int:
     for seq in sequences:
         seq_includes.append(f'  `include "{module}_{seq["name"]}_seq.sv"')
 
-    content = _render_template_file(
+    content = render_template_file(
         template_dir,
         "tb_pkg.sv",
         {
@@ -475,7 +479,7 @@ def run_scaffold(plan_dir, template_dir: Path, out_dir: Path, spec_dir) -> int:
         aname = agent["name"]
         if_file_lines.append(f"tb/uvm/interface/{module}_{aname}_if.sv")
 
-    content = _render_template_file(
+    content = render_template_file(
         template_dir,
         "filelist.f",
         {
@@ -489,7 +493,7 @@ def run_scaffold(plan_dir, template_dir: Path, out_dir: Path, spec_dir) -> int:
 
     # The list filelist.f pulls in for what this file cannot derive — a DPI implementation is
     # C, so no plan describes it and no renderer emits it. A stub, therefore, not a derivation.
-    content = _render_template_file(
+    content = render_template_file(
         template_dir, "tb_sources.f", {"MODULE": module, "TOP": top}
     )
     pending.append((out_dir / "tb" / "uvm" / "tb_sources.f", content))
@@ -542,11 +546,13 @@ def run_scaffold(plan_dir, template_dir: Path, out_dir: Path, spec_dir) -> int:
             if dest.exists():
                 kept.append(dest)
                 continue
-            _render.write_text(dest, content)
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            dest.write_text(content.rstrip() + "\n", encoding="utf-8")
             written.append(dest)
         for dest, content in derived:
             replaced.append((dest, dest.read_text() if dest.exists() else None))
-            _render.write_text(dest, content)
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            dest.write_text(content.rstrip() + "\n", encoding="utf-8")
     except OSError:
         for p in written:
             p.unlink(missing_ok=True)
@@ -571,7 +577,7 @@ def render(plan_dir, out_dir, spec_dir, template_dir=None) -> int:
     sidecar or template dir; returns run_scaffold's int (0). A run_scaffold sys.exit or raise
     propagates to the caller."""
     out_dir = Path(out_dir).resolve()
-    for p in plan_paths(plan_dir):
+    for p in (Path(plan_dir) / name for name in ("tb-scaffold.json", "sequences.json")):
         if not p.is_file():
             sys.exit(f"[sim bootstrap] missing {p.name}: {p}")
     if template_dir:

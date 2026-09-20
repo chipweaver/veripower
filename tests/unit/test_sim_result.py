@@ -7,7 +7,7 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
 MAIN = ROOT / "skills/simulation/scripts/sim/__main__.py"
-_COVERAGE_ROWS = [
+COVERAGE_ROWS = [
     {
         "id": f"R-{i}",
         "verbatim": f"{d} coverage > 90%",
@@ -34,7 +34,7 @@ COV_PASS = {
 }
 
 
-def _final_workdir(tmp_path):
+def final_workdir(tmp_path):
     wd = tmp_path
     (wd / "tb/uvm/seq").mkdir(parents=True)
     (wd / "tb/uvm/agent").mkdir(parents=True)
@@ -55,24 +55,24 @@ def _final_workdir(tmp_path):
     (wd / "sequences.json").write_text(json.dumps(doc.pop("sequences", [])))
     (wd / "tb-scaffold.json").write_text(json.dumps(doc))
     (wd / "structural-coverage.json").write_text(json.dumps(COV_PASS))
-    (wd / "requirements.json").write_text(json.dumps(_COVERAGE_ROWS))
+    (wd / "requirements.json").write_text(json.dumps(COVERAGE_ROWS))
     (wd / "case-results.json").write_text(
         json.dumps(
             {"total_tests": 3, "passed_tests": 3, "failed_tests": 0, "not_run_tests": 0}
         )
     )
-    _review(wd)
+    review(wd)
     return wd
 
 
-def _review(wd, *findings):
+def review(wd, *findings):
     """The reviewer's own record, as it stands on disk when finalize runs: one heading per
     finding, and a blocking one says so."""
     body = "# check-adequacy review — m\n\n" + "\n\n".join(findings)
     (wd / "check-review.md").write_text(body + "\n")
 
 
-def _finalize(wd, *extra):
+def finalize(wd, *extra):
     return subprocess.run(
         [
             "python3",
@@ -87,8 +87,8 @@ def _finalize(wd, *extra):
     )
 
 
-def _finalize_final(wd, *extra):
-    return _finalize(
+def finalize_final(wd, *extra):
+    return finalize(
         wd,
         "--phase",
         "final",
@@ -103,8 +103,8 @@ def _finalize_final(wd, *extra):
 
 
 def test_final_pass_writes_result(tmp_path):
-    wd = _final_workdir(tmp_path)
-    proc = _finalize_final(wd)
+    wd = final_workdir(tmp_path)
+    proc = finalize_final(wd)
     assert proc.returncode == 0, proc.stderr
     env = json.loads((wd / "result.json").read_text())
     assert env["stage"] == "simulation" and env["status"] == "pass"
@@ -115,8 +115,8 @@ def test_final_pass_writes_result(tmp_path):
 def test_check_review_promoted(tmp_path):
     # The review is promoted into artifacts[] — it is the record the round routes on, and the
     # only stage product a later reader opens by name.
-    wd = _final_workdir(tmp_path)
-    proc = _finalize_final(wd)
+    wd = final_workdir(tmp_path)
+    proc = finalize_final(wd)
     assert proc.returncode == 0, proc.stderr
     paths = [
         a["path"] for a in json.loads((wd / "result.json").read_text())["artifacts"]
@@ -128,9 +128,9 @@ def test_final_pass_missing_case_results_is_blocked(tmp_path):
     # A missing case-results.json on the pass path is a broken pipeline step;
     # finalize must fail loud (exit 2 BLOCKED), not write null counts. Deleting only the
     # the rendering beside it would NOT block: nothing reads it.
-    wd = _final_workdir(tmp_path)
+    wd = final_workdir(tmp_path)
     (wd / "case-results.json").unlink()
-    proc = _finalize_final(wd)
+    proc = finalize_final(wd)
     assert proc.returncode == 2, proc.stdout
     assert not (wd / "result.json").exists()
 
@@ -139,7 +139,7 @@ def test_check_review_phase_writes_the_routing_envelope(tmp_path):
     # The fail-out carries the reason; the findings themselves stay in the promoted review
     # beside it, which is what triage opens. Copying them into the envelope would duplicate a
     # structured sibling in the same directory.
-    proc = _finalize(
+    proc = finalize(
         tmp_path,
         "--phase",
         "fail",
@@ -153,9 +153,9 @@ def test_check_review_phase_writes_the_routing_envelope(tmp_path):
 
 
 def test_final_thin_fail_is_compile(tmp_path):
-    wd = _final_workdir(tmp_path)
+    wd = final_workdir(tmp_path)
     (wd / "tb/uvm/agent/m_drv_driver.sv").write_text("// TODO(driver)\n")  # residue
-    proc = _finalize_final(wd)
+    proc = finalize_final(wd)
     assert proc.returncode == 0
     env = json.loads((wd / "result.json").read_text())
     ss = env["stage_specific"]
@@ -165,7 +165,7 @@ def test_final_thin_fail_is_compile(tmp_path):
 
 
 def test_final_coverage_fail(tmp_path):
-    wd = _final_workdir(tmp_path)
+    wd = final_workdir(tmp_path)
     (wd / "structural-coverage.json").write_text(
         json.dumps(
             {
@@ -178,7 +178,7 @@ def test_final_coverage_fail(tmp_path):
             }
         )
     )
-    proc = _finalize_final(wd)
+    proc = finalize_final(wd)
     assert (
         proc.returncode == 0
     )  # a coverage fail still writes result.json (exit 0, not BLOCKED)
@@ -194,13 +194,13 @@ def test_final_coverage_fail(tmp_path):
 
 
 def test_coverage_uses_rtl_top_even_when_module_named_instance_passes(tmp_path):
-    wd = _final_workdir(tmp_path)
+    wd = final_workdir(tmp_path)
     coverage = json.loads((wd / "structural-coverage.json").read_text())
     actual = coverage["per_instance"][0]
     coverage["per_instance"].append({**actual, "name": "m_tb_top.u_dut"})
     actual["line"] = 10.0
     (wd / "structural-coverage.json").write_text(json.dumps(coverage))
-    proc = _finalize_final(wd)
+    proc = finalize_final(wd)
     assert proc.returncode == 0, proc.stderr
     env = json.loads((wd / "result.json").read_text())
     assert env["status"] == "fail"
@@ -211,13 +211,13 @@ def test_final_check_review_trip_is_fail_not_pass(tmp_path):
     # The one gate whose verdict finalize is handed rather than deriving alone. SKILL.md tells
     # the main thread it may not override a trip; until finalize itself refuses, that sentence
     # is the whole enforcement, and the main thread is the party it constrains.
-    wd = _final_workdir(tmp_path)
-    _review(
+    wd = final_workdir(tmp_path)
+    review(
         wd,
         "## TP-01  tb/uvm/checker/m_sb.sv:10  BLOCKING\n"
         "mismatch logged as uvm_info; the counter never moves",
     )
-    proc = _finalize_final(wd)
+    proc = finalize_final(wd)
     assert proc.returncode == 0, proc.stderr
     ss = json.loads((wd / "result.json").read_text())["stage_specific"]
     assert "TP-01" in ss["fail_reason"]
@@ -226,13 +226,13 @@ def test_final_check_review_trip_is_fail_not_pass(tmp_path):
 def test_final_non_blocking_finding_does_not_trip(tmp_path):
     # A reported-but-not-blocking finding is the reviewer's own call; the backstop reads the
     # same call and must not turn the whole review into a second, stricter gate.
-    wd = _final_workdir(tmp_path)
-    _review(
+    wd = final_workdir(tmp_path)
+    review(
         wd,
         "## TP-02  tb/uvm/checker/m_sb.sv:44\n"
         "handshake verified only end-to-end; no internal probe",
     )
-    proc = _finalize_final(wd)
+    proc = finalize_final(wd)
     assert proc.returncode == 0, proc.stderr
     assert json.loads((wd / "result.json").read_text())["status"] == "pass"
 
@@ -241,7 +241,7 @@ def test_a_suite_that_did_not_finish_is_not_a_pass(tmp_path):
     # The counts finalize reports are over the RESULT lines that exist, so a run cut short
     # reads as a smaller clean one: three of ten tests, all green. Every declared test is in a
     # suite `make regress` selects, so a test with no result is the runner having stopped.
-    wd = _final_workdir(tmp_path)
+    wd = final_workdir(tmp_path)
     (wd / "case-results.json").write_text(
         json.dumps(
             {
@@ -252,7 +252,7 @@ def test_a_suite_that_did_not_finish_is_not_a_pass(tmp_path):
             }
         )
     )
-    proc = _finalize_final(wd)
+    proc = finalize_final(wd)
     assert proc.returncode == 0, proc.stderr
     env = json.loads((wd / "result.json").read_text())
     assert env["status"] == "fail"
@@ -262,9 +262,9 @@ def test_a_suite_that_did_not_finish_is_not_a_pass(tmp_path):
 def test_final_compile_fail_carries_no_coverage_companions(tmp_path):
     # Companions follow the resolved phase: a compile fail says nothing about coverage,
     # and the phase table in SKILL.md lists none for it.
-    wd = _final_workdir(tmp_path)
+    wd = final_workdir(tmp_path)
     (wd / "tb/uvm/agent/m_drv_driver.sv").write_text("// TODO(driver)\n")
-    proc = _finalize_final(wd)
+    proc = finalize_final(wd)
     ss = json.loads((wd / "result.json").read_text())["stage_specific"]
     assert proc.returncode == 0
     assert "requirements" not in ss and "coverage_extractable" not in ss
@@ -272,7 +272,7 @@ def test_final_compile_fail_carries_no_coverage_companions(tmp_path):
 
 def test_early_exit_smoke(tmp_path):
     wd = tmp_path
-    proc = _finalize(wd, "--phase", "fail", "--fail-reason", "case X failed")
+    proc = finalize(wd, "--phase", "fail", "--fail-reason", "case X failed")
     assert proc.returncode == 0
     env = json.loads((wd / "result.json").read_text())
     assert env["status"] == "fail"
@@ -282,7 +282,7 @@ def test_early_exit_smoke(tmp_path):
 def test_final_requires_its_three_inputs_exit_2(tmp_path):
     # --check-review is one of them: defaulted to absent, the backstop above would read
     # an empty finding set and clear every review it was never given.
-    wd = _final_workdir(tmp_path)
+    wd = final_workdir(tmp_path)
     for missing in ("--plan", "--requirements", "--check-review"):
         flags = {
             "--plan": str(wd),
@@ -291,15 +291,15 @@ def test_final_requires_its_three_inputs_exit_2(tmp_path):
         }
         del flags[missing]
         args = [x for kv in flags.items() for x in kv]
-        proc = _finalize(wd, "--phase", "final", *args)
+        proc = finalize(wd, "--phase", "final", *args)
         assert proc.returncode == 2, missing
         assert not (wd / "result.json").exists(), missing
 
 
 def test_finalize_blocked_exit_2(tmp_path):
-    # --phase final with a non-existent plan dir -> build_result raises -> exit 2 (BLOCKED)
-    wd = _final_workdir(tmp_path)
-    proc = _finalize(
+    # --phase final with a non-existent plan dir -> finalize raises -> exit 2 (BLOCKED)
+    wd = final_workdir(tmp_path)
+    proc = finalize(
         wd,
         "--phase",
         "final",
@@ -315,13 +315,13 @@ def test_finalize_blocked_exit_2(tmp_path):
 
 # ── the one object array triage reads ──────────────────────────────────────────
 def test_failure_delivers_original_case_evidence(tmp_path):
-    wd = _final_workdir(tmp_path)
+    wd = final_workdir(tmp_path)
     logs = wd / "logs"
     logs.mkdir()
     (logs / "T-1.log").write_text("UVM_ERROR checker: expected 7, observed 8\n")
     (wd / "regression-log.txt").write_text("RESULT T-1 FAIL log=logs/T-1.log\n")
     reason = "T-1 mismatch: logs/T-1.log, expected 7, observed 8"
-    proc = _finalize(
+    proc = finalize(
         wd, "--phase", "fail", "--fail-reason", reason, "--fix-owner", "simulation"
     )
     assert proc.returncode == 0, proc.stderr
@@ -341,18 +341,18 @@ def test_fail_phase_refuses_an_empty_reason(tmp_path):
     `fail_reason: ""` — rejected by the envelope schema at reap, so the round cost a blocked
     outcome instead of a routable fail. Measured 6 times across 5 production runs on 2 designs.
     finalize now refuses to write it."""
-    proc = _finalize(tmp_path, "--phase", "fail")
+    proc = finalize(tmp_path, "--phase", "fail")
     assert proc.returncode == 2
     assert "--fail-reason is required" in proc.stderr
     assert not (tmp_path / "result.json").exists()
 
-    proc = _finalize(tmp_path, "--phase", "fail", "--fail-reason", "   ")
+    proc = finalize(tmp_path, "--phase", "fail", "--fail-reason", "   ")
     assert proc.returncode == 2
     assert not (tmp_path / "result.json").exists()
 
 
 def test_failed_case_prevents_final_success(tmp_path):
-    wd = _final_workdir(tmp_path)
+    wd = final_workdir(tmp_path)
     (wd / "case-results.json").write_text(
         json.dumps(
             {
@@ -363,7 +363,7 @@ def test_failed_case_prevents_final_success(tmp_path):
             }
         )
     )
-    proc = _finalize_final(wd)
+    proc = finalize_final(wd)
     assert proc.returncode == 0, proc.stderr
     result = json.loads((wd / "result.json").read_text())
     assert (
@@ -373,8 +373,8 @@ def test_failed_case_prevents_final_success(tmp_path):
 
 
 def test_unmarked_violation_can_prevent_final_success(tmp_path):
-    wd = _final_workdir(tmp_path)
-    proc = _finalize_final(
+    wd = final_workdir(tmp_path)
+    proc = finalize_final(
         wd,
         "--fail-reason",
         "observed violation despite review label",
@@ -399,15 +399,15 @@ def test_unmarked_violation_can_prevent_final_success(tmp_path):
     ],
 )
 def test_invalid_case_evidence_clears_prior_result(tmp_path, counts):
-    wd = _final_workdir(tmp_path)
-    assert _finalize_final(wd).returncode == 0
+    wd = final_workdir(tmp_path)
+    assert finalize_final(wd).returncode == 0
     (wd / "case-results.json").write_text(json.dumps(counts))
-    assert _finalize_final(wd).returncode == 2
+    assert finalize_final(wd).returncode == 2
     assert not (wd / "result.json").exists()
 
 
 def test_empty_review_is_not_clean(tmp_path):
-    wd = _final_workdir(tmp_path)
+    wd = final_workdir(tmp_path)
     (wd / "check-review.md").write_text(" ")
-    assert _finalize_final(wd).returncode == 2
+    assert finalize_final(wd).returncode == 2
     assert not (wd / "result.json").exists()

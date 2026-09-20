@@ -10,6 +10,7 @@ from __future__ import annotations
 import datetime
 import json
 import math
+import operator
 import re
 import sys
 from pathlib import Path
@@ -18,40 +19,36 @@ from synthesis import requirements
 
 # ── Anchors (grounded, DC L-2016.03-SP1) ─────────────────────────────────────
 # area.rpt: "Total cell area:                 65018.219263" (NOT "Total area: undefined").
-_AREA_RE = re.compile(r"^\s*Total cell area\s*:\s*([0-9.]+)", re.M)
-_NUMBER = r"[-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?"
-_SLACK_RE = re.compile(
-    r"^\s*slack\s*\((MET|VIOLATED)[^)]*\)\s*(" + _NUMBER + r")\s*$", re.M
+AREA_RE = re.compile(r"^\s*Total cell area\s*:\s*([0-9.]+)", re.M)
+NUMBER_PATTERN = r"[-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?"
+SLACK_RE = re.compile(
+    r"^\s*slack\s*\((MET|VIOLATED)[^)]*\)\s*(" + NUMBER_PATTERN + r")\s*$", re.M
 )
-_TIME_UNIT_RE = re.compile(r"^\s*Time_unit\s*:\s*(" + _NUMBER + r")\s+Second\b", re.M)
+TIME_UNIT_RE = re.compile(
+    r"^\s*Time_unit\s*:\s*(" + NUMBER_PATTERN + r")\s+Second\b", re.M
+)
 # qor.rpt design summary (setup): "Design  WNS: 0.00  TNS: 0.00  Number of Violating Paths: 0".
 # The hold line is "Design (Hold)  WNS: ..." — `Design\s+WNS:` matches the setup line only.
-_SETUP_VIOLATIONS_RE = re.compile(
+SETUP_VIOLATIONS_RE = re.compile(
     r"Design\s+WNS:\s*"
-    + _NUMBER
+    + NUMBER_PATTERN
     + r"\s+TNS:\s*"
-    + _NUMBER
+    + NUMBER_PATTERN
     + r"\s+Number of Violating Paths:\s*(\d+)",
     re.I,
 )
 
 
-def parse_area_um2(text: str) -> float | None:
-    """Total cell area in um^2, or None when the anchor is absent."""
-    m = _AREA_RE.search(text)
-    return float(m.group(1)) if m else None
-
-
 def parse_worst_slack_ns(text: str) -> float | None:
     """Minimum signed slack in the native setup timing report."""
-    unit = _TIME_UNIT_RE.search(text)
+    unit = TIME_UNIT_RE.search(text)
     if unit is None:
         return None
     ns_per_unit = float(unit.group(1)) / 1e-9
     if not math.isfinite(ns_per_unit) or ns_per_unit <= 0:
         return None
     values = []
-    for marker, token in _SLACK_RE.findall(text):
+    for marker, token in SLACK_RE.findall(text):
         value = float(token)
         if (
             not math.isfinite(value)
@@ -61,12 +58,6 @@ def parse_worst_slack_ns(text: str) -> float | None:
             return None
         values.append(value * ns_per_unit)
     return min(values) if values else None
-
-
-def parse_setup_violations(text: str) -> int | None:
-    """Setup violation count from the design summary, excluding the hold summary."""
-    match = _SETUP_VIOLATIONS_RE.search(text)
-    return int(match.group(1)) if match else None
 
 
 def run(reports_dir, target_rows) -> tuple[int, dict | None]:
@@ -85,7 +76,8 @@ def run(reports_dir, target_rows) -> tuple[int, dict | None]:
             )
             return 1, None
 
-    area = parse_area_um2(area_rpt.read_text(errors="replace"))
+    area_match = AREA_RE.search(area_rpt.read_text(errors="replace"))
+    area = float(area_match.group(1)) if area_match else None
     if area is None:
         print(
             f"[synthesis finalize] FAIL=unparseable no 'Total cell area' line in {area_rpt}",
@@ -100,7 +92,8 @@ def run(reports_dir, target_rows) -> tuple[int, dict | None]:
             file=sys.stderr,
         )
         return 3, None
-    violations = parse_setup_violations(qor_rpt.read_text(errors="replace"))
+    setup_match = SETUP_VIOLATIONS_RE.search(qor_rpt.read_text(errors="replace"))
+    violations = int(setup_match.group(1)) if setup_match else None
     if violations is None:
         print(
             f"[synthesis finalize] FAIL=unparseable no setup summary in {qor_rpt}",
@@ -142,7 +135,7 @@ def run(reports_dir, target_rows) -> tuple[int, dict | None]:
         judged.append(
             {
                 "id": r["id"],
-                "met": requirements.met(m["value"], r["target"]),
+                "met": COMPARISONS[r["target"]["op"]](m["value"], r["target"]["value"]),
                 "actual": m["value"],
                 "measured": m["source"],
             }
@@ -159,129 +152,14 @@ def run(reports_dir, target_rows) -> tuple[int, dict | None]:
 
 # ── finalize: assemble the result.json ───────────────────────────────────────
 STAGE = "synthesis"
-_FAIL_REASON = {
+COMPARISONS = {"<": operator.lt, "<=": operator.le, ">": operator.gt, ">=": operator.ge}
+FAIL_REASON = {
     "missing": "synthesis report missing",
     "unparseable": "synthesis report unparseable",
 }
 
 
-def _now_iso() -> str:
-    return datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-
-
-def _envelope(*, status, stage_specific, artifacts) -> dict:
-    return {
-        "stage": STAGE,
-        "produced_at": _now_iso(),
-        "status": status,
-        "artifacts": artifacts,
-        "stage_specific": stage_specific,
-    }
-
-
-def _write_result(workdir: Path, env: dict) -> None:
-    tmp = workdir / "result.json.tmp"
-    tmp.write_text(json.dumps(env, indent=2) + "\n")
-    tmp.replace(workdir / "result.json")  # atomic: never observed half-written
-    sys.stdout.write(
-        f"[synthesis finalize] Written: {workdir / 'result.json'} (status={env['status']})\n"
-    )
-
-
-def build_result(
-    workdir,
-    rows,
-    declared,
-    fix_owner=None,
-    fail_reason=None,
-) -> int:
-    """Assemble the synthesis result.json. Reuses run() for the targeted rows (in-process),
-    merges the caller's verdicts on the rest, then derives the header + artifacts + writes
-    the envelope. Returns 0 (result.json written, pass or fail). A raise -> finalize()
-    exit 2 (BLOCKED) — including a row judged by this stage that nobody judged.
-
-    Three things this verb cannot derive, so the caller states them:
-
-    declared — the verdict on each row with no target: a bound in a unit DC does not
-    report, a rule the reports show but no number compares.
-
-    fix_owner — which rule must act. The reports say what missed and by how much;
-    whether that means the RTL is wrong or the requirement is malformed is read off the
-    rows themselves.
-
-    fail_reason — the cause of a run that produced no gradeable reports, or died after
-    writing them. Supplying it IS the declaration of failure: it wins over the gate,
-    because the agent watched dc_shell and this verb can only read what landed on disk."""
-    workdir = Path(workdir)
-    reports = workdir / "reports"
-
-    if fail_reason is not None:
-        ss = {"fail_reason": fail_reason}
-        if fix_owner:
-            ss["fix_owner"] = fix_owner
-        _write_result(
-            workdir,
-            _envelope(
-                status="fail",
-                stage_specific=ss,
-                artifacts=enumerate_artifacts(workdir),
-            ),
-        )
-        return 0
-
-    rc, actual = run(
-        reports, [r for r in rows if "target" in r]
-    )  # reuse the gate verbatim
-    if rc != 0:
-        token = (
-            "missing" if rc == 1 else "unparseable"
-        )  # run(): 1=missing, 3=unparseable
-        ss = {"fail_reason": _FAIL_REASON[token]}
-        if fix_owner:
-            ss["fix_owner"] = fix_owner
-        _write_result(
-            workdir,
-            _envelope(
-                status="fail",
-                stage_specific=ss,
-                artifacts=enumerate_artifacts(workdir),
-            ),
-        )
-        return 0
-
-    judged = requirements.merge(rows, actual["requirements"], declared)
-    unmet = requirements.unmet(judged)
-    status = "fail" if unmet else "pass"
-    area_text = (reports / "area.rpt").read_text(errors="replace")
-    ss = {
-        "tool": parse_tool(area_text),
-        "requirements": judged,
-    }
-    missing = _missing_netlist(workdir)
-    if missing:
-        # A report set that grades clean says nothing about whether dc_shell's write
-        # step landed: dc_run.tcl reports before change_names/write, and none of the
-        # three writes is return-checked, so a failed write leaves a full reports/ and
-        # no netlist. Promoting that as a pass publishes a synthesis the two downstream
-        # rules declare as their input and cannot find.
-        status = "fail"
-        ss["fail_reason"] = f"netlist incomplete: required {', '.join(missing)}"
-    elif status == "fail":
-        ss["fail_reason"] = f"requirement(s) not met: {', '.join(unmet)}"
-    if status == "fail" and fix_owner:
-        ss["fix_owner"] = fix_owner
-    _write_result(
-        workdir,
-        _envelope(
-            status=status,
-            stage_specific=ss,
-            artifacts=enumerate_artifacts(workdir),
-        ),
-    )
-    return 0
-
-
-def _missing_netlist(workdir: Path) -> list[str]:
+def missing_netlist(workdir: Path) -> list[str]:
     """A synthesis delivers one nonempty netlist with its matching SDC and SDF."""
     netlists = list(workdir.glob("out/*_syn.v"))
     if len(netlists) != 1:
@@ -293,15 +171,7 @@ def _missing_netlist(workdir: Path) -> list[str]:
     ]
 
 
-_VERSION_RE = re.compile(r"^\s*Version:\s*(\S+)", re.M)
-
-
-def parse_tool(area_text: str) -> str:
-    """The DC version off the report header. The kernel's reap-time identity record
-    covers the library environment variables and no tool version, and this stage's
-    reports come from dc_shell; record which compiler produced them."""
-    m = _VERSION_RE.search(area_text)
-    return f"Design Compiler {m.group(1)}" if m else "Design Compiler unknown"
+VERSION_RE = re.compile(r"^\s*Version:\s*(\S+)", re.M)
 
 
 def enumerate_artifacts(workdir) -> list[dict]:
@@ -320,27 +190,85 @@ def enumerate_artifacts(workdir) -> list[dict]:
     ]
 
 
-def finalize(
-    workdir,
-    rows,
-    declared,
-    fix_owner=None,
-    fail_reason=None,
-) -> int:
-    """Parse DC reports, judge the rows synthesis establishes, write result.json. exit 0 =
-    written (pass or fail); exit 2 = BLOCKED (an empty --fail-reason, a row nobody judged, or
-    any internal raise) — never conflated with status=fail."""
+def finalize(workdir, rows, declared, fix_owner=None, fail_reason=None) -> int:
+    """Assess the stage and write its result. Input or I/O errors leave no current result."""
     (Path(workdir) / "result.json").unlink(missing_ok=True)
     if fail_reason is not None:
         if not fail_reason.strip():
             print(
-                "[synthesis finalize] BLOCKED: --fail-reason must be a non-empty "
-                "one-line cause",
+                "[synthesis finalize] BLOCKED: --fail-reason must be a non-empty one-line cause",
                 file=sys.stderr,
             )
             return 2
+
+    def _write_result(*, status, stage_specific, artifacts):
+        result = {
+            "stage": STAGE,
+            "produced_at": datetime.datetime.now(datetime.timezone.utc).strftime(
+                "%Y-%m-%dT%H:%M:%SZ"
+            ),
+            "status": status,
+            "artifacts": artifacts,
+            "stage_specific": stage_specific,
+        }
+        result_path = Path(workdir) / "result.json"
+        temporary_path = result_path.with_suffix(".json.tmp")
+        temporary_path.write_text(json.dumps(result, indent=2) + "\n")
+        temporary_path.replace(result_path)
+        print(f"[synthesis finalize] Written: {result_path} (status={status})")
+        return 0
+
     try:
-        return build_result(workdir, rows, declared, fix_owner, fail_reason)
-    except Exception as exc:  # noqa: BLE001 — any failure to operate is BLOCKED
+        workdir = Path(workdir)
+        reports = workdir / "reports"
+        if fail_reason is not None:
+            stage_specific = {"fail_reason": fail_reason}
+            if fix_owner:
+                stage_specific["fix_owner"] = fix_owner
+            return _write_result(
+                status="fail",
+                stage_specific=stage_specific,
+                artifacts=enumerate_artifacts(workdir),
+            )
+        exit_code, actual = run(reports, [r for r in rows if "target" in r])
+        if exit_code != 0:
+            token = "missing" if exit_code == 1 else "unparseable"
+            stage_specific = {"fail_reason": FAIL_REASON[token]}
+            if fix_owner:
+                stage_specific["fix_owner"] = fix_owner
+            return _write_result(
+                status="fail",
+                stage_specific=stage_specific,
+                artifacts=enumerate_artifacts(workdir),
+            )
+        judged = requirements.merge(rows, actual["requirements"], declared)
+        unmet = [entry["id"] for entry in judged if not entry["met"]]
+        status = "fail" if unmet else "pass"
+        area_text = (reports / "area.rpt").read_text(errors="replace")
+        version_match = VERSION_RE.search(area_text)
+        tool = (
+            f"Design Compiler {version_match.group(1)}"
+            if version_match
+            else "Design Compiler unknown"
+        )
+        stage_specific = {"tool": tool, "requirements": judged}
+        missing = missing_netlist(workdir)
+        if missing:
+            status = "fail"
+            stage_specific["fail_reason"] = (
+                f"netlist incomplete: required {', '.join(missing)}"
+            )
+        elif status == "fail":
+            stage_specific["fail_reason"] = (
+                f"requirement(s) not met: {', '.join(unmet)}"
+            )
+        if status == "fail" and fix_owner:
+            stage_specific["fix_owner"] = fix_owner
+        return _write_result(
+            status=status,
+            stage_specific=stage_specific,
+            artifacts=enumerate_artifacts(workdir),
+        )
+    except (OSError, ValueError) as exc:
         print(f"[synthesis finalize] BLOCKED: {exc}", file=sys.stderr)
         return 2

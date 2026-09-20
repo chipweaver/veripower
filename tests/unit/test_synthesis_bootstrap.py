@@ -19,7 +19,7 @@ MAIN = REPO_ROOT / "skills/synthesis/scripts/synthesis/__main__.py"
 sys.path.insert(0, str(REPO_ROOT / "skills" / "synthesis" / "scripts"))
 
 
-def _mirror(tmp_path):
+def mirror(tmp_path):
     """Build the upstream asic/M/... refs under a tmp design-tree root; return
     (skill_dir, rtl_dir, workdir). skill_dir is the real shipped skill — deploy
     tests run it with cwd=tmp_path, so the bootstrap anchors the tree on the CWD.
@@ -55,7 +55,7 @@ def _mirror(tmp_path):
     return skill_dst, rtl, workdir
 
 
-def _run(skill_dst, workdir, *extra):
+def run(skill_dst, workdir, *extra):
     # The bootstrap anchors the design tree on the CWD; the tree root is the prefix
     # of the (absolute) workdir up to the 'asic/' component.
     parts = Path(workdir).parts
@@ -76,11 +76,11 @@ def _run(skill_dst, workdir, *extra):
 
 
 def test_incdir_becomes_search_path_entry(tmp_path):
-    skill_dst, rtl, workdir = _mirror(tmp_path)
+    skill_dst, rtl, workdir = mirror(tmp_path)
     (rtl / "rtl-files.json").write_text(
         json.dumps({"files": ["top.v"], "incdirs": ["sub/inc"]})
     )
-    proc = _run(skill_dst, workdir, "--top", "top")
+    proc = run(skill_dst, workdir, "--top", "top")
     assert proc.returncode == 0, proc.stderr
     gen = (workdir / "scripts" / "rtl_load.tcl").read_text()
     assert "set_app_var search_path" in gen
@@ -100,14 +100,14 @@ def test_rtl_load_gates_every_analyze(tmp_path):
     missing a whole module. The companion gates on elaborate / link live in
     tests/contracts/test_dc_run_gates.py.
     """
-    skill_dst, rtl, workdir = _mirror(tmp_path)
+    skill_dst, rtl, workdir = mirror(tmp_path)
     (rtl / "rtl-files.json").write_text(json.dumps({"files": ["a.v", "b.v"]}))
-    proc = _run(skill_dst, workdir, "--top", "a")
+    proc = run(skill_dst, workdir, "--top", "a")
     assert proc.returncode == 0, proc.stderr
     gen = (workdir / "scripts" / "rtl_load.tcl").read_text()
-    assert "proc _analyze_or_die" in gen
+    assert "proc analyze_source" in gen
     assert "exit 1" in gen
-    calls = [ln for ln in gen.splitlines() if ln.startswith("_analyze_or_die ")]
+    calls = [ln for ln in gen.splitlines() if ln.startswith("analyze_source ")]
     assert len(calls) == 2, calls
     ungated = [ln for ln in gen.splitlines() if ln.startswith("analyze ")]
     assert ungated == [], ungated
@@ -118,22 +118,22 @@ def test_missing_spec_sdc_fails_closed(tmp_path):
     # clock on port names this design may not have, `get_ports` would match nothing, and
     # dc_shell would report a large positive slack — a PASSING PPA verdict from constraints
     # nobody wrote. Refuse instead.
-    skill_dst, rtl, workdir = _mirror(tmp_path)
+    skill_dst, rtl, workdir = mirror(tmp_path)
     (rtl / "rtl-files.json").write_text(json.dumps({"files": ["top.v"]}))
     (tmp_path / "asic/M/Design/specification/constraints/top.sdc").unlink()
-    proc = _run(skill_dst, workdir, "--top", "top")
+    proc = run(skill_dst, workdir, "--top", "top")
     assert proc.returncode != 0
     assert "SDC source of truth not found" in proc.stderr
     # Invalid input leaves setup uninstalled, and corrected input permits a retry.
     assert not (workdir / "config.tcl").exists()
     assert not (workdir / "constraints.sdc").exists()
-    assert _run(skill_dst, workdir, "--top", "M_top").returncode == 0  # retry works
+    assert run(skill_dst, workdir, "--top", "M_top").returncode == 0  # retry works
 
 
 def test_happy_path_substitutes_my_top(tmp_path):
-    skill_dst, rtl, workdir = _mirror(tmp_path)
+    skill_dst, rtl, workdir = mirror(tmp_path)
     (rtl / "rtl-files.json").write_text(json.dumps({"files": ["top.v"]}))
-    proc = _run(skill_dst, workdir, "--top", "top")
+    proc = run(skill_dst, workdir, "--top", "top")
     assert proc.returncode == 0, proc.stderr
     env_sh = (workdir / "config.tcl").read_text()
     assert "MY_TOP" not in env_sh and "top" in env_sh
@@ -141,11 +141,11 @@ def test_happy_path_substitutes_my_top(tmp_path):
 
 
 def test_sdc_source_of_truth_copied(tmp_path):
-    skill_dst, rtl, workdir = _mirror(tmp_path)
+    skill_dst, rtl, workdir = mirror(tmp_path)
     (rtl / "rtl-files.json").write_text(json.dumps({"files": ["top.v"]}))
     spec_con = tmp_path / "asic" / "M" / "Design" / "specification" / "constraints"
     (spec_con / "top.sdc").write_text("# SENTINEL real sdc\ncreate_clock x\n")
-    proc = _run(skill_dst, workdir, "--top", "top")
+    proc = run(skill_dst, workdir, "--top", "top")
     assert proc.returncode == 0, proc.stderr
     con = (workdir / "constraints.sdc").read_text()
     assert (
@@ -154,9 +154,9 @@ def test_sdc_source_of_truth_copied(tmp_path):
 
 
 def test_empty_filelist_fail_closed(tmp_path):
-    skill_dst, rtl, workdir = _mirror(tmp_path)
+    skill_dst, rtl, workdir = mirror(tmp_path)
     (rtl / "rtl-files.json").write_text(json.dumps({"files": []}))
-    proc = _run(skill_dst, workdir, "--top", "top")
+    proc = run(skill_dst, workdir, "--top", "top")
     assert proc.returncode == 1
     assert "lists no RTL files" in proc.stderr
     assert not (workdir / "config.tcl").exists()
@@ -164,41 +164,41 @@ def test_empty_filelist_fail_closed(tmp_path):
 
 
 def test_missing_filelist_fail_closed(tmp_path):
-    skill_dst, rtl, workdir = _mirror(tmp_path)  # rtl dir exists, no rtl-files.json
-    proc = _run(skill_dst, workdir, "--top", "top")
+    skill_dst, rtl, workdir = mirror(tmp_path)  # rtl dir exists, no rtl-files.json
+    proc = run(skill_dst, workdir, "--top", "top")
     assert proc.returncode == 1
     assert "missing" in proc.stderr and "rtl-files.json" in proc.stderr
     assert not (workdir / "config.tcl").exists()
     # and the retry works once rtl-design has written the layout
     (rtl / "rtl-files.json").write_text(json.dumps({"files": ["top.v"]}))
-    assert _run(skill_dst, workdir, "--top", "top").returncode == 0
+    assert run(skill_dst, workdir, "--top", "top").returncode == 0
 
 
 def test_top_read_from_manifest(tmp_path):
-    skill_dst, rtl, workdir = _mirror(tmp_path)
+    skill_dst, rtl, workdir = mirror(tmp_path)
     (rtl / "rtl-files.json").write_text(json.dumps({"files": ["some_other_name.v"]}))
-    assert _run(skill_dst, workdir).returncode == 0  # no --top
+    assert run(skill_dst, workdir).returncode == 0  # no --top
     # manifest.module wins; the filelist basename is not consulted at all
     assert "M_top" in (workdir / "config.tcl").read_text()
 
 
 def test_cant_read_top_fail_closed(tmp_path):
-    skill_dst, rtl, workdir = _mirror(tmp_path)
+    skill_dst, rtl, workdir = mirror(tmp_path)
     (rtl / "rtl-files.json").write_text(json.dumps({"files": ["top.v"]}))
     spec = tmp_path / "asic" / "M" / "Design" / "specification"
     (spec / "manifest.json").unlink()
-    proc = _run(skill_dst, workdir)  # no --top
+    proc = run(skill_dst, workdir)  # no --top
     assert proc.returncode == 1
     assert "cannot read top" in proc.stderr
 
 
 def test_bootstrap_preserves_authored_driver(tmp_path):
-    skill_dst, rtl, workdir = _mirror(tmp_path)
+    skill_dst, rtl, workdir = mirror(tmp_path)
     (rtl / "rtl-files.json").write_text(json.dumps({"files": ["top.v"]}))
-    assert _run(skill_dst, workdir, "--top", "top").returncode == 0
+    assert run(skill_dst, workdir, "--top", "top").returncode == 0
     driver = workdir / "scripts/dc_run.tcl"
     driver.write_text("# authored calculation with literal MY_RTL_DIR\n")
-    proc = _run(skill_dst, workdir, "--top", "top")
+    proc = run(skill_dst, workdir, "--top", "top")
     assert proc.returncode == 0
     assert driver.read_text() == "# authored calculation with literal MY_RTL_DIR\n"
 
@@ -206,7 +206,7 @@ def test_bootstrap_preserves_authored_driver(tmp_path):
 def test_relative_workdir_with_trailing_slash(tmp_path):
     # A relative --workdir resolves against the CWD (the design-tree root), and
     # a trailing slash is stripped before path resolution.
-    skill_dst, rtl, workdir = _mirror(tmp_path)
+    skill_dst, rtl, workdir = mirror(tmp_path)
     (rtl / "rtl-files.json").write_text(json.dumps({"files": ["top.v"]}))
     proc = subprocess.run(
         [
@@ -231,9 +231,9 @@ def test_bootstrap_reanchors_rtl_load_to_absolute_from_dispatch_json(tmp_path):
     # bootstrap reads the upstream rtl-design location from the injected
     # dispatch.json "rtl" key — not by self-navigating tree_root/asic/<module>/....
     # rtl_load.tcl must bake the ABSOLUTE rtl root, never a relative "../.." climb.
-    skill_dst, rtl_root, workdir = _mirror(tmp_path)
+    skill_dst, rtl_root, workdir = mirror(tmp_path)
     (rtl_root / "rtl-files.json").write_text(json.dumps({"files": ["top.v"]}))
-    proc = _run(skill_dst, workdir, "--top", "top")
+    proc = run(skill_dst, workdir, "--top", "top")
     assert proc.returncode == 0, proc.stderr
     tcl = (workdir / "scripts" / "rtl_load.tcl").read_text()
     assert str(rtl_root) in tcl
@@ -243,9 +243,9 @@ def test_bootstrap_reanchors_rtl_load_to_absolute_from_dispatch_json(tmp_path):
 def test_tool_configuration_preserves_literal_values(tmp_path, monkeypatch):
     value = 'space $variable [error injected] "quotes" \\path'
     monkeypatch.setenv("LIB_DB", value)
-    skill_dst, rtl, workdir = _mirror(tmp_path)
+    skill_dst, rtl, workdir = mirror(tmp_path)
     (rtl / "rtl-files.json").write_text(json.dumps({"files": ["top.v"]}))
-    assert _run(skill_dst, workdir, "--top", "top").returncode == 0
+    assert run(skill_dst, workdir, "--top", "top").returncode == 0
     (workdir / "probe.tcl").write_text("source config.tcl\nputs -nonewline $LIB_DB\n")
     seen = subprocess.run(
         ["tclsh", "probe.tcl"], cwd=workdir, capture_output=True, text=True
@@ -254,12 +254,12 @@ def test_tool_configuration_preserves_literal_values(tmp_path, monkeypatch):
 
 
 def test_seed_and_carried_local_remain_separate(tmp_path):
-    skill_dst, rtl, workdir = _mirror(tmp_path)
+    skill_dst, rtl, workdir = mirror(tmp_path)
     (rtl / "rtl-files.json").write_text(json.dumps({"files": ["top.v"]}))
     (workdir / "constraints.local.sdc").write_text(
         "# LOCAL\nset_clock_uncertainty -setup 0.15 [get_clocks clk]\n"
     )
-    proc = _run(skill_dst, workdir, "--top", "top")
+    proc = run(skill_dst, workdir, "--top", "top")
     assert proc.returncode == 0, proc.stderr
     out = (workdir / "constraints.sdc").read_text()
     assert "spec sdc for top" in out and "# LOCAL" not in out
@@ -272,12 +272,12 @@ def test_seed_and_carried_local_remain_separate(tmp_path):
 def test_a_corrected_seed_reaches_dc_without_the_stage_acting(tmp_path):
     """The defect this replaces: the seed was read once, on round 1, so a specification-side
     correction landed in a file the stage never opened again."""
-    skill_dst, rtl, workdir = _mirror(tmp_path)
+    skill_dst, rtl, workdir = mirror(tmp_path)
     (rtl / "rtl-files.json").write_text(json.dumps({"files": ["top.v"]}))
     (workdir / "constraints.local.sdc").write_text("# carried local, untouched\n")
     con = workdir.parents[2] / "specification" / "constraints"
     (con / "top.sdc").write_text("# spec sdc for top\ncreate_clock -period 4.0 x\n")
-    proc = _run(skill_dst, workdir, "--top", "top")
+    proc = run(skill_dst, workdir, "--top", "top")
     assert proc.returncode == 0, proc.stderr
     out = (workdir / "constraints.sdc").read_text()
     assert "create_clock -period 4.0" in out
@@ -291,11 +291,11 @@ def test_driver_reads_local_edits_on_each_invocation(tmp_path):
 
     Tool commands are stubbed here; real DC constraint observations run separately.
     """
-    skill_dst, rtl, workdir = _mirror(tmp_path)
+    skill_dst, rtl, workdir = mirror(tmp_path)
     (rtl / "rtl-files.json").write_text(json.dumps({"files": ["top.v"]}))
     seed = workdir.parents[2] / "specification/constraints/top.sdc"
     seed.write_text("set audit_constraint seed\n")
-    assert _run(skill_dst, workdir, "--top", "top").returncode == 0
+    assert run(skill_dst, workdir, "--top", "top").returncode == 0
     library = tmp_path / "test.db"
     library.touch()
     (workdir / "config.tcl").write_text(
@@ -335,13 +335,13 @@ source scripts/dc_run.tcl
 
 
 def test_loader_preserves_source_and_include_paths(tmp_path):
-    skill, rtl, wd = _mirror(tmp_path / 'project [literal] $var {x} "quoted"')
+    skill, rtl, wd = mirror(tmp_path / 'project [literal] $var {x} "quoted"')
     source = "src/core [literal] $var {x}.v"
     include = "src/include [literal] $var {x}"
     (rtl / "rtl-files.json").write_text(
         json.dumps({"files": [source], "incdirs": [include]})
     )
-    assert _run(skill, wd, "--top", "top").returncode == 0
+    assert run(skill, wd, "--top", "top").returncode == 0
     (wd / "probe.tcl").write_text(
         "proc get_app_var name {return {}}\n"
         'proc set_app_var {name paths} {foreach p $paths {puts "INCLUDE:$p"}}\n'

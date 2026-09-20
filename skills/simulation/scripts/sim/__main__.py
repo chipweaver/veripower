@@ -1,17 +1,5 @@
 #!/usr/bin/env python3
-"""sim — simulation-stage CLI.
-
-Verbs (one stage = one tool):
-  bootstrap             deploy infra + optional scaffold into a run workdir   (exit 0 / 1 / 2)
-  check-materialization presence gate over the materialized TB (env-exit self-gate) (stdout verdict; exit 0/1)
-  finalize              write result.json (--phase fail | final)              (exit 0 written / 2 BLOCKED)
-
-Thin dispatcher: each subcommand parses its own flags and calls into the sim.*
-library. Library imports are deferred into each handler rather than taken at the top so
-that --help and verb dispatch keep working when one library has an import-time problem;
-the library modules themselves import absolutely at the top. NEVER `import _gate` bare
-inside this package, only `from sim import …`.
-"""
+"""Command-line operations for the sim stage."""
 
 from __future__ import annotations
 
@@ -27,115 +15,110 @@ from pathlib import Path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 
-def _cmd_bootstrap(a: argparse.Namespace) -> int:
-    from sim import bootstrap
-
-    return bootstrap.run(a.workdir, scaffold=a.plan)
-
-
-def _cmd_check_materialization(a: argparse.Namespace) -> int:
-    from sim import materialization
-
-    return materialization.run(a.workdir, a.plan)
-
-
-def _cmd_finalize(a: argparse.Namespace) -> int:
-    from sim import result
-
-    (Path(a.workdir) / "result.json").unlink(missing_ok=True)
-    if a.phase == "final" and not (a.plan and a.requirements and a.check_review):
-        print(
-            "[sim finalize] ERROR: --plan, --requirements and --check-review are "
-            "required for --phase final",
-            file=sys.stderr,
-        )
-        return 2
-    # A fail envelope whose reason is empty is rejected by the envelope schema at reap, which
-    # costs the round a blocked outcome instead of a routable fail. Refuse here, loudly, rather
-    # than write one: the caller always holds a reason — the child's BLOCKED line, or the
-    # failing case it just read.
-    if a.phase == "fail" and not (a.fail_reason and a.fail_reason.strip()):
-        print(
-            "[sim finalize] ERROR: --fail-reason is required for --phase fail",
-            file=sys.stderr,
-        )
-        return 2
-    return result.finalize(
-        a.workdir,
-        phase=a.phase,
-        scaffold=a.plan,
-        requirements=a.requirements,
-        check_review=a.check_review,
-        fail_reason=a.fail_reason,
-        fix_owner=a.fix_owner,
-    )
-
-
 def build_parser() -> argparse.ArgumentParser:
-    p = argparse.ArgumentParser(prog="sim", description="simulation-stage CLI")
-    sub = p.add_subparsers(dest="cmd", required=True)
+    parser = argparse.ArgumentParser(prog="sim", description="simulation-stage CLI")
+    subcommands = parser.add_subparsers(dest="cmd", required=True)
 
-    sp = sub.add_parser(
+    command_parser = subcommands.add_parser(
         "bootstrap", help="deploy infra + optional scaffold into a run workdir"
     )
-    sp.add_argument("--workdir", required=True, type=Path)
-    sp.add_argument(
+    command_parser.add_argument("--workdir", required=True, type=Path)
+    command_parser.add_argument(
         "--plan",
         type=Path,
         default=None,
         help="the simulation-plan workdir (renders the UVM scaffold when given)",
     )
-    sp.set_defaults(func=_cmd_bootstrap)
 
-    sp = sub.add_parser(
+    command_parser = subcommands.add_parser(
         "check-materialization",
         help="presence gate over the materialized TB (env-exit self-gate)",
     )
-    sp.add_argument("--workdir", required=True, type=Path)
-    sp.add_argument("--plan", required=True, type=Path)
-    sp.set_defaults(func=_cmd_check_materialization)
+    command_parser.add_argument("--workdir", required=True, type=Path)
+    command_parser.add_argument("--plan", required=True, type=Path)
 
-    sp = sub.add_parser("finalize", help="write result.json (--phase fail | final)")
-    sp.add_argument("--workdir", required=True, type=Path)
-    sp.add_argument(
+    command_parser = subcommands.add_parser(
+        "finalize", help="write result.json (--phase fail | final)"
+    )
+    command_parser.add_argument("--workdir", required=True, type=Path)
+    command_parser.add_argument(
         "--phase",
         required=True,
         choices=["fail", "final"],
         help="`fail` closes the round on a failure the caller already holds a reason for; "
         "`final` checks materialization, review, coverage and case results on disk.",
     )
-    sp.add_argument(
+    command_parser.add_argument(
         "--plan",
         type=Path,
         default=None,
         help="the simulation-plan workdir (required for --phase final)",
     )
-    sp.add_argument(
+    command_parser.add_argument(
         "--requirements",
         type=Path,
         default=None,
         help="the specification requirements.json; its coverage bounds judged by simulation "
         "are the coverage gate (required for --phase final)",
     )
-    sp.add_argument("--check-review", type=Path, default=None)
-    sp.add_argument(
+    command_parser.add_argument("--check-review", type=Path, default=None)
+    command_parser.add_argument(
         "--fail-reason",
         default=None,
         help="unresolved violation or incomplete work, even if tool results otherwise pass",
     )
-    sp.add_argument(
+    command_parser.add_argument(
         "--fix-owner",
         default=None,
         help="on a failure, the rule that must act (you name it; no gate can derive it)",
     )
-    sp.set_defaults(func=_cmd_finalize)
 
-    return p
+    return parser
 
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
-    return args.func(args)
+    try:
+        if args.cmd == "bootstrap":
+            from sim import bootstrap
+
+            return bootstrap.run(args.workdir, scaffold=args.plan)
+        elif args.cmd == "check-materialization":
+            from sim import materialization
+
+            return materialization.run(args.workdir, args.plan)
+        else:
+            from sim import result
+
+            (Path(args.workdir) / "result.json").unlink(missing_ok=True)
+            if args.phase == "final" and (
+                not (args.plan and args.requirements and args.check_review)
+            ):
+                print(
+                    "[sim finalize] ERROR: --plan, --requirements and --check-review are required for --phase final",
+                    file=sys.stderr,
+                )
+                return 2
+            if args.phase == "fail" and (
+                not (args.fail_reason and args.fail_reason.strip())
+            ):
+                print(
+                    "[sim finalize] ERROR: --fail-reason is required for --phase fail",
+                    file=sys.stderr,
+                )
+                return 2
+            return result.finalize(
+                args.workdir,
+                phase=args.phase,
+                scaffold=args.plan,
+                requirements=args.requirements,
+                check_review=args.check_review,
+                fail_reason=args.fail_reason,
+                fix_owner=args.fix_owner,
+            )
+    except (OSError, ValueError) as error:
+        print(f"[sim {args.cmd}] BLOCKED: {error}", file=sys.stderr)
+        return 2
 
 
 if __name__ == "__main__":
