@@ -6,8 +6,8 @@ const ROOT = path.resolve(__dirname, "../..")
 const SKILLS_DIR = path.join(ROOT, "skills")
 
 // Keep dispatch context until the next kernel action.
-const DISPATCH = /kernel\.py\s+dispatch\b/
-const KERNEL_CALL = /kernel\.py\s+\w+/
+const DISPATCH = /kernel\.py["']?\s+dispatch\b/
+const KERNEL_CALL = /kernel\.py["']?\s+\w+/
 const LOOP_REMINDER = (rule, run) =>
   `veripower loop: after the executor for \`${rule}\` run ${run} has started, ` +
   "call `kernel.py decide` to schedule other ready work."

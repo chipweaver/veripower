@@ -40,6 +40,10 @@ The adapter locates this installation's `skills/` directory and registers it
 through an isolated filesystem skill provider. No global skill symlink or
 manually configured skill path is needed.
 
+The adapter maps `Skill(veripower:X)` to `skill` with the bare name `X`, and background
+`Task` to `subagent` with `run_in_background: true`. These translations are supplied
+through the host's system prompt to the parent and child agents.
+
 The adapter supplies post-dispatch scheduling context. The profile supplies execution tools
 and permissions. The shared design-flow skill coordinates
 execution and collection; the kernel owns stage routing and validity.

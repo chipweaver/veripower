@@ -10,7 +10,7 @@ const SKILLS_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..', 's
 
 const SOURCE = { kind: 'plugin', plugin: 'veripower-dsh' }
 
-const DISPATCH = /kernel\.py\s+dispatch\b/
+const DISPATCH = /kernel\.py["']?\s+dispatch\b/
 
 const REMINDER = (rule, run) =>
   `veripower loop: after the executor for \`${rule}\` run ${run} has started, `
@@ -35,9 +35,16 @@ function envelope(result) {
 }
 
 export const name = 'veripower-dsh'
-export const inject = ['tools']
+export const inject = ['tools', 'systemPrompt']
 
 export function apply(ctx) {
+  ctx.systemPrompt.section({
+    name: 'veripower:tool-mapping',
+    order: 0,
+    text: 'VeriPower tool translations: invoke Skill(veripower:X) with the skill tool using the bare name X. '
+      + 'For Task(run_in_background=True, prompt=P), use subagent with prompt P and run_in_background: true.',
+  })
+
   // An isolated provider keeps these skills out of the user's own roots and needs
   // no path in the deployment config: this file locates the checkout it ships in.
   ctx.plugin(skillFilesystem, {

@@ -5,7 +5,7 @@ import json
 import re
 import sys
 
-DISPATCH = re.compile(r"kernel\.py\s+dispatch\b")
+DISPATCH = re.compile(r"kernel\.py[\"']?\s+dispatch\b")
 
 REMINDER = (
     "veripower loop: after the executor for `{rule}` run {run} has started, "
