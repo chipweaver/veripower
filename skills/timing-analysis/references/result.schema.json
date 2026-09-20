@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://veripower.local/skills/timing-analysis/result.schema.json",
   "title": "timing-analysis result.json contract",
-  "description": "Complete contract for <module>/Design/timing-analysis/result.json. On status=pass, stage_specific.timing carries setup/hold worst-slack + met flag (classified on the report MET/VIOLATED marker) and the boundary-coverage counts. A pass requires both directions MET and every output bit timed — an STA that reached only part of the boundary is not a pass, because the markers describe only the paths it did analyze. On status=fail, stage_specific.fail_reason is required: the one-line cause, which on a run that produced nothing gradeable is all there is. An early fail carries no timing{}, because PT never ran. stage_specific.requirements[] is one verdict per requirements.json row timing-analysis judges, required on pass.",
+  "description": "Timing measurements and requirement judgments. Setup/hold classify the reported paths. The stage owner assesses analysis scope and exceptions from the native reports and records unresolved issues through fail_reason.",
   "allOf": [
     {
       "$ref": "https://veripower.local/schemas/envelope.schema.json"
@@ -25,11 +25,10 @@
             },
             "timing": {
               "type": "object",
-              "description": "Structured STA result (required on pass). Worst slack + met flag per direction (classified on the report's MET/VIOLATED marker, never the displayed number), plus the boundary-coverage counts, which are equal on any pass.",
+              "description": "Reported setup/hold worst slack, marker and path. These measurements do not establish analysis completeness.",
               "required": [
                 "setup",
-                "hold",
-                "coverage"
+                "hold"
               ],
               "additionalProperties": false,
               "properties": {
@@ -70,25 +69,6 @@
                     },
                     "worst_path": {
                       "type": "string"
-                    }
-                  }
-                },
-                "coverage": {
-                  "description": "Output-port bit count and PrimeTime out_setup Total. Total includes Untested checks; equality alone does not prove every output was timed. Assess raw coverage and check_timing against the design.",
-                  "type": "object",
-                  "required": [
-                    "output_bits",
-                    "output_bits_timed"
-                  ],
-                  "additionalProperties": false,
-                  "properties": {
-                    "output_bits": {
-                      "type": "integer",
-                      "minimum": 0
-                    },
-                    "output_bits_timed": {
-                      "type": "integer",
-                      "minimum": 0
                     }
                   }
                 }

@@ -34,7 +34,7 @@ def test_names_come_from_the_scaffold_input(tmp_path):
 def _mirror(
     tmp_path,
     *,
-    rtl_files={"c": {"files": ["rtl/dut.v"], "incdirs": ["inc"]}},
+    rtl_files={"files": ["rtl/dut.v"], "incdirs": ["inc"]},
     scaffold_top="dut",
 ):
     """Seed the upstream rtl-design references + a tb-scaffold.json (`top`

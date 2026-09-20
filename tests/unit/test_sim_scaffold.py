@@ -100,6 +100,50 @@ def _render(tmp_path, spec=SPEC, top_io=None, clocks=None):
     return out
 
 
+@pytest.mark.parametrize("width", [1, 4])
+def test_inout_connection_and_transaction_keep_distinct_types_on_regeneration(
+    tmp_path, width
+):
+    ports = [dict(p) for p in _TOP_IO] + [
+        {
+            "name": "io_link",
+            "direction": "inout",
+            "width": width,
+            "clock_domain": "clk",
+            "interface_group": "drv_g",
+            "role": "data",
+        }
+    ]
+    out = _render(tmp_path, top_io=ports)
+    signals = out / "tb/uvm/interface/m_drv_signals.svh"
+    fields = out / "tb/uvm/transaction/m_drv_fields.svh"
+    interface = out / "tb/uvm/interface/m_drv_if.sv"
+    authored = interface.read_text().replace(
+        "endinterface", "  logic local_enable;\nendinterface"
+    )
+    interface.write_text(authored)
+    for _ in range(2):
+        assert "wire" in next(
+            line for line in signals.read_text().splitlines() if "io_link;" in line
+        )
+        assert "logic" in next(
+            line for line in signals.read_text().splitlines() if "req;" in line
+        )
+        assert "rand logic" in next(
+            line for line in fields.read_text().splitlines() if "io_link;" in line
+        )
+        scaffold.render(tmp_path, out, tmp_path / "spec", TEMPLATES)
+        assert interface.read_text() == authored
+
+    # Boundary changes still update the derived declarations, not the author's interface.
+    ports[-1].update(direction="input", width=8)
+    (tmp_path / "spec/top-io.json").write_text(json.dumps(ports))
+    scaffold.render(tmp_path, out, tmp_path / "spec", TEMPLATES)
+    assert "logic [7:0] io_link;" in signals.read_text()
+    assert "rand logic [7:0] io_link;" in fields.read_text()
+    assert interface.read_text() == authored
+
+
 def _render_exit(tmp_path, spec=SPEC, plan_dir=None, top_io=None, clocks=None):
     """Render expecting a fail-loud exit; returns the message."""
     plan = plan_dir or _write_spec(tmp_path, spec)
@@ -248,14 +292,13 @@ def test_every_clock_is_generated_and_bound(tmp_path):
         / "top"
         / "m_top_tb_top.sv"
     ).read_text()
-    assert "logic clk2;" in tb
+    assert "logic [0:0] clk2;" in tb
     assert "forever #4 clk2 = ~clk2;" in tb
     assert ".clk2(clk2)" in tb
 
 
-def test_active_high_reset_is_inverted_at_the_dut_boundary(tmp_path):
-    """The bench's rst_n stays active-low for every DUT so agents never branch on polarity;
-    the inversion happens once, in the port binding."""
+def test_reset_polarity_is_exposed_without_changing_the_signal(tmp_path):
+    """The reset schedule uses the original signal and its declared active level."""
     low = (_render(tmp_path) / "tb" / "uvm" / "top" / "m_top_tb_top.sv").read_text()
     assert ".rst_n(rst_n)" in low
 
@@ -268,7 +311,8 @@ def test_active_high_reset_is_inverted_at_the_dut_boundary(tmp_path):
     tb = (
         _render(high, top_io=top_io) / "tb" / "uvm" / "top" / "m_top_tb_top.sv"
     ).read_text()
-    assert ".rst(~rst_n)" in tb
+    assert ".rst(rst)" in tb
+    assert "active 1" in (high / "out/tb/uvm/interface/m_reset_ports.svh").read_text()
 
 
 def test_unclaimed_data_port_exits(tmp_path):
@@ -351,7 +395,8 @@ def test_rework_regenerates_the_derived_files(tmp_path):
         _write_boundary(tmp_path / "spec", top_io),
         TEMPLATES,
     )
-    assert ".rst_n(~rst_n)" in tb.read_text()
+    assert ".rst_n(rst_n)" in tb.read_text()
+    assert "active 1" in (out / "tb/uvm/interface/m_reset_ports.svh").read_text()
 
 
 def test_rework_keeps_the_authored_stubs(tmp_path):
@@ -374,8 +419,8 @@ def test_the_reset_schedule_is_authored_and_survives_a_rework(tmp_path):
     tb = out / "tb" / "uvm" / "top" / "m_top_tb_top.sv"
     rst = out / "tb" / "uvm" / "top" / "m_reset.svh"
     assert '`include "m_reset.svh"' in tb.read_text()
-    assert tb.read_text().index("m_drv_if drv_if") < tb.read_text().index("m_reset.svh")
-    assert "rst_n = 0;" in rst.read_text()
+    assert tb.read_text().index("m_clocks.svh") < tb.read_text().index("m_reset.svh")
+    assert "TODO(reset): Drive rst_n" in rst.read_text()
 
     rst.write_text("// a round's own reset placement\n")
     scaffold.render(
@@ -453,13 +498,13 @@ def test_each_vif_runs_on_its_own_declared_clock_domain(tmp_path):
         / "tb"
         / "uvm"
         / "top"
-        / "m_top_tb_top.sv"
+        / "m_clocks.svh"
     ).read_text()
-    assert "m_drv_if drv_if(.clk(clk), .rst_n(rst_n));" in tb
-    assert "m_obs_if obs_if(.clk(clk2), .rst_n(rst_n));" in tb
+    assert "assign drv_if.clk = clk;" in tb
+    assert "assign obs_if.clk = clk2;" in tb
 
 
-def test_agent_spanning_two_clock_domains_exits(tmp_path):
+def test_agent_spanning_domains_has_an_authored_connection(tmp_path):
     top_io = [dict(p) for p in _TOP_IO] + [
         {
             "name": "clk2",
@@ -482,8 +527,11 @@ def test_agent_spanning_two_clock_domains_exits(tmp_path):
             {"name": "drv", "mode": "active", "interface_groups": ["drv_g", "obs_g"]},
         ],
     }
-    msg = _render_exit(tmp_path, spec, top_io=top_io, clocks=clocks)
-    assert "spans clock domains" in msg
+    out = _render(tmp_path, spec, top_io=top_io, clocks=clocks)
+    connections = (out / "tb/uvm/top/m_clocks.svh").read_text()
+    assert "TODO(interface)" in connections
+    assert "clk, clk2" in connections
+    assert "assign drv_if.clk" not in connections
 
 
 def test_clock_domain_with_no_clock_port_exits(tmp_path):
@@ -492,3 +540,192 @@ def test_clock_domain_with_no_clock_port_exits(tmp_path):
         if p_["interface_group"] == "obs_g":
             p_["clock_domain"] = "nowhere"
     assert "nowhere" in _render_exit(tmp_path, top_io=top_io)
+
+
+@pytest.mark.parametrize("polarities", [(0, 0), (0, 1), (1, 0), (1, 1)])
+def test_all_resets_reach_the_dut_and_interfaces(tmp_path, polarities):
+    ports = [dict(p) for p in _TOP_IO if p["role"] != "reset"]
+    for i, name in enumerate(("clear_core", "clear_io")):
+        ports.append(
+            {
+                "name": name,
+                "direction": "input",
+                "width": 1,
+                "clock_domain": "clk",
+                "interface_group": "bench",
+                "role": "reset",
+                "reset_kind": "sync" if i else "async",
+                "reset_polarity": polarities[i],
+            }
+        )
+    for reverse in (False, True):
+        case = tmp_path / str(reverse)
+        case.mkdir()
+        out = _render(case, top_io=list(reversed(ports)) if reverse else ports)
+        tb = (out / "tb/uvm/top/m_top_tb_top.sv").read_text()
+        declarations = (out / "tb/uvm/interface/m_reset_ports.svh").read_text()
+        for i, name in enumerate(("clear_core", "clear_io")):
+            assert tb.count(f".{name}({name})") == 3  # DUT and both interfaces
+            assert (
+                f"input logic [0:0] {name}  // active {polarities[i]}" in declarations
+            )
+        assert "rst_n" not in tb
+
+
+def test_reset_declarations_update_without_replacing_authored_work(tmp_path):
+    out = _render(tmp_path)
+    interface = out / "tb/uvm/interface/m_drv_if.sv"
+    authored = interface.read_text() + "// authored clocking and observation logic\n"
+    interface.write_text(authored)
+    reset = out / "tb/uvm/top/m_reset.svh"
+    reset.write_text("// authored reset sequence\n")
+    ports = [dict(p) for p in _TOP_IO]
+    ports.append({**ports[1], "name": "reset_other", "reset_polarity": 1})
+    scaffold.render(
+        _write_spec(tmp_path), out, _write_boundary(tmp_path / "spec", ports), TEMPLATES
+    )
+    assert (
+        interface.read_text() == authored
+        and reset.read_text() == "// authored reset sequence\n"
+    )
+    assert (
+        "input logic [0:0] reset_other"
+        in (out / "tb/uvm/interface/m_reset_ports.svh").read_text()
+    )
+    assert (out / "tb/uvm/top/m_top_tb_top.sv").read_text().count(
+        ".reset_other(reset_other)"
+    ) == 3
+
+
+def test_a_boundary_without_reset_does_not_acquire_one(tmp_path):
+    out = _render(tmp_path, top_io=[p for p in _TOP_IO if p["role"] != "reset"])
+    tb = (out / "tb/uvm/top/m_top_tb_top.sv").read_text()
+    assert "rst_n" not in tb
+    assert not (out / "tb/uvm/interface/m_reset_ports.svh").read_text().strip()
+    assert "TODO" not in (out / "tb/uvm/top/m_reset.svh").read_text()
+
+
+def test_reset_outputs_are_observed_not_scheduled_by_the_bench(tmp_path):
+    ports = [dict(p) for p in _TOP_IO]
+    ports.append({**ports[1], "name": "reset_child_n", "direction": "output"})
+    out = _render(tmp_path, top_io=ports)
+    assert (
+        ".reset_child_n(reset_child_n)"
+        in (out / "tb/uvm/top/m_top_tb_top.sv").read_text()
+    )
+    assert (
+        "input logic [0:0] reset_child_n"
+        in (out / "tb/uvm/interface/m_reset_ports.svh").read_text()
+    )
+    assert "Drive reset_child_n" not in (out / "tb/uvm/top/m_reset.svh").read_text()
+
+
+def test_reset_width_and_bidirectional_net_are_preserved(tmp_path):
+    ports = [dict(p) for p in _TOP_IO]
+    ports[1].update(name="clear_lanes", width=3)
+    ports.append(
+        {**ports[1], "name": "board_reset_n", "width": 1, "direction": "inout"}
+    )
+    out = _render(tmp_path, top_io=ports)
+    tb = (out / "tb/uvm/top/m_top_tb_top.sv").read_text()
+    declarations = (out / "tb/uvm/interface/m_reset_ports.svh").read_text()
+    assert "logic [2:0] clear_lanes;" in tb
+    assert "wire [0:0] board_reset_n;" in tb
+    assert "input logic [2:0] clear_lanes" in declarations
+    assert ".clear_lanes(clear_lanes)" in tb and ".board_reset_n(board_reset_n)" in tb
+
+
+def test_passive_driver_is_reusable_without_an_unused_authoring_task(tmp_path):
+    out = _render(tmp_path)
+    active = (out / "tb/uvm/agent/m_drv_driver.sv").read_text()
+    passive = (out / "tb/uvm/agent/m_obs_driver.sv").read_text()
+    assert "TODO(driver)" in active
+    assert "TODO" not in passive
+    assert "UNIMPLEMENTED_DRIVER" in active and "UNIMPLEMENTED_DRIVER" in passive
+    assert "m_obs_driver" in (out / "tb/uvm/pkg/tb_pkg.sv").read_text()
+
+
+def test_internal_domain_requires_authored_observation_not_an_oscillator(tmp_path):
+    from sim._gate import materialization_errors
+
+    ports = [dict(p) for p in _TOP_IO]
+    for port in ports:
+        if port["interface_group"] == "obs_g":
+            port["clock_domain"] = "divided"
+    clocks = _CLOCKS + [
+        {
+            "name": "divided",
+            "period_ns": 20,
+            "relationship": "synchronous-related",
+            "generated": True,
+        }
+    ]
+    out = _render(tmp_path, top_io=ports, clocks=clocks)
+    connections = out / "tb/uvm/top/m_clocks.svh"
+    top = out / "tb/uvm/top/m_top_tb_top.sv"
+    assert "divided" not in top.read_text()
+    assert "assign obs_if.clk" not in connections.read_text()
+    assert any("m_clocks.svh" in e for e in materialization_errors(out, SPEC))
+    authored = (
+        "\n".join(
+            line for line in connections.read_text().splitlines() if "TODO" not in line
+        )
+        + "\nassign obs_if.clk = u_dut.actual_divider;\n"
+    )
+    connections.write_text(authored)
+    clocks[0] = {**clocks[0], "period_ns": 12}
+    scaffold.render(
+        tmp_path, out, _write_boundary(tmp_path / "spec", ports, clocks), TEMPLATES
+    )
+    assert connections.read_text() == authored
+    assert "forever #6 clk = ~clk" in top.read_text()
+    assert not any("m_clocks.svh" in e for e in materialization_errors(out, SPEC))
+
+
+def test_clock_output_is_connected_but_not_driven(tmp_path):
+    ports = [dict(p) for p in _TOP_IO]
+    ports.append(
+        {
+            "name": "out_clk",
+            "direction": "output",
+            "width": 1,
+            "clock_domain": "out_clk",
+            "interface_group": "bench",
+            "role": "clock",
+        }
+    )
+    for p in ports:
+        if p["interface_group"] == "obs_g":
+            p["clock_domain"] = "out_clk"
+    clocks = _CLOCKS + [
+        {
+            "name": "out_clk",
+            "period_ns": 20,
+            "relationship": "synchronous-related",
+            "generated": True,
+        }
+    ]
+    out = _render(tmp_path, top_io=ports, clocks=clocks)
+    top = (out / "tb/uvm/top/m_top_tb_top.sv").read_text()
+    assert ".out_clk(out_clk)" in top
+    assert "out_clk = " not in top
+    assert (
+        "assign obs_if.clk = out_clk;" in (out / "tb/uvm/top/m_clocks.svh").read_text()
+    )
+
+
+def test_generated_primary_needs_no_top_level_clock_port(tmp_path):
+    ports = [{**p, "clock_domain": "internal"} for p in _TOP_IO if p["role"] != "clock"]
+    clocks = [
+        {
+            "name": "internal",
+            "period_ns": 10,
+            "relationship": "primary",
+            "generated": True,
+        }
+    ]
+    out = _render(tmp_path, top_io=ports, clocks=clocks)
+    top = (out / "tb/uvm/top/m_top_tb_top.sv").read_text()
+    assert "forever #" not in top
+    assert ".internal(" not in top
+    assert ".rst_n(rst_n)" in top and ".req(drv_if.req)" in top

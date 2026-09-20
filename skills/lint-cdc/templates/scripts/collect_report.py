@@ -56,21 +56,16 @@ _HDR_WAIVED = re.compile(r"Number of Waived Messages[ \t]*:[ \t]*(\d+)", re.I)
 _HDR_REPORTED = re.compile(r"Number of Reported Messages[ \t]*:[ \t]*(\d+)", re.I)
 _HDR_OVERLIMIT = re.compile(r"Number of Overlimit Messages[ \t]*:[ \t]*(\d+)", re.I)
 
-# ── Source-report location (unchanged) ──────────────────────────────────────
+# ── Source-report location ─────────────────────────────────────────────────
 _LINT_CANDIDATES = [
     ("/lint/lint_rtl/", "moresimple.rpt"),
     ("_lint_lint_rtl", "moresimple.rpt"),
     ("/lint/lint_rtl/", "elab_summary.rpt"),
 ]
 _CDC_CANDIDATES = [
+    # Both locations hold structural verification results; setup is a different goal.
     ("/cdc/cdc_verify_struct/", "moresimple.rpt"),
-    ("/cdc/cdc_verify_struct/", "cdc_violations.rpt"),
-    ("/cdc/cdc_verify_struct/", "cdc_setup.rpt"),
     ("_cdc_cdc_verify_struct", "moresimple.rpt"),
-    ("/cdc/cdc_setup_check/", "cdc_setup_check.rpt"),
-    ("/cdc/cdc_setup_check/", "moresimple.rpt"),
-    ("/cdc/cdc_setup/", "cdc_setup.rpt"),
-    ("/cdc/cdc_setup/", "moresimple.rpt"),
 ]
 
 
@@ -306,8 +301,34 @@ def run(kind: str, root: Path) -> int:
         )
         return 3
 
+    report = render_human(kind, src, read_top(root), text)
+    if header["waived"]:
+        waiver_path = src.with_name("waiver.rpt")
+        if not waiver_path.is_file():
+            print(
+                f"[collect_report] FAIL=missing {kind} waived messages need {waiver_path}",
+                file=sys.stderr,
+            )
+            return 1
+        waiver_text = waiver_path.read_text(encoding="utf-8")
+        waiver_header = parse_header(waiver_text)
+        # Count distinct native messages, not waiver declarations.
+        waived_ids = set(_BRACKET.findall(waiver_text))
+        if (
+            waiver_header is None
+            or waiver_header["waived"] != header["waived"]
+            or len(waived_ids) != header["waived"]
+        ):
+            print(
+                f"[collect_report] FAIL=count_mismatch {kind} waiver evidence does not "
+                f"account for {header['waived']} waived message(s): {waiver_path}",
+                file=sys.stderr,
+            )
+            return 3
+        report += f"\n=== source: {waiver_path} ===\n{waiver_text}"
+
     violations = build_violations(rows)
-    out_txt.write_text(render_human(kind, src, read_top(root), text))
+    out_txt.write_text(report)
     out_json.write_text(
         json.dumps(
             {

@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://veripower.local/skills/simulation-plan/tb-scaffold.schema.json",
-  "title": "tb-scaffold.json contract (post-materialize)",
+  "title": "Functional testbench plan",
   "description": "Functional testbench plan. Simulation derives ports and clocks from specification; sequences and power scenario identifiers live in separate sidecars. check-scaffold validates structure, references and check coverage.",
   "type": "object",
   "required": [
@@ -36,7 +36,7 @@
             "type": "string"
           },
           "mode": {
-            "description": "`active` for a driver/master group you drive, `passive` for a monitor/slave group you only observe. Take it from the group's top-io.json `direction` values.",
+            "description": "`active` when this agent drives stimulus or protocol responses; `passive` when it only observes.",
             "enum": [
               "active",
               "passive"

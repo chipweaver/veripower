@@ -12,8 +12,7 @@
           "type": "object",
           "properties": {
             "fix_owner": {"type": "string", "description": "Repair stage supported by the evidence: this stage or a transitive input producer, checked by the scheduler. Omit when attribution is unresolved."},
-            "fail_reason":          {"type": "string",  "minLength": 1},
-            "revision":             {"type": "string",  "minLength": 1}
+            "fail_reason":          {"type": "string",  "minLength": 1}
           },
           "additionalProperties": true
         }

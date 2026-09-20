@@ -13,6 +13,35 @@ import pytest  # noqa: E402
 from spec import constraints  # noqa: E402
 
 
+@pytest.mark.parametrize("seconds", [1e-9, 1e-12, 1e-10])
+def test_sdc_preserves_physical_time_in_native_units(seconds):
+    clocks = [_clk("clk", 10.0, io_delay_ns=1.25)]
+    ports = [_CLK_PORT, _port("din", "input", "data"), _port("dout", "output", "data")]
+    sdc = constraints.generate_sdc("dut", clocks, ports)
+    script = f"""
+proc redirect {{flag name body}} {{
+    upvar 1 $name output
+    set output "Time_unit : {seconds} Second"
+}}
+proc get_ports {{ports}} {{return $ports}}
+proc all_clocks {{}} {{return clk}}
+proc create_clock {{args}} {{puts "period [lindex $args 3]"}}
+proc set_clock_uncertainty {{args}} {{puts "[lindex $args 0] [lindex $args 1]"}}
+proc set_input_delay {{args}} {{puts "input [lindex $args 0]"}}
+proc set_output_delay {{args}} {{puts "output [lindex $args 0]"}}
+{sdc}
+"""
+    proc = subprocess.run(["tclsh"], input=script, text=True, capture_output=True)
+    assert proc.returncode == 0 and not proc.stderr
+    measured = {
+        k: float(v) * seconds / 1e-9
+        for k, v in (line.split() for line in proc.stdout.splitlines())
+    }
+    assert measured == pytest.approx(
+        {"period": 10, "-setup": 0.2, "-hold": 0, "input": 1.25, "output": 1.25}
+    )
+
+
 def _run(workdir, check=True):
     return subprocess.run(
         ["python3", str(MAIN), "derive-constraints", "--workdir", str(workdir)],
@@ -76,9 +105,13 @@ def test_core_clocks_and_io_delays(tmp_path):
     assert summary == {"top": "m", "clocks": 1, "data_ports": 2, "resets": 0}
     sdc = (tmp_path / "constraints" / "m.sdc").read_text()
     sgdc = (tmp_path / "constraints" / "m.sgdc").read_text()
-    assert "create_clock -name clk -period 10.0 [get_ports clk]" in sdc
-    assert "set_input_delay  3.0 -clock clk [get_ports {din}]" in sdc
-    assert "set_output_delay 3.0 -clock clk [get_ports {dout}]" in sdc
+    assert (
+        "create_clock -name clk -period [expr {10.0 * $_vp_ns}] [get_ports clk]" in sdc
+    )
+    assert "set_input_delay  [expr {3.0 * $_vp_ns}] -clock clk [get_ports {din}]" in sdc
+    assert (
+        "set_output_delay [expr {3.0 * $_vp_ns}] -clock clk [get_ports {dout}]" in sdc
+    )
     assert "clock -name clk -period 10.0 -edge {0 5.0}" in sgdc
     assert "abstract_port -ports {din dout} -clock clk" in sgdc
     # data/clock split exact via role: clk gets no IO delay
@@ -92,7 +125,10 @@ def test_a_bus_is_constrained_by_its_base_name(tmp_path):
     ports = [_CLK_PORT, _port("token_in", "input", "data", width=5)]
     _run(_wd(tmp_path, ports))
     sdc = (tmp_path / "constraints" / "m.sdc").read_text()
-    assert "set_input_delay  3.0 -clock clk [get_ports {token_in}]" in sdc
+    assert (
+        "set_input_delay  [expr {3.0 * $_vp_ns}] -clock clk [get_ports {token_in}]"
+        in sdc
+    )
 
 
 def test_a_bit_range_in_a_name_never_reaches_the_sdc(tmp_path):
@@ -165,7 +201,7 @@ def test_generated_clock_skips_create_clock(tmp_path):
     assert "create_clock -name clk_div2" not in sdc
     assert "create_generated_clock clk_div2: deferred to RTL" in sdc
     assert (
-        "create_clock -name clk -period 10.0" in sdc
+        "create_clock -name clk -period [expr {10.0 * $_vp_ns}]" in sdc
     )  # the real top clock still emitted
     # SGDC symmetrically skips the generated clock
     assert "clock -name clk_div2" not in sgdc
@@ -187,7 +223,9 @@ def test_generated_flag_may_be_omitted(tmp_path):
     proc = _run(_wd(tmp_path, ports, lean), check=False)
     assert proc.returncode == 0, (proc.stdout, proc.stderr)
     sdc = (tmp_path / "constraints" / "m.sdc").read_text()
-    assert "create_clock -name clk -period 10.0 [get_ports clk]" in sdc
+    assert (
+        "create_clock -name clk -period [expr {10.0 * $_vp_ns}] [get_ports clk]" in sdc
+    )
 
 
 # ---------- clocks.json contract violations (schema-enforced) ----------
@@ -388,16 +426,22 @@ def test_sgdc_emits_async_clock_groups(tmp_path):
     _run(_wd(tmp_path, ports, clocks))
     sgdc = (tmp_path / "constraints" / "m.sgdc").read_text()
     assert "set_clock_groups" not in sgdc
-    assert "clock -name clk -period 10.0 -edge {0 5.0} -domain sync" in sgdc
+    assert "clock -name clk -period 10.0 -edge {0 5.0} -domain clk" in sgdc
     assert "clock -name clk_io -period 20.0 -edge {0 10.0} -domain clk_io" in sgdc
 
 
-def test_sgdc_domain_label_collision_fails_loudly():
-    # Guard: an async clock literally named "sync" would be assigned -domain sync and
-    # silently merged into the synchronous group — a false-negative CDC hole. Must fail.
-    clocks = [_clk("clk", 10.0), _clk("sync", 20.0, "async")]
-    with pytest.raises(SystemExit):
-        constraints._sgdc_clock_domains(clocks)
+@pytest.mark.parametrize(
+    "primary,async_name", [("clk", "sync"), ("sync", "aux"), ("source", "async")]
+)
+def test_sgdc_domain_labels_preserve_groups_for_arbitrary_names(primary, async_name):
+    clocks = [
+        _clk(primary, 10.0),
+        _clk("related", 20.0, "synchronous-related"),
+        _clk(async_name, 37.0, "async"),
+    ]
+    domains = constraints._sgdc_clock_domains(clocks)
+    assert domains[primary] == domains["related"]
+    assert domains[primary] != domains[async_name]
 
 
 def test_sdc_sgdc_async_declaration_agrees_by_construction():
@@ -468,8 +512,8 @@ def test_inout_port_gets_both_delays():
         _io("sda", "inout", "clk"),
     ]
     sdc = constraints.generate_sdc("dut", clocks, ports)
-    assert "set_input_delay  3.0 -clock clk [get_ports {sda}]" in sdc
-    assert "set_output_delay 3.0 -clock clk [get_ports {sda}]" in sdc
+    assert "set_input_delay  [expr {3.0 * $_vp_ns}] -clock clk [get_ports {sda}]" in sdc
+    assert "set_output_delay [expr {3.0 * $_vp_ns}] -clock clk [get_ports {sda}]" in sdc
 
 
 def test_generated_clock_domain_is_named_not_dropped():
@@ -501,7 +545,10 @@ def test_generated_clock_domain_is_named_not_dropped():
     sdc = constraints.generate_sdc("dut", clocks, ports)
     assert "set_output_delay" not in sdc.replace("# set_output_delay", "")
     assert "slow_out: deferred" in sdc
-    assert "set_input_delay  3.0 -clock clk [get_ports {fast_in}]" in sdc
+    assert (
+        "set_input_delay  [expr {3.0 * $_vp_ns}] -clock clk [get_ports {fast_in}]"
+        in sdc
+    )
 
     sgdc = constraints.generate_sgdc("dut", clocks, ports)
     assert "abstract_port -ports {fast_in} -clock clk" in sgdc
@@ -572,7 +619,9 @@ def test_io_delay_is_the_authored_number_not_a_fraction_of_the_period(tmp_path):
     ports = [_CLK_PORT, _port("din", "input", "data", width=8)]
     _run(_wd(tmp_path, ports, clocks))
     sdc = (tmp_path / "constraints" / "m.sdc").read_text()
-    assert "set_input_delay  1.25 -clock clk [get_ports {din}]" in sdc
+    assert (
+        "set_input_delay  [expr {1.25 * $_vp_ns}] -clock clk [get_ports {din}]" in sdc
+    )
     assert "3.0 -clock clk" not in sdc
 
 
@@ -591,8 +640,16 @@ def test_a_clock_with_no_io_delay_is_timed_at_zero_and_says_so(tmp_path):
     wd = _wd(tmp_path, ports, bare)
     _run(wd)
     text = (wd / "constraints" / "m.sdc").read_text()
-    assert re.search(r"^set_input_delay\s+0(\.0)?\s+-clock clk .*d_in", text, re.M)
-    assert re.search(r"^set_output_delay\s+0(\.0)?\s+-clock clk .*d_out", text, re.M)
+    assert re.search(
+        r"^set_input_delay\s+\[expr \{0(\.0)? \* \$_vp_ns\}\]\s+-clock clk .*d_in",
+        text,
+        re.M,
+    )
+    assert re.search(
+        r"^set_output_delay\s+\[expr \{0(\.0)? \* \$_vp_ns\}\]\s+-clock clk .*d_out",
+        text,
+        re.M,
+    )
     assert "no requirements row gives an arrival budget for clock(s) clk" in text
     assert "the whole period is available at the pins" in text
     # the generator reads clocks.json, not decisions.md: it must not claim to know

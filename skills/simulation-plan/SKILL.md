@@ -48,7 +48,6 @@ power-analysis implements the experiment.
 `<skill>` is this skill's directory. Check the functional boundary and sidecars:
 
 ```bash
-python3 <skill>/scripts/simplan/__main__.py materialize-scaffold --plan {workdir} --spec <design>
 python3 <skill>/scripts/simplan/__main__.py check-scaffold --plan {workdir} --spec <design>
 ```
 
@@ -70,8 +69,7 @@ Finalize after completing this stage's work or when an unresolved issue must ret
 ```bash
 python3 <skill>/scripts/simplan/__main__.py finalize \
   --workdir {workdir} --spec <design> \
-  [--fail-reason "<unresolved cause>"] [--fix-owner <rule>] \
-  [--revision '<scope of the amendment>']
+  [--fail-reason "<unresolved cause>"] [--fix-owner <rule>]
 ```
 
 Finalize checks the sidecars again and writes `result.json`; it does not judge the review prose.

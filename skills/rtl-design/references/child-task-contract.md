@@ -17,4 +17,5 @@ Choose the file layout and compile order. Return `STATUS: DONE` with a JSON obje
   this portion owns. Use actual RTL names and include the clock, reset and timing facts needed
   downstream. Coordinate annotations for shared integration logic with the stage owner.
 
-The owner combines these reports into `rtl-files.json` and `constraint-annotations.json`.
+The owner integrates the files into a global dependency order in `rtl-files.json` and records
+annotations by their owning RTL portion in `constraint-annotations.json`.

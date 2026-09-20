@@ -1,6 +1,9 @@
 // Interface for {{AGENT_NAME}} agent.
 // Generated from the simulation-plan sidecars and specification boundary. Fill domain-labeled stubs per verification-plan.md test strategy.
-interface {{MODULE}}_{{AGENT_NAME}}_if(input logic clk, input logic rst_n);
+interface {{MODULE}}_{{AGENT_NAME}}_if(
+  `include "{{MODULE}}_reset_ports.svh"
+);
+  wire clk;  // connected by the authored clock include in tb_top
   `include "{{MODULE}}_{{AGENT_NAME}}_signals.svh"  // generated every round
 
   // TODO(interface): Add clocking blocks and modports.
@@ -16,7 +19,8 @@ interface {{MODULE}}_{{AGENT_NAME}}_if(input logic clk, input logic rst_n);
   //   // input <all_observed_signals>;
   // endclocking
   //
-  // modport driver_mp  (clocking drv_cb, input clk, rst_n);
-  // modport monitor_mp (clocking mon_cb, input clk, rst_n);
+  // Include the relevant reset signals from the generated port list in each modport.
+  // modport driver_mp  (clocking drv_cb, input clk);
+  // modport monitor_mp (clocking mon_cb, input clk);
 
 endinterface

@@ -24,10 +24,8 @@ class {{MODULE}}_{{AGENT_NAME}}_driver extends uvm_driver #({{MODULE}}_{{AGENT_N
     end
   endtask
 
-  // CONVENTION: `vif` is this agent's virtual interface — tb_top registers it in config_db under key "<agent>_vif"; drive the DUT via `vif` per timing protocol, pull items from seq_item_port.
-  // TODO(driver): Drive DUT signals via virtual interface per timing protocol.
+{{DRIVER_TASK_NOTE}}
   virtual task drive_txn({{MODULE}}_{{AGENT_NAME}}_txn txn);
-    @(posedge vif.clk);
-    // ← Fill signal assignments here.
+    `uvm_fatal("UNIMPLEMENTED_DRIVER", "Implement drive_txn before driving transactions")
   endtask
 endclass

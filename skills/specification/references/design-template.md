@@ -123,7 +123,7 @@ wdata    _________<── WDATA ─>_______________
 rdy      _________|‾‾‾‾‾‾‾‾‾‾‾‾‾|_______________   (slave ready)
 ~~~
 
-**What it shows** (the obligations themselves are rows; SC-001 below is what a sequence is built from)
+**What it shows** (SC-001 below identifies this timing scenario)
 - **idle**: `cfg_en` low; whether ADDR/WDATA matter is defined by the protocol.
 - **setup/hold region**: before/after the valid sampling edge, ADDR and WDATA satisfy *T_setup* / *T_hold* relative to `clk`.
 - **transaction done**: when `cfg_en` and `rdy` are both high, the slave accepts this write.
@@ -131,9 +131,9 @@ rdy      _________|‾‾‾‾‾‾‾‾‾‾‾‾‾|_______________   (sl
 
 #### Timing Scenarios Table
 
-One entry per interface timing scenario, next to the waveform it belongs to. Give each a
-stable `SC-NNN` id — simulation-plan authors one sequence per id and refers back by it — then
-say what is driven, what is observable, and the timing obligation. Prose; the shape is yours.
+Give each interface timing scenario a stable `SC-NNN` id for downstream references. Describe the
+stimulus, observable outcome and timing obligation. Simulation-plan organizes the sequences
+needed to verify these scenarios.
 
 | ID | Interface / mode | Stimulus | Expected | Timing constraint |
 |---|---|---|---|---|

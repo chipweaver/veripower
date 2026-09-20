@@ -1,12 +1,11 @@
-"""Tests for skills/synthesis/scripts/synthesis/result.py (grounded format).
+"""Native setup timing and numerical judgments, with QOR consistency controls.
 
-Fixtures excerpted from the real Synopsys DC L-2016.03-SP1 sdc_controller corpus:
-area.rpt (one 'Total cell area:' summary; a separate 'Total area: undefined' line)
-and qor.rpt (one 'Critical Path Slack:' per Timing Path Group block + a design
-'WNS / Number of Violating Paths' summary).
+Area/QOR excerpts come from the recorded DC corpus. Timing snippets used by the
+unit tests are explicit numerical fixtures, not regenerated hardware measurements.
 """
 
 import json
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -141,18 +140,45 @@ QOR_UNINIT_PLUS_REAL = """\
 
 AREA_SRC = "area.rpt Total cell area"
 # The slack a synthesis run compares is setup only — the sentence says so, which is the point.
-SLACK_SRC = (
-    "qor.rpt worst Critical Path Slack across 2 group(s) (min) "
-    "— setup only; does not measure hold"
-)
+SLACK_SRC = "timing_setup.rpt minimum reported setup slack (ns)"
 
 
-def _stage(tmp_path, area=SAMPLE_AREA, qor=SAMPLE_QOR):
-    """Write reports/{area,qor}.rpt under tmp_path; return (reports_dir, out_path)."""
+def _timing(*values):
+    return (
+        "Time_unit : 1e-09 Second(ns)\n"
+        + "\n".join(
+            f"  slack ({'VIOLATED' if v < 0 else 'MET'}) {v:.13f}" for v in values
+        )
+        + "\n"
+    )
+
+
+SAMPLE_TIMING = _timing(16.99, 0.95)
+
+
+@pytest.mark.parametrize("seconds", [1e-9, 1e-12, 1e-10])
+def test_native_timing_units_preserve_slack_and_requirement_verdict(tmp_path, seconds):
+    raw = 0.5e-9 / seconds
+    timing = _timing(raw).replace("1e-09", str(seconds))
+    reports = _stage(tmp_path, timing=timing)
+    rc, data = sp.run(reports, [_row("MARGIN", "timing_slack_ns", ">=", 1)])
+    assert rc == 0
+    assert data["requirements"][0]["actual"] == pytest.approx(0.5)
+    assert data["requirements"][0]["met"] is False
+
+
+@pytest.mark.parametrize("unit", ["", "Time_unit : N/A\n", "Time_unit : 0 Second\n"])
+def test_timing_without_a_usable_unit_is_not_assumed_ns(unit):
+    assert sp.parse_worst_slack_ns(unit + "slack (MET) 1.0\n") is None
+
+
+def _stage(tmp_path, area=SAMPLE_AREA, qor=SAMPLE_QOR, timing=SAMPLE_TIMING):
+    """Write area, QOR and setup timing reports; return the reports directory."""
     reports = tmp_path / "reports"
     reports.mkdir(parents=True, exist_ok=True)
     (reports / "area.rpt").write_text(area)
     (reports / "qor.rpt").write_text(qor)
+    (reports / "timing_setup.rpt").write_text(timing)
     return reports
 
 
@@ -195,18 +221,18 @@ def test_parse_area_ignores_total_area_undefined():
 
 def test_parse_worst_slack_is_min_across_groups_not_first():
     # THE regression: worst = 0.95 (wb_clk_i), NOT 16.99 (sd_clk_o, listed first).
-    assert sp.parse_worst_slack_ns(SAMPLE_QOR) == pytest.approx(0.95)
-    assert sp.parse_worst_slack_ns(SAMPLE_QOR) != pytest.approx(16.99)
+    assert sp.parse_worst_slack_ns(SAMPLE_TIMING) == pytest.approx(0.95)
+    assert sp.parse_worst_slack_ns(SAMPLE_TIMING) != pytest.approx(16.99)
 
 
 def test_parse_worst_slack_none_when_absent():
     assert sp.parse_worst_slack_ns(QOR_NO_GROUP) is None
 
 
-def test_parse_wns_summary_setup_not_hold():
+def test_parse_setup_violations_not_hold():
     # Matches the setup 'Design  WNS:' line, not 'Design (Hold)  WNS:'.
-    assert sp.parse_wns_summary(SAMPLE_QOR) == {"wns": 0.0, "violating_paths": 0}
-    assert sp.parse_wns_summary(QOR_VIOLATED) == {"wns": -0.5, "violating_paths": 3}
+    assert sp.parse_setup_violations(SAMPLE_QOR) == 0
+    assert sp.parse_setup_violations(QOR_VIOLATED) == 3
 
 
 def test_finalize_missing_required_flag_is_blocked(tmp_path):
@@ -292,7 +318,7 @@ def test_run_no_targeted_rows_judges_nothing(tmp_path):
 
 
 def test_run_violated_slack(tmp_path):
-    reports = _stage(tmp_path, qor=QOR_VIOLATED)
+    reports = _stage(tmp_path, qor=QOR_VIOLATED, timing=_timing(-0.5))
     rc, data = sp.run(reports, [_row("R-S", "timing_slack_ns", ">=", 0.0)])
     assert rc == 0
     assert data["requirements"][0]["met"] is False
@@ -329,19 +355,22 @@ def test_run_returns_no_verdict_after_a_parse_failure(tmp_path):
 
 def test_run_wns_cross_check_contradiction_exit3(tmp_path):
     # negative per-group slack but a clean design summary -> exit 3
-    reports = _stage(tmp_path, qor=QOR_CONTRADICT)
+    reports = _stage(tmp_path, qor=QOR_CONTRADICT, timing=_timing(-0.5))
     rc, payload = sp.run(reports, [])
     assert rc == 3 and payload is None  # no verdict on a parse surprise
 
 
 # ── finalize / build_result (v4 stage-CLI-tool) ───────────────────────────────
-def _workdir(tmp_path, area=SAMPLE_AREA, qor=SAMPLE_QOR, netlist=True):
-    """A completed run: reports/{area,qor}.rpt plus the netlist trio a pass requires.
+def _workdir(
+    tmp_path, area=SAMPLE_AREA, qor=SAMPLE_QOR, netlist=True, timing=SAMPLE_TIMING
+):
+    """A completed run: area, QOR and setup timing reports plus the netlist trio.
     netlist=False stages the shape a failed dc_shell write leaves behind."""
     reports = tmp_path / "reports"
     reports.mkdir(parents=True)
     (reports / "area.rpt").write_text(area)
     (reports / "qor.rpt").write_text(qor)
+    (reports / "timing_setup.rpt").write_text(timing)
     if netlist:
         (tmp_path / "out").mkdir(exist_ok=True)
         for ext in ("v", "sdc", "sdf"):
@@ -698,14 +727,52 @@ def test_missing_netlist_outranks_a_missed_row(tmp_path):
 def test_uninit_slack_is_unparseable_not_a_pass(tmp_path):
     # An unconstrained run is what bootstrap's fail-closed exists to prevent; when one gets
     # this far the parser must refuse it rather than read `uninit` as a number or as zero.
-    reports = _stage(tmp_path, qor=QOR_UNINIT)
+    reports = _stage(tmp_path, qor=QOR_UNINIT, timing="No constrained timing paths.\n")
     assert sp.run(reports, [SLACK_OK]) == (3, None)
 
 
 def test_uninit_group_does_not_shadow_a_constrained_one(tmp_path):
-    reports = _stage(tmp_path, qor=QOR_UNINIT_PLUS_REAL)
+    reports = _stage(tmp_path, qor=QOR_UNINIT_PLUS_REAL, timing=_timing(6.51))
     rc, data = sp.run(reports, [_row("R-S", "timing_slack_ns", ">=", 0.0)])
     assert rc == 0 and data["requirements"][0]["met"] is True
     slack = [a for a in data["measurements"] if a["dim"] == "timing_slack_ns"][0]
     assert slack["value"] == pytest.approx(6.51)
-    assert "across 1 group(s)" in slack["source"]  # the uninit group is not counted
+    assert slack["source"] == SLACK_SRC
+
+
+@pytest.mark.parametrize(
+    "value,op,bound,expected",
+    [
+        (0.000997454, ">", 0, True),
+        (-0.00100252, ">=", -0.0015, True),
+        (-0.00200257, ">=", -0.0015, False),
+        (-0.00100252, ">=", 0, False),
+        (0, ">", 0, False),
+        (0, ">=", 0, True),
+    ],
+)
+def test_precise_timing_not_rounded_qor_controls_the_bound(
+    tmp_path, value, op, bound, expected
+):
+    qor = QOR_VIOLATED if value < 0 else SAMPLE_QOR
+    qor = re.sub(r"Critical Path Slack:\s*[-+0-9.]+", "Critical Path Slack: 0.00", qor)
+    qor = re.sub(r"WNS:\s*[-+0-9.]+", "WNS: 0.00", qor)
+    reports = _stage(tmp_path, qor=qor, timing=_timing(value))
+    rc, payload = sp.run(reports, [_row("TIME", "timing_slack_ns", op, bound)])
+    assert rc == 0
+    verdict = payload["requirements"][0]
+    assert verdict["met"] is expected
+    assert verdict["actual"] == pytest.approx(value, abs=1e-13)
+
+
+def test_qor_is_not_a_replacement_for_missing_precise_timing(tmp_path):
+    reports = _stage(tmp_path)
+    (reports / "timing_setup.rpt").unlink()
+    assert sp.run(reports, [SLACK_OK]) == (1, None)
+
+
+@pytest.mark.parametrize(
+    "line", ["slack (MET) -0.001", "slack (VIOLATED) 0.001", "slack (VIOLATED) 0.00"]
+)
+def test_timing_needs_consistent_sufficiently_precise_values(line):
+    assert sp.parse_worst_slack_ns(line) is None

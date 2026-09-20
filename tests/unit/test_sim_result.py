@@ -314,24 +314,26 @@ def test_finalize_blocked_exit_2(tmp_path):
 
 
 # ── the one object array triage reads ──────────────────────────────────────────
-_RESULT_SCHEMA = ROOT / "skills/simulation/references/result.schema.json"
-
-
-def _ss_props():
-    s = json.loads(_RESULT_SCHEMA.read_text())
-    return s["allOf"][1]["properties"]["stage_specific"]["properties"]
-
-
-def test_failing_cases_pins_what_triage_reads():
-    # simulation-triage resolves logs/<test_id>.log and anchors Step 1 on error_message; both
-    # must be required, and the entry closed so a producer typo fails here rather than silently
-    # giving triage nothing to read.
-    item = _ss_props()["failing_cases"]["items"]
-    assert sorted(item["required"]) == ["error_message", "test_id"]
-    assert item["additionalProperties"] is False
+def test_failure_delivers_original_case_evidence(tmp_path):
+    wd = _final_workdir(tmp_path)
+    logs = wd / "logs"
+    logs.mkdir()
+    (logs / "T-1.log").write_text("UVM_ERROR checker: expected 7, observed 8\n")
+    (wd / "regression-log.txt").write_text("RESULT T-1 FAIL log=logs/T-1.log\n")
+    reason = "T-1 mismatch: logs/T-1.log, expected 7, observed 8"
+    proc = _finalize(
+        wd, "--phase", "fail", "--fail-reason", reason, "--fix-owner", "simulation"
+    )
+    assert proc.returncode == 0, proc.stderr
+    env = json.loads((wd / "result.json").read_text())
+    assert env["status"] == "fail"
+    assert env["stage_specific"] == {"fail_reason": reason, "fix_owner": "simulation"}
+    assert {"logs", "regression-log.txt", "case-results.json"} <= {
+        a["path"] for a in env["artifacts"]
+    }
     assert (
-        "log_snippet" in item["properties"]
-    )  # optional: triage falls back to the full log
+        logs / "T-1.log"
+    ).read_text() == "UVM_ERROR checker: expected 7, observed 8\n"
 
 
 def test_fail_phase_refuses_an_empty_reason(tmp_path):

@@ -74,7 +74,7 @@ def _caller_reported_artifacts(workdir: Path) -> list:
 
 
 def _ledger_files(ledger: dict) -> list:
-    return sorted({f for rec in ledger.values() for f in rec["files"]})
+    return ledger["files"] + ledger.get("sim_only", [])
 
 
 def _artifacts(workdir: Path) -> list:

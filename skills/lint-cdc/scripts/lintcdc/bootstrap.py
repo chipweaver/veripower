@@ -63,16 +63,8 @@ def _sync_filelist(dest: Path, rtl_dir: Path) -> int:
     except json.JSONDecodeError as e:
         _err(f"{src} is not valid JSON: {e}")
         return 1
-    entries: list[str] = []
-    incdirs: list[str] = []
-    for name in sorted(rtl_files):
-        rec = rtl_files[name]
-        for d in rec.get("incdirs") or []:
-            if d not in incdirs:
-                incdirs.append(d)
-        for f in rec.get("files") or []:
-            if f not in entries:
-                entries.append(f)
+    entries = rtl_files["files"]
+    incdirs = rtl_files.get("incdirs", [])
     if not entries:
         _err(f"{src} lists no RTL files")
         _err("  Re-run rtl-design: it authors this sidecar.")
@@ -247,7 +239,7 @@ def run(workdir, top: str | None = None) -> int:
     print(f"[lintcdc bootstrap] deployed {dest}")
     print(f"  TOP={top}")
     print(
-        "  Yours to edit: scripts/local.sgdc + scripts/waiver.tcl (both carried forward)."
+        "  Authored setup is preserved; filelist.txt and constraints.sgdc are regenerated."
     )
     print(
         f'  Next: cd "{dest}" && make all   (requires SpyGlass; -shell -tcl mode does not need Xvfb)'

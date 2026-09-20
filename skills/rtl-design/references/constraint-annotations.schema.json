@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://veripower.local/skills/rtl-design/constraint-annotations.schema.json",
-  "title": "constraint-annotations.json — per-child SGDC/SDC annotations (authored by the stage from the reaped child reports)",
-  "description": "What each child's RTL implies for the constraint files, in the child's REAL module names so `sync_cell -name` matches the netlist. The lint-cdc and synthesis agents read this to fill scripts/constraints.sgdc and the SDC exceptions. Kept separate from rtl-files.json because simulation consumes only the file layout: bundling them would invalidate simulation on an annotation-only edit. Every category is present with an explicit empty array when a child has none — an omitted category and 'none' are not the same claim. Nothing in this stage verifies that a reported module name is real: lint-cdc writing `sync_cell -name` into the SGDC is the first place a wrong name surfaces. Shape only is checked here; that every manifest child has an entry is checked by finalize, against the manifest.",
+  "title": "constraint-annotations.json \u2014 per-child SGDC/SDC annotations (authored by the stage from the reaped child reports)",
+  "description": "Implementation facts for SGDC/SDC authoring, grouped by the RTL portion that owns them. Use actual module, net and pin names. Keep annotations separate from compilation inputs so an annotation-only edit does not invalidate simulation. An empty category records that no such annotation is needed; finalize validates structure, while tool stages resolve the named objects.",
   "type": "object",
   "additionalProperties": {
     "type": "object",
@@ -31,7 +31,7 @@
             }
           },
           "reset_synchronizer": {
-            "description": "The synchronized-reset NETS this child drives out of a reset synchronizer \u2014 not the synchronizer module\u0027s name. SGDC\u0027s two synchronizer commands take different kinds of name: sync_cell takes the module, reset_synchronizer takes the net, and giving it a module name is a Fatal that aborts rule checking for the whole run (measured on vL-2016.06). The net is named in the scope that instantiates the synchronizer, so it is that child\u0027s to declare, not the one that wrote the module.",
+            "description": "The synchronized-reset NETS this child drives out of a reset synchronizer \u2014 not the synchronizer module's name. SGDC's two synchronizer commands take different kinds of name: sync_cell takes the module, reset_synchronizer takes the net, and giving it a module name is a Fatal that aborts rule checking for the whole run (measured on vL-2016.06). The net is named in the scope that instantiates the synchronizer, so it is that child's to declare, not the one that wrote the module.",
             "type": "array",
             "items": {
               "type": "string",

@@ -1,41 +1,45 @@
 // Testbench top for {{TOP}}.
 // Generated from the simulation-plan sidecars and specification boundary and rewritten every round — everything here is derived
-// from the plan and the boundary. What this bench drives is authored elsewhere; the one
-// hand-written thing it reaches is the reset schedule it includes below.
+// from the plan and boundary. Clock observation connections and reset sequencing are authored includes.
 module {{TOP}}_tb_top;
   import uvm_pkg::*;
   `include "uvm_macros.svh"
   import {{MODULE}}_tb_pkg::*;
 
-  // --- Clock & reset generation ---
-  // rst_n is the bench's reset, active-low whatever the DUT's polarity is, so every agent
-  // reads it the same way. The DUT port below is driven through the polarity the spec
-  // declared for it.
-  logic clk;
-  logic rst_n;
-{{EXTRA_CLOCK_DECLS}}
-  initial begin
-    clk = 0;
-    forever #{{CLK_HALF_PERIOD}} clk = ~clk;
-  end
-{{EXTRA_CLOCK_GENS}}
-  // --- Interface instantiation ---
+  // --- Top-level controls ---
+{{CLOCK_DECLS}}
+{{RESET_DECLS}}
+{{CLOCK_GENS}}
 {{IF_INSTANTIATIONS}}
+  `include "{{MODULE}}_clocks.svh"
 
   // --- Reset schedule ---
-  // Authored, and the only part of this file that is. Included after the interfaces so a
-  // reset can be timed against what the bench is driving.
+  // Included after the interfaces so reset can be timed against observed traffic.
   `include "{{MODULE}}_reset.svh"
 
   // --- DUT instantiation ---
   {{TOP}} u_dut(
-    .{{CLK_PORT_NAME}}(clk),
-    .{{RST_PORT_NAME}}({{RST_DRIVE}}){{EXTRA_CLOCK_PORTS}}{{DUT_PORT_MAP}}
+{{DUT_CONNECTIONS}}
   );
 
   // --- UVM config_db & test launch ---
   initial begin
+    uvm_root root;
+    uvm_report_server server;
+    string status_path;
+    int fh;
 {{CONFIG_DB_SETS}}
+    root = uvm_root::get();
+    root.finish_on_completion = 0;
     run_test();
+    server = uvm_report_server::get_server();
+    if ($value$plusargs("IPD_STATUS_PATH=%s", status_path)) begin
+      fh = $fopen(status_path, "w");
+      if (fh == 0) $fatal(1, "Cannot write test status: %s", status_path);
+      $fdisplay(fh, "%s", (server.get_severity_count(UVM_FATAL) == 0 &&
+                           server.get_severity_count(UVM_ERROR) == 0) ? "PASS" : "FAIL");
+      $fclose(fh);
+    end
+    $finish;
   end
 endmodule

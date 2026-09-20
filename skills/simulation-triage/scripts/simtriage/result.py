@@ -6,8 +6,8 @@ deterministic sidecar to re-derive it from, so `finalize` takes it directly (--j
 and only then wraps it into the envelope and writes it. Validating before the write is the point:
 a rejected judgment leaves no file, so the author can fix the content and re-run.
 
-`status` is derived, never agent-supplied: a findings-bearing analysis is a pass, one that reached
-no attribution is a fail. Whatever the run built under `{workdir}/experiment/` is enumerated into
+`status=pass` records a completed analysis, including an unresolved attribution with its reason.
+Whatever the run built under `{workdir}/experiment/` is enumerated into
 `artifacts[]` so the fix owner reaches it through canonical, the way it reaches every other stage's
 products.
 """
@@ -61,7 +61,7 @@ def finalize(workdir, json_file, json_stdin) -> int:
     """Validate the analysis judgment (--json-file or piped --json-stdin) against the
     stage_specific contract, then atomically write the full result.json.
 
-    Exit 0 = result.json written (status pass or fail, derived from findings[]).
+    Exit 0 = completed analysis written, with findings or an unresolved reason.
     Exit 1 = schema violation — nothing written, fix the content and re-run.
     Exit 2 = BLOCKED (unreadable/malformed input JSON, or any internal exception) —
     never conflated with either status.
@@ -91,11 +91,10 @@ def finalize(workdir, json_file, json_stdin) -> int:
             print(msg, file=sys.stderr)
         return 1
 
-    status = "pass" if payload.get("findings") else "fail"
     env = {
         "stage": STAGE,
         "produced_at": _now_iso(),
-        "status": status,
+        "status": "pass",
         "artifacts": (
             [{"path": "experiment"}] if (Path(workdir) / "experiment").is_dir() else []
         ),
@@ -110,6 +109,6 @@ def finalize(workdir, json_file, json_stdin) -> int:
         print(f"result.json write error: {e}", file=sys.stderr)
         return 2
     sys.stdout.write(
-        f"[simtriage finalize] Written: {workdir_path / 'result.json'} (status={status})\n"
+        f"[simtriage finalize] Written: {workdir_path / 'result.json'} (status=pass)\n"
     )
     return 0

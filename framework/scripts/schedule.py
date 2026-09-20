@@ -63,7 +63,7 @@ def _owner(module: str, events: list[dict], rule: str, idx: int, outcome: dict) 
     if diags:  # source 1: a later analysis outranks the stage's own self-report
         if not all(d.get("fix_owner") for d in diags):
             return {
-                "attribution": diags[-1]["attribution"],
+                "attribution": diags[-1].get("attribution"),
                 "owners": [],
                 "unroutable": diags,
             }
@@ -75,7 +75,7 @@ def _owner(module: str, events: list[dict], rule: str, idx: int, outcome: dict) 
             o["since"] = max(o["since"], _event_index(events, d))
             o["diagnoses"].append(d)
         return {
-            "attribution": diags[-1]["attribution"],
+            "attribution": diags[-1].get("attribution"),
             "owners": sorted(owners.values(), key=lambda o: o["since"]),
             "unroutable": [],
         }
@@ -160,11 +160,12 @@ def _escalation(c: dict) -> dict:
             "reason": f"{rule}: diagnosis named no fix_owner",
             "candidates": [
                 {
-                    "attribution": d["attribution"],
                     "diagnosis": d["id"],
-                    # present on the entries that DID name someone: they are held with the
-                    # rest, and the decision maker needs to see what was already attributed.
-                    **({"fix_owner": d["fix_owner"]} if d.get("fix_owner") else {}),
+                    **{
+                        key: d[key]
+                        for key in ("attribution", "fix_owner", "reason")
+                        if key in d
+                    },
                 }
                 for d in c["unroutable"]
             ],

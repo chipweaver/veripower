@@ -20,8 +20,9 @@ Coordinate shared interfaces and avoid concurrent edits to the same files.
 Apply the toolchain constraints in [coding-rules.md](references/coding-rules.md), whether implementing directly or delegating.
 
 Deliver `src/`, `rtl-files.json` and `constraint-annotations.json`. Their formats are in the matching
-reference schemas. Include every implemented child and the source/include order needed to compile
-it. Compile the complete file set before closure.
+reference schemas. Integrate sources into one global compilation order in `rtl-files.json`, with
+the required include search paths. Keep implementation annotations grouped by their owner.
+Compile the complete file set before closure.
 
 Have an independent reviewer assess the delivered RTL using
 [rtl-review-task-contract.md](references/rtl-review-task-contract.md). Read the findings and their

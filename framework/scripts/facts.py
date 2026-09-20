@@ -106,11 +106,11 @@ def declared_fix_owner(module: str, rule: str) -> str | None:
 
 
 def proof_outcome(events: list[dict], proof_name: str) -> tuple[int, dict] | None:
-    """Return the position and event of the latest outcome carrying this proof."""
+    """Read this stage's latest outcome; an incomplete result has no current proof."""
     for i in range(len(events) - 1, -1, -1):
         e = events[i]
-        if e["type"] == "outcome" and any(p["name"] == proof_name for p in e["proofs"]):
-            return i, e
+        if e["type"] == "outcome" and e["rule"] == proof_name:
+            return (i, e) if any(p["name"] == proof_name for p in e["proofs"]) else None
     return None
 
 

@@ -10,10 +10,20 @@ When setup or generated structure needs updating:
 python3 <skill>/scripts/sim/__main__.py bootstrap --workdir {workdir} --plan <scaffold>
 ```
 
-Bootstrap regenerates plan/boundary-derived interfaces, transactions, top, package and file/test
-lists, while retaining authored drivers, checks, models and sequences. Reconcile changed ports with
-clocking blocks/modports and changed agents with the environment; successful compilation alone
-does not establish that new interfaces are driven or observed.
+Bootstrap regenerates boundary-derived declarations, top, package and file/test lists, while
+retaining authored interfaces, clock connections, drivers, checks, models, sequences and reset
+code. Reconcile changed ports with clocking blocks/modports and changed agents with the environment. Reset ports retain their declared
+names and polarities; implement their sequencing in the authored reset include and reconcile it
+when the boundary changes. Successful compilation alone does not establish that new interfaces
+are driven or observed.
+
+The TB drives input clock ports at their declared periods. DUT-produced clocks remain DUT-driven.
+Author observation connections in `tb/uvm/top/<module>_clocks.svh`; interface clocking blocks
+can observe internal or multiple domains as the protocol requires. Reconcile these connections
+when the boundary or implementation changes. Hardware domain names are not RTL instance paths.
+
+A reusable driver can remain unused in passive mode. Implement its drive protocol when a test
+uses it to drive transactions.
 
 Implement checks using [authoring-checks.md](authoring-checks.md). Inspect code and scripts as
 needed to understand a failure. Expected results come from the task's independent reference;

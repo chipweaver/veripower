@@ -10,7 +10,7 @@ MANDATORY = re.compile(r"\$\{([A-Z][A-Z0-9_]*):\?")
 
 def _cases():
     out = []
-    for p in sorted(ROOT.glob("skills/*/templates/**/env.sh")):
+    for p in sorted(ROOT.glob("skills/*/templates/**/*.sh")):
         required = sorted(set(MANDATORY.findall(p.read_text())))
         if required:
             out.append((p, required))
@@ -18,7 +18,7 @@ def _cases():
 
 
 CASES = _cases()
-assert CASES, "no env.sh makes anything mandatory; the `${VAR:?...}` pattern moved"
+assert CASES, "no execution template declares a mandatory variable"
 
 
 def test_eda_env_names_every_mandatory_env_var():
@@ -26,5 +26,5 @@ def test_eda_env_names_every_mandatory_env_var():
     required = sorted({v for _, vs in CASES for v in vs})
     missing = [v for v in required if v not in doc]
     assert not missing, (
-        f"docs/eda-env.md does not name {missing}, which a stage env.sh refuses to run without"
+        f"docs/eda-env.md does not name {missing}, which an execution script requires"
     )

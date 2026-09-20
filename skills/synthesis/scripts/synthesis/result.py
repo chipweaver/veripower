@@ -1,29 +1,15 @@
-"""synthesis.result — extract the two PPA scalars from DC reports and judge the requirements.
+"""Read area and precise setup timing, check QOR consistency and judge requirements.
 
-Single owner of the synthesis "PPA self-check" step. run() returns (rc, payload); a
-non-zero rc yields no payload, so a parse failure can never fold a half-read number
-into a verdict. Each non-zero rc also prints a greppable FAIL=<token> on stderr for
-the human reading the log:
-
-  0  extracted + judged (incl. a run with no targeted rows and a legitimate miss)
-  1  a required report (area.rpt / qor.rpt) absent          -> FAIL=missing
-  3  report present but an anchor absent (no 'Total cell area', no 'Critical Path
-     Slack'), or the WNS summary contradicts the per-group slack -> FAIL=unparseable
-
-FORMAT — grounded against real Synopsys DC L-2016.03-SP1 reports (sdc_controller
-eval corpus). area.rpt carries one 'Total cell area:' summary line (distinct from
-'Total area: undefined'); qor.rpt carries one 'Critical Path Slack:' line per
-'Timing Path Group' block — the worst setup slack is the min across groups, NOT the
-first listed — plus a design-level 'Design  WNS: ... Number of Violating Paths:'
-summary used as a consistency cross-check. On any format surprise (an anchor that
-won't parse, or a summary that contradicts the per-group slack) the parser fails
-loud (exit 3) rather than emitting an unreadable number as a silent pass.
+The native timing report supplies signed slack; QOR's rounded summary supplies
+violation information, not a replacement measurement. Invalid or missing reports
+produce no numerical verdict.
 """
 
 from __future__ import annotations
 
 import datetime
 import json
+import math
 import re
 import sys
 from pathlib import Path
@@ -33,12 +19,19 @@ from synthesis import requirements
 # ── Anchors (grounded, DC L-2016.03-SP1) ─────────────────────────────────────
 # area.rpt: "Total cell area:                 65018.219263" (NOT "Total area: undefined").
 _AREA_RE = re.compile(r"^\s*Total cell area\s*:\s*([0-9.]+)", re.M)
-# qor.rpt: one "Critical Path Slack:   <num>" per Timing Path Group block.
-_SLACK_RE = re.compile(r"Critical Path Slack\s*:\s*([-+0-9.]+)")
+_NUMBER = r"[-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?"
+_SLACK_RE = re.compile(
+    r"^\s*slack\s*\((MET|VIOLATED)[^)]*\)\s*(" + _NUMBER + r")\s*$", re.M
+)
+_TIME_UNIT_RE = re.compile(r"^\s*Time_unit\s*:\s*(" + _NUMBER + r")\s+Second\b", re.M)
 # qor.rpt design summary (setup): "Design  WNS: 0.00  TNS: 0.00  Number of Violating Paths: 0".
 # The hold line is "Design (Hold)  WNS: ..." — `Design\s+WNS:` matches the setup line only.
-_WNS_RE = re.compile(
-    r"Design\s+WNS:\s*([-+0-9.]+)\s+TNS:\s*([-+0-9.]+)\s+Number of Violating Paths:\s*(\d+)",
+_SETUP_VIOLATIONS_RE = re.compile(
+    r"Design\s+WNS:\s*"
+    + _NUMBER
+    + r"\s+TNS:\s*"
+    + _NUMBER
+    + r"\s+Number of Violating Paths:\s*(\d+)",
     re.I,
 )
 
@@ -50,17 +43,30 @@ def parse_area_um2(text: str) -> float | None:
 
 
 def parse_worst_slack_ns(text: str) -> float | None:
-    """Worst setup slack = min of every per-group Critical Path Slack, or None if absent."""
-    vals = [float(x) for x in _SLACK_RE.findall(text)]
-    return min(vals) if vals else None
-
-
-def parse_wns_summary(text: str) -> dict | None:
-    """Design-level setup summary {wns, violating_paths}, or None when absent."""
-    m = _WNS_RE.search(text)
-    if not m:
+    """Minimum signed slack in the native setup timing report."""
+    unit = _TIME_UNIT_RE.search(text)
+    if unit is None:
         return None
-    return {"wns": float(m.group(1)), "violating_paths": int(m.group(3))}
+    ns_per_unit = float(unit.group(1)) / 1e-9
+    if not math.isfinite(ns_per_unit) or ns_per_unit <= 0:
+        return None
+    values = []
+    for marker, token in _SLACK_RE.findall(text):
+        value = float(token)
+        if (
+            not math.isfinite(value)
+            or (marker == "MET" and value < 0)
+            or (marker == "VIOLATED" and value >= 0)
+        ):
+            return None
+        values.append(value * ns_per_unit)
+    return min(values) if values else None
+
+
+def parse_setup_violations(text: str) -> int | None:
+    """Setup violation count from the design summary, excluding the hold summary."""
+    match = _SETUP_VIOLATIONS_RE.search(text)
+    return int(match.group(1)) if match else None
 
 
 def run(reports_dir, target_rows) -> tuple[int, dict | None]:
@@ -70,7 +76,8 @@ def run(reports_dir, target_rows) -> tuple[int, dict | None]:
 
     area_rpt = reports_dir / "area.rpt"
     qor_rpt = reports_dir / "qor.rpt"
-    for rpt in (area_rpt, qor_rpt):
+    timing_rpt = reports_dir / "timing_setup.rpt"
+    for rpt in (area_rpt, qor_rpt, timing_rpt):
         if not rpt.is_file():
             print(
                 f"[synthesis finalize] FAIL=missing required report not found: {rpt}",
@@ -86,29 +93,27 @@ def run(reports_dir, target_rows) -> tuple[int, dict | None]:
         )
         return 3, None
 
-    qor_text = qor_rpt.read_text(errors="replace")
-    worst = parse_worst_slack_ns(qor_text)
+    worst = parse_worst_slack_ns(timing_rpt.read_text(errors="replace"))
     if worst is None:
         print(
-            f"[synthesis finalize] FAIL=unparseable no 'Critical Path Slack' line in {qor_rpt}",
+            f"[synthesis finalize] FAIL=unparseable no usable precise setup slack or time unit in {timing_rpt}",
             file=sys.stderr,
         )
         return 3, None
-    n_groups = len(_SLACK_RE.findall(qor_text))
-
-    # WNS cross-check: only a *present-and-contradictory* design summary trips exit 3.
-    summary = parse_wns_summary(qor_text)
-    if summary is not None:
-        viol_by_slack = worst < 0
-        viol_by_summary = summary["wns"] < 0 or summary["violating_paths"] > 0
-        if viol_by_slack != viol_by_summary:
-            print(
-                f"[synthesis finalize] FAIL=unparseable worst Critical Path Slack "
-                f"{worst} contradicts design summary "
-                f"(WNS={summary['wns']}, violating_paths={summary['violating_paths']}): {qor_rpt}",
-                file=sys.stderr,
-            )
-            return 3, None
+    violations = parse_setup_violations(qor_rpt.read_text(errors="replace"))
+    if violations is None:
+        print(
+            f"[synthesis finalize] FAIL=unparseable no setup summary in {qor_rpt}",
+            file=sys.stderr,
+        )
+        return 3, None
+    if (worst < 0) != (violations > 0):
+        print(
+            f"[synthesis finalize] FAIL=unparseable setup slack {worst} contradicts "
+            f"QOR's {violations} violating paths: {qor_rpt}",
+            file=sys.stderr,
+        )
+        return 3, None
 
     # The measurements this stage can make, each carrying the sentence that says what it is.
     # A verdict is built from one of these, so a dim with no measurement behind it is a named
@@ -118,8 +123,7 @@ def run(reports_dir, target_rows) -> tuple[int, dict | None]:
         {
             "dim": "timing_slack_ns",
             "value": worst,
-            "source": f"qor.rpt worst Critical Path Slack across {n_groups} group(s) (min) "
-            f"— setup only; does not measure hold",
+            "source": "timing_setup.rpt minimum reported setup slack (ns)",
         },
     ]
     by_dim = {m["dim"]: m for m in measurements}

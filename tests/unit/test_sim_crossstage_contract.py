@@ -98,11 +98,10 @@ def test_primary_clock_and_reset_consumed(tmp_path):
     tb_top = (out / "tb/uvm/top" / f"{spec['top']}_tb_top.sv").read_text()
     clocks = json.loads((BOUNDARY / "clocks.json").read_text())
     primary = next(c for c in clocks if c["relationship"] == "primary")
-    assert f".{primary['name']}(clk)" in tb_top  # e.g. .i_clk(clk)
+    assert f".{primary['name']}({primary['name']})" in tb_top
     boundary = json.loads((BOUNDARY / "top-io.json").read_text())
-    rst = next(p for p in boundary if p["role"] == "reset")
-    drive = "rst_n" if rst["reset_polarity"] == 0 else "~rst_n"
-    assert f".{rst['name']}({drive})" in tb_top
+    for rst in (p for p in boundary if p["role"] == "reset"):
+        assert f".{rst['name']}({rst['name']})" in tb_top
 
 
 def test_every_clock_port_is_generated_and_bound(tmp_path):
@@ -113,6 +112,6 @@ def test_every_clock_port_is_generated_and_bound(tmp_path):
     clocks = json.loads((BOUNDARY / "clocks.json").read_text())
     for c in [c for c in clocks if c["relationship"] != "primary"]:
         n = c["name"]
-        assert f"logic {n};" in tb_top
+        assert f"logic [0:0] {n};" in tb_top
         assert f"{n} = ~{n};" in tb_top
         assert f".{n}({n})" in tb_top

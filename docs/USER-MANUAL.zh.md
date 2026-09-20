@@ -155,7 +155,7 @@ intent/brainstorm.md
 
 **流水线遵循实际授权。** 需要你决定时呈现未决事项；明确委托范围内继续推进；任务要求时记录接受决定。
 
-剩下标着「读 xx / 扫一眼 xx」的是复核动作，流水线不为它们停。lint-cdc 的 `waiver.tcl` 由你直接复核，没有单独的审批提示。
+剩下标着「读 xx / 扫一眼 xx」的是复核动作，流水线不为它们停。lint-cdc 报告中的豁免消息及其依据可直接复核，没有单独的审批提示。
 
 ---
 
@@ -210,7 +210,7 @@ intent/brainstorm.md
 | `semantic-review/*.md` | 对照设计意图审 RTL 的评审 | 复核交付时参考 |
 | `*.v` | RTL 本体 | 选看 |
 | `constraint-annotations.json` | 这份 RTL 隐含的时序例外与生成时钟，按真实模块名。lint-cdc 与 synthesis 的约束都从这里来 | 选看 |
-| `rtl-files.json` | 按子模块的 `files[]` + `incdirs[]`，下游每一份 filelist 都由它生成 | 不用看 |
+| `rtl-files.json` | 全局有序 `files[]`、包含路径和仅仿真的 DPI 源文件；下游 filelist 由它生成 | 不用看 |
 
 **你的参与：**`semantic-review/*.md` 记录 RTL 评审发现及处理依据，可用于复核交付、讨论具体疑问。
 
@@ -226,13 +226,13 @@ intent/brainstorm.md
 
 | 文件 | 是什么 | 要你看吗 |
 |---|---|---|
-| `scripts/waiver.tcl` | 它判为「可接受」的 violation，每条带理由 | **必看** |
-| `lint-report.txt` / `cdc-report.txt` | SpyGlass 原始报告 | 选看 |
+| `scripts/waiver.tcl` | waiver 声明与分析选项 | 按需 |
+| `lint-report.txt` / `cdc-report.txt` | 原生上报、豁免消息及记录的豁免理由 | 有豁免时复核 |
 | `lint-violations.json` / `cdc-violations.json` | 结构化的 violation 清单 | 选看 |
 | `scripts/local.sgdc` | 本阶段补的 SGDC 标注，seed 无从得知的端口/时钟关联 | 选看 |
 | `scripts/constraints.sgdc` | 实际用的 SGDC，由 spec 的 seed + RTL 标注 + `local.sgdc` 装配而成 | 每轮重装；本阶段补充标注写入 `scripts/local.sgdc` |
 
-**你的动作：扫一眼 `scripts/waiver.tcl`。** 它自己判为「可接受」的 violation 会写成 `waive` 并附理由。**复核报告计数时也要查看被 waive 的 violation。** 判定本身由 SpyGlass 规则集给出，不需要你表态。
+按任务要求和实际授权复核被豁免的具体消息及其依据。脚本核对报告完整性与计数，不判断豁免是否合理。
 
 ---
 
@@ -244,12 +244,13 @@ intent/brainstorm.md
 
 | 文件 | 是什么 | 要你看吗 |
 |---|---|---|
-| `reports/qor.rpt` | QoR 报告，PPA 判定读的就是这份 | 选看 |
+| `reports/timing_setup.rpt` / `reports/area.rpt` | 高精度 setup slack 和单元面积测量 | 选看 |
+| `reports/qor.rpt` | QoR 摘要及一致性对照 | 选看 |
 | `constraints.local.sdc` | 转写自 `constraint-annotations.json` 的时序例外 | 选看 |
 | `out/<TOP>_syn.v` / `_syn.sdc` / `_syn.sdf` | 综合后 netlist、导出 SDC、延时标注 | 下游 timing / power 消费 |
 | `constraints.sdc` | 实际用的约束，由 spec 的 SDC + `constraints.local.sdc` 装配而成 | 装配产物 |
 
-**你的动作：无。** 要复核就看 `reports/qor.rpt` 和 `result.json` 里的 `requirements[]`。判定由 dc_shell 的 QoR 报告给出，基准是你在账本门批过的那几行。SDC 里的例外来自 rtl-design 声明的 `constraint-annotations.json`，无法满足时序的路径会路由到上游修复。
+**你的动作：无。** 复核时对照时序、面积报告和 `result.json` 里的 `requirements[]`，按账本要求判断测量值。SDC 里的例外来自 rtl-design 声明的 `constraint-annotations.json`，无法满足时序的路径会路由到上游修复。
 
 ---
 
@@ -261,9 +262,9 @@ intent/brainstorm.md
 
 | 文件 | 是什么 | 要你看吗 |
 |---|---|---|
-| `timing-report.txt` | setup / hold slack 报告，判定读的就是这份 | 选看 |
+| `timing-report.txt` | setup / hold slack、端点检查、端口延迟及未测试原因 | 选看 |
 
-**你的动作：无。** 要复核就看 `timing-report.txt`。判定由 pt_shell 的报告给出。
+**你的动作：无。** 复核时看 `timing-report.txt`。阶段负责人判断报告中的时序结果，以及分析范围和例外是否符合任务。
 
 综合和 STA 按实际变化选择工作。已有测量仍适用时，可直接按当前要求重判；需要计算时，`run` 入口使用 `config.tcl` 的工具配置和临时工作目录；成功后移出已检查的产物，失败则保留日志和临时输出供诊断，直到重试。来源说明随结果保存，不作为下游硬件输入。准备、计算与关闭各自独立，新的阶段运行不意味着必须重新综合。
 
@@ -335,7 +336,7 @@ intent/brainstorm.md
 
 **它卡住了 / 反复改同一个地方**
 
-流程呈现未决原因与候选修复归属，依据证据、按实际授权作出决定，并通过 `diagnose` 记录。
+流程报告当前无法推进的原因，按实际授权处理后继续调度。阶段结果和 triage 结论已能驱动返工；`diagnose` 用于记录后续补充或修正的返工归属。
 阶段可以修复自身；只有证据与授权支持改变要求时才修订意图。
 更多报错见[附录 B](#附录-b-报错速查)。
 
@@ -404,7 +405,7 @@ opencode：从 `opencode.json` 删掉插件条目，然后开启新会话。
 | event log / `events.jsonl` | 审计日志，唯一的持久状态文件 |
 | dispatch / reap | 派发一个阶段去跑 / 收口它的结果 |
 | decide | 调度器。问它「下一步干什么」，返回恰好一个动作 |
-| DISPATCH / REAP / YIELD / DONE / ESCALATE | 派发 / 收口 / 有阶段在跑先等着 / 全绿 / **需要归因或决定** |
+| DISPATCH / REAP / YIELD / DONE / ESCALATE | 派发 / 收口 / 有阶段在跑先等着 / 全绿 / **有阻碍需要处理** |
 | workdir / run | 某阶段某一轮的工作目录 / 轮次号 |
 | input closure | 某个结果传递依赖到的全部上游产出 |
 | fix_owner | 这次失败该由哪个阶段去修 |
@@ -420,7 +421,7 @@ opencode：从 `opencode.json` 删掉插件条目，然后开启新会话。
 | 2 | 需求与边界决定 | specification | 根据证据处理未决要求、数值界限和边界选择 | 按实际授权；批准不代替技术证明 | §1.4 |
 | 3 | 交付回顾 | specification 独立评审后 | 查看设计与评审依据；阶段通过前须处理违约 | 是 | §1.4 |
 | 4 | 交付回顾 | simulation-plan | 按需查看计划与评审依据 | 是 | §1.4 |
-| 5 | ESCALATE | 任意阶段 | 指认该由哪个阶段去修，并给出理由 | 否 | §1.5 |
+| 5 | ESCALATE | 任意阶段 | 处理报告的阻碍，必要时明确返工归属 | 阻碍须解决，人工参与按实际授权 | §1.5 |
 | 6 | 签核 | 全部阶段之后 | 按实际授权接受证据 | 仅在任务要求记录接受时需要 | §1.6 |
 
 这些是决定与评审位置，不是强制弹出的权限询问。人工参与按实际授权安排；任务要求时由签核记录接受决定。

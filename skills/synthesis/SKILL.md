@@ -49,7 +49,10 @@ calculation remain available until retry. Wait for completion and inspect warnin
 ## Judge and close
 
 Use current requirements with the applicable reports. `finalize` compares `area_um2` and
-`timing_slack_ns` targets; setup slack is the minimum over the DC clock groups. Declare evidence-based
+`timing_slack_ns` targets; setup slack comes from the high-precision `timing_setup.rpt`, whose
+`report_units` output supplies the conversion to ns. QOR checks consistency. Refresh a report lacking
+units or sufficient precision from the applicable
+implementation and constraints; that alone does not require resynthesis. Declare evidence-based
 judgments for synthesis rows without numerical targets, including library-based equivalent-gate units.
 Numeric targets cannot be overridden by declarations.
 

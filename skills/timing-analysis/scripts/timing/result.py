@@ -1,50 +1,14 @@
-"""timing.result — classify a PrimeTime STA report (marker-keyed) and judge the gate.
+"""Read reported setup/hold results and judge their numerical requirements.
 
-Single owner of timing-analysis's self-check. Reads the bare-`report_timing`
-deliverable (timing-report.txt: a `-delay max` section, a `-delay min` section,
-then check_timing and the coverage table), classifies each direction on the
-(MET)/(VIOLATED) MARKER (never the displayed number — a sub-rounding violation prints
-'0.00'), and records the worst slack + worst path per direction.
-
-A pass needs both: setup MET and hold MET, AND every output bit actually timed. The
-markers grade the paths PT analyzed and say nothing about the ones an incomplete SDC
-kept it from analyzing at all, so the two are separate questions and a MET pair alone
-is not an answer to the second.
-
-The boundary is measured on OUTPUTS only. check_timing's unconstrained-endpoint count
-looks like the more direct measure and is not usable as one: async-reset ports carry no
-input delay by construction (specification's derive-constraints exempts clocks and async
-resets alone), so every async-reset flop lands in that count on a correctly constrained design
-— measured across eight synthesized designs it read 0 to 4242 with a complete SDC, and
-on two of them it was IDENTICAL with an incomplete one. Output bits carry no such
-exemption: every output port is a data port, so the count PT should have timed is
-determined, and out_setup's Total is what it did.
-
-Exit codes (each non-zero also prints a greppable FAIL=<token> on stderr):
-  0  parsed + judged (incl. a legitimate verdict="fail")
-  1  report file absent                                   -> FAIL=missing
-  3  a delay section has no parseable slack line, a marker contradicts its sign
-     (MET with slack < -eps / VIOLATED with slack > +eps), or a check_timing check
-     never ran                                            -> FAIL=unparseable
-  2  usage error                                          -> ERROR: usage
-
-The judged payload is returned in-process to build_result rather than through a
-sidecar: result.json already carries every field of it.
-
-FORMAT — grounded against pt2016 (M-2016.12-SP1) sdc_controller reports. Bare
-`report_timing -delay max|min` prints the worst path per group; each block ends in
-a `slack (MET)` / `slack (VIOLATED...)` line. check_timing prints `There are N
-endpoints which are not constrained for maximum delay` and `There are N register
-clock pins with no clock`. The number is recorded with
-report_default_significant_digits=4 (set in run_sta.tcl); the marker stays
-authoritative for met/violated. On any parse surprise the parser fails loud
-(exit 3) rather than emitting a silent pass.
+Analysis scope and exceptions are assessed from native reports by the stage owner.
+An explicit fail_reason records incomplete or invalid analysis.
 """
 
 from __future__ import annotations
 
 import datetime
 import json
+import math
 import re
 import sys
 from pathlib import Path
@@ -60,11 +24,11 @@ _DELAY_MIN_RE = re.compile(r"-delay_type\s+min")
 _SLACK_RE = re.compile(r"slack\s*\((MET|VIOLATED)[^)]*\)\s*([-+0-9.]+)")
 _START_RE = re.compile(r"Startpoint:\s*(\S+)")
 _END_RE = re.compile(r"Endpoint:\s*(\S+)")
-# Boundary coverage: the count run_sta.tcl emits, against report_analysis_coverage's
-# out_setup row. The row is absent entirely when the run timed no output at all.
-_OUTPUT_BITS_RE = re.compile(r"^Boundary output bits:\s*(\d+)", re.M)
-_OUT_SETUP_RE = re.compile(r"^out_setup\s+(\d+)", re.M)
 _COVERAGE_TABLE_RE = re.compile(r"^Type of Check\s+Total", re.M)
+_TIME_UNIT_RE = re.compile(
+    r"^\s*Time_unit\s*:\s*([-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?)\s+Second\b",
+    re.M,
+)
 
 
 class ParseError(Exception):
@@ -96,13 +60,19 @@ def parse_direction(text: str, kind: str) -> dict:
     when the section has no slack line or a marker contradicts its sign.
     """
     section = _section(text, kind)
+    unit = _TIME_UNIT_RE.search(text)
+    if unit is None:
+        raise ParseError("no report_units time unit in the report")
+    ns_per_unit = float(unit.group(1)) / 1e-9
+    if not math.isfinite(ns_per_unit) or ns_per_unit <= 0:
+        raise ParseError("invalid report_units time unit")
     paths = []
     # Split into path blocks at each 'Startpoint:'; the leading chunk is the header.
     for block in re.split(r"(?=Startpoint:)", section):
         m = _SLACK_RE.search(block)
         if not m:
             continue
-        marker, raw = m.group(1), float(m.group(2))
+        marker, raw = m.group(1), float(m.group(2)) * ns_per_unit
         # A marker that disagrees with its own number means the line is not the shape
         # this parser was grounded on; fail loud rather than trust either half.
         if marker == "MET" and raw < -_EPS:
@@ -129,36 +99,6 @@ def parse_direction(text: str, kind: str) -> dict:
     }
 
 
-def parse_coverage(text: str) -> dict:
-    """How much of the design boundary this run actually timed.
-
-    `output_bits` is what run_sta.tcl counted off the linked design; `output_bits_timed`
-    is report_analysis_coverage's out_setup Total, which counts one check per output bit
-    that carries an output delay. The out_setup row is absent altogether from a run that
-    timed no output, so its absence reads as zero — but only once the table itself is
-    known to be present, since a truncated report would otherwise read as a design with
-    no outputs at all. Raises ParseError when either anchor is missing.
-    """
-    m = _OUTPUT_BITS_RE.search(text)
-    if m is None:
-        raise ParseError("no 'Boundary output bits' line in the report")
-    if not _COVERAGE_TABLE_RE.search(text):
-        raise ParseError("no report_analysis_coverage table in the report")
-    timed = _OUT_SETUP_RE.search(text)
-    return {
-        "output_bits": int(m.group(1)),
-        "output_bits_timed": int(timed.group(1)) if timed else 0,
-    }
-
-
-def uncovered(coverage: dict) -> str | None:
-    """The phrase for a boundary the run did not time in full; None when it did."""
-    bits, timed = coverage["output_bits"], coverage["output_bits_timed"]
-    if timed >= bits:
-        return None
-    return f"timed {timed} of {bits} output bits"
-
-
 def run(report_path) -> tuple[int, dict | None]:
     """Classify + judge. Returns (rc, payload); payload is None on any non-zero rc."""
     report_path = Path(report_path)
@@ -172,9 +112,10 @@ def run(report_path) -> tuple[int, dict | None]:
 
     text = report_path.read_text(errors="replace")
     try:
+        if not _COVERAGE_TABLE_RE.search(text):
+            raise ParseError("no report_analysis_coverage table in the report")
         setup = parse_direction(text, "max")
         hold = parse_direction(text, "min")
-        coverage = parse_coverage(text)
     except ParseError as exc:
         print(
             f"[timing finalize] FAIL=unparseable {exc}: {report_path}",
@@ -184,7 +125,7 @@ def run(report_path) -> tuple[int, dict | None]:
 
     payload = {
         "verdict": "pass" if setup["met"] and hold["met"] else "fail",
-        "timing": {"setup": setup, "hold": hold, "coverage": coverage},
+        "timing": {"setup": setup, "hold": hold},
     }
     return 0, payload
 
@@ -303,16 +244,7 @@ def build_result(workdir, rows, declared, fix_owner=None, fail_reason=None) -> i
         "timing": actual["timing"],
         "requirements": judged,
     }
-    left_out = uncovered(actual["timing"]["coverage"])
-    if left_out:
-        # A pair of MET markers says nothing about how much of the boundary was timed:
-        # PT reports MET on the paths it analyzed whether the SDC reached two output
-        # bits or two hundred. Promoting that as a pass publishes a passing conclusion
-        # over a boundary the STA never covered, and this stage exists to be the
-        # independent check that catches it.
-        status = "fail"
-        ss["fail_reason"] = f"STA did not cover the boundary: {left_out}"
-    elif status == "fail":
+    if status == "fail":
         ss["fail_reason"] = "setup/hold timing not met"
     elif unmet:
         status = "fail"

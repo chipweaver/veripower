@@ -1,4 +1,4 @@
-"""Tests for the simplan finalize verb — build_result + human-gate args + enumerate."""
+"""Tests for simulation-plan closure, validation and artifact delivery."""
 
 import json
 import sys
@@ -11,7 +11,7 @@ from simplan import result as vs  # noqa: E402
 FIX = Path(__file__).resolve().parent / "fixtures"
 SPEC_FIX = FIX / "specification-golden"
 
-# A post-materialize scaffold that really passes check-scaffold: finalize re-runs the gate
+# A complete scaffold that really passes check-scaffold: finalize re-runs the gate
 # in-process, so a synthetic shape that the gate would reject is not a usable fixture here.
 GOOD = {
     "module": "m",
@@ -128,7 +128,7 @@ def _finalize_workdir(tmp_path, *, scaffold=None, review=True):
 def test_build_result_pass_lean_shape(tmp_path):
     wd = _finalize_workdir(tmp_path)
     spec = _spec(tmp_path)
-    assert vs.build_result(wd, spec, revision=None) == 0
+    assert vs.build_result(wd, spec) == 0
     env = json.loads((wd / "result.json").read_text())
     assert env["stage"] == "simulation-plan"
     assert env["status"] == "pass" and env["produced_at"].endswith("Z")
@@ -137,22 +137,11 @@ def test_build_result_pass_lean_shape(tmp_path):
     assert env["stage_specific"] == {}
 
 
-def test_build_result_carries_revision(tmp_path):
-    wd = _finalize_workdir(tmp_path)
-    spec = _spec(tmp_path)
-    rev = "rev 0.2 (rework r1): narrowed TP-1 bins"
-    assert vs.build_result(wd, spec, revision=rev) == 0
-    ss = json.loads((wd / "result.json").read_text())["stage_specific"]
-    assert ss == {
-        "revision": rev
-    }  # human-gate narration, not derivable from any artifact
-
-
 def test_invalid_plan_blocks_closure(tmp_path):
     # The current inputs determine validity, independent of earlier validation.
     wd = _finalize_workdir(tmp_path)
     spec = _spec(tmp_path, hints=("CHK-0", "CHK-1"))  # CHK-1 covered by nothing
-    assert vs.finalize(wd, spec, revision=None) == 2
+    assert vs.finalize(wd, spec) == 2
     assert not (wd / "result.json").exists()
 
 
@@ -164,7 +153,6 @@ def test_fail_path_does_not_re_run_the_gate(tmp_path):
     rc = vs.finalize(
         wd,
         tmp_path / "nonexistent-spec",
-        revision=None,
         fail_reason="external reference missing: Design/specification/design.md",
     )
     assert rc == 0
@@ -229,13 +217,12 @@ def test_golden_lean_against_a_real_run(tmp_path):
 
     wd = tmp_path / "simulation-plan"
     shutil.copytree(FIX / "simulation-plan-golden", wd)
-    rev = "rev 0.3 (rework r2): added apb_weight_load precondition to T-04 + T-07"
     # The plan fixture's covers[] resolve against the specification fixture's check hints —
     # the same pairing the real run had, so the re-run gate is exercised on real content.
-    assert vs.build_result(wd, SPEC_FIX, revision=rev) == 0
+    assert vs.build_result(wd, SPEC_FIX) == 0
     env = json.loads((wd / "result.json").read_text())
     assert env["status"] == "pass"
-    assert env["stage_specific"] == {"revision": rev}
+    assert env["stage_specific"] == {}
     paths = {a["path"] for a in env["artifacts"]}
     assert paths == {
         "verification-plan.md",
@@ -252,12 +239,12 @@ def test_golden_lean_against_a_real_run(tmp_path):
 # ── finalize-wrapper exit-code BLOCKED semantics ──
 def test_finalize_blocked_on_internal_raise(tmp_path):
     # missing tb-scaffold.json → the re-run gate reports it → exit 2 BLOCKED
-    assert vs.finalize(tmp_path, _spec(tmp_path), revision=None) == 2
+    assert vs.finalize(tmp_path, _spec(tmp_path)) == 2
     assert not (tmp_path / "result.json").exists()
 
 
 def test_finalize_blocked_on_empty_fail_reason(tmp_path):
-    rc = vs.finalize(tmp_path, _spec(tmp_path), revision=None, fail_reason="  ")
+    rc = vs.finalize(tmp_path, _spec(tmp_path), fail_reason="  ")
     assert rc == 2
     assert not (tmp_path / "result.json").exists()
 
@@ -267,9 +254,7 @@ def test_a_stated_reason_is_the_failure(tmp_path):
     # is needed to keep a verdict flag and a reason from disagreeing.
     wd = _finalize_workdir(tmp_path)
     spec = _spec(tmp_path)
-    assert (
-        vs.build_result(wd, spec, revision=None, fail_reason="reviewer BLOCKED: x") == 0
-    )
+    assert vs.build_result(wd, spec, fail_reason="reviewer BLOCKED: x") == 0
     env = json.loads((wd / "result.json").read_text())
     assert env["status"] == "fail"
     assert env["stage_specific"]["fail_reason"] == "reviewer BLOCKED: x"
@@ -283,7 +268,6 @@ def test_earlyfail_seeded_workdir_carries_products(tmp_path):
     rc = vs.finalize(
         tmp_path,
         _spec(tmp_path),
-        revision=None,
         fail_reason="external reference missing: /x/design.md",
     )
     assert rc == 0
@@ -295,7 +279,7 @@ def test_earlyfail_seeded_workdir_carries_products(tmp_path):
 def test_invalid_reclose_removes_old_result(tmp_path):
     wd = _finalize_workdir(tmp_path)
     spec = _spec(tmp_path)
-    assert vs.finalize(wd, spec, revision=None) == 0
+    assert vs.finalize(wd, spec) == 0
     (wd / "tb-scaffold.json").write_text("{}")
-    assert vs.finalize(wd, spec, revision=None) == 2
+    assert vs.finalize(wd, spec) == 2
     assert not (wd / "result.json").exists()

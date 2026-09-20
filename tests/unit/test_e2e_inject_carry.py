@@ -95,7 +95,7 @@ _STAGE_FILES = {
     },
     "rtl-design": {
         "src/top.v": "module top; endmodule",
-        "rtl-files.json": '{"child_a": {"files": ["src/top.v"]}}',
+        "rtl-files.json": '{"files": ["src/top.v"]}',
         "constraint-annotations.json": "{}",
     },
     "synthesis": {

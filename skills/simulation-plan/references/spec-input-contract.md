@@ -13,9 +13,10 @@ stimulus and passive agents for observation. An agent can cover several appropri
 
 Simulation derives signals and transaction fields from these assignments and the specification's
 port names, widths and directions; do not copy the port declarations into the plan. It creates
-clock generators from `clocks.json` and applies the declared reset polarity. Clock/reset-only
-groups do not need an agent. A missing interface or clock definition is an upstream boundary
-problem to resolve, not a reason to leave that part of the DUT undriven.
+generators for input clock ports using `clocks.json` and preserves the declared resets. Simulation
+authors reset sequencing using the declared polarities and domains. Clock/reset-only groups need no agent. A declared internal clock needs no added top-level port; simulation
+authors the observation connection from the implementation. Undefined clock references are
+upstream boundary defects.
 
 ## Stimuli, tests and checks
 

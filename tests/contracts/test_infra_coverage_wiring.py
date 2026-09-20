@@ -11,16 +11,18 @@ REGRESS = ROOT / "skills/simulation/templates/infra/scripts/run_vcs_regression.s
 
 def test_makefile_has_text_coverage_target():
     mk = MAKEFILE.read_text()
-    assert "-report cov_merge -format text" in mk
-    assert "parse_coverage.py" in mk
-    assert "structural-coverage.json" in mk
+    assert "run_vcs_regression.sh coverage" in mk
+    sh = REGRESS.read_text()
+    assert "-report cov_merge -format text" in sh
+    assert "parse_coverage.py" in sh
+    assert "structural-coverage.json" in sh
 
 
 def test_regress_invokes_coverage_step():
     sh = REGRESS.read_text()
     # coverage must be wired on the regress arm specifically (within regress) ... ;;)
-    assert re.search(r"regress\)(?:(?!;;).)*make coverage", sh, re.DOTALL), (
-        "make coverage must be in the regress) arm"
+    assert re.search(r"regress\)(?:(?!;;).)*\n\s*coverage\n", sh, re.DOTALL), (
+        "coverage must be in the regress) arm"
     )
 
 
@@ -28,4 +30,4 @@ def test_smoke_arm_does_not_run_coverage():
     sh = REGRESS.read_text()
     smoke_arm = re.search(r"smoke\)(.*?);;", sh, re.DOTALL)
     assert smoke_arm is not None, "smoke) arm not found"
-    assert "make coverage" not in smoke_arm.group(1)
+    assert "coverage" not in smoke_arm.group(1)

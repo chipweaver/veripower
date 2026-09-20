@@ -1,22 +1,8 @@
 {
-  "mac": {
-    "files": [
-      "src/mac.v"
-    ]
-  },
-  "systolic_reg": {
-    "files": [
-      "src/systolic_reg.v"
-    ]
-  },
-  "fifo": {
-    "files": [
-      "src/fifo.v"
-    ]
-  },
-  "tpu_top": {
-    "files": [
-      "src/tpu_top.v"
-    ]
-  }
+  "files": [
+    "src/fifo.v",
+    "src/mac.v",
+    "src/systolic_reg.v",
+    "src/tpu_top.v"
+  ]
 }

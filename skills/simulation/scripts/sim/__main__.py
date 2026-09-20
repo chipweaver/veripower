@@ -66,7 +66,6 @@ def _cmd_finalize(a: argparse.Namespace) -> int:
         scaffold=a.plan,
         requirements=a.requirements,
         check_review=a.check_review,
-        verify_verdict=a.verify_verdict,
         fail_reason=a.fail_reason,
         fix_owner=a.fix_owner,
     )
@@ -103,9 +102,7 @@ def build_parser() -> argparse.ArgumentParser:
         required=True,
         choices=["fail", "final"],
         help="`fail` closes the round on a failure the caller already holds a reason for; "
-        "`final` re-runs the three exit gates. Which sub-step tripped is not a flag: it is "
-        "what --fail-reason says, and which companions ride along follows from what the "
-        "reaped verify verdict actually carries.",
+        "`final` checks materialization, review, coverage and case results on disk.",
     )
     sp.add_argument(
         "--plan",
@@ -121,9 +118,6 @@ def build_parser() -> argparse.ArgumentParser:
         "are the coverage gate (required for --phase final)",
     )
     sp.add_argument("--check-review", type=Path, default=None)
-    sp.add_argument(
-        "--verify-verdict", type=Path, default=None, help="reaped verify-child JSON"
-    )
     sp.add_argument(
         "--fail-reason",
         default=None,

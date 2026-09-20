@@ -19,8 +19,43 @@ sys.path.insert(0, str(REPO_ROOT / "skills" / "timing-analysis" / "scripts"))
 
 from timing import result as sp  # noqa: E402
 
+
+@pytest.mark.parametrize("seconds", [1e-9, 1e-12, 1e-10])
+def test_native_units_preserve_slack_and_judgment(seconds):
+    raw = 0.5e-9 / seconds
+    text = f"Time_unit : {seconds} Second\n"
+    for kind in ("max", "min"):
+        text += f"-delay_type {kind}\nStartpoint: d\nEndpoint: q\nslack (MET) {raw}\n"
+    timing = {
+        "setup": sp.parse_direction(text, "max"),
+        "hold": sp.parse_direction(text, "min"),
+    }
+    from timing import requirements
+
+    verdict = requirements.compare(
+        [
+            {
+                "id": "MARGIN",
+                "target": {"dim": "timing_slack_ns", "op": ">=", "value": 1},
+            }
+        ],
+        timing,
+    )[0]
+    assert verdict["actual"] == pytest.approx(0.5)
+    assert verdict["met"] is False
+
+
+@pytest.mark.parametrize("unit", ["", "Time_unit : N/A\n", "Time_unit : 0 Second\n"])
+def test_timing_without_a_usable_unit_is_not_assumed_ns(unit):
+    with pytest.raises(sp.ParseError, match="time unit"):
+        sp.parse_direction(
+            unit + "-delay_type max\nStartpoint: d\nslack (MET) 1.0\n", "max"
+        )
+
+
 # ── fixtures (faithful real-format excerpts) ─────────────────────────────────
 _SETUP_MET = """\
+Time_unit : 1e-09 Second
 ****************************************
 Report : timing
 \t-path_type full
@@ -113,17 +148,14 @@ check_timing succeeded.
 """
 
 
-def _coverage(output_bits: int, out_setup: int | None) -> str:
-    """A report_analysis_coverage table plus the boundary line run_sta.tcl emits.
-    `out_setup=None` drops the row entirely, which is what PrimeTime does for a run
-    that timed no output at all."""
+def _coverage(out_setup: int | None) -> str:
+    """Native report_analysis_coverage table; totals count checks, not distinct pins."""
     row = (
         ""
         if out_setup is None
         else f"out_setup           {out_setup:11d}{out_setup:10d} (100%)         0 (  0%)         0 (  0%)\n"
     )
     return (
-        f"Boundary output bits: {output_bits}\n"
         "Type of Check         Total              Met         Violated         Untested\n"
         "----------------------------------------------------------------------------\n"
         "setup                   584       584 (100%)         0 (  0%)         0 (  0%)\n"
@@ -132,8 +164,8 @@ def _coverage(output_bits: int, out_setup: int | None) -> str:
     )
 
 
-_COV_FULL = _coverage(8, 8)  # every output bit timed
-_COV_SHORT = _coverage(8, 2)  # the SDC reached two of them
+_COV_FULL = _coverage(8)
+_COV_SHORT = _coverage(2)
 
 
 def _write(tmp_path, text):
@@ -156,29 +188,6 @@ def test_parse_direction_violated_on_marker_despite_zero():
     assert d["met"] is False
     assert d["worst_slack_ns"] == pytest.approx(0.00)
     assert d["worst_path"] == "u_rx_filler/wb_free_reg -> u_rx_filler/rd_reg"
-
-
-def test_parse_coverage_reads_the_boundary_pair():
-    cov = sp.parse_coverage(_SETUP_MET + _HOLD_MET + _CHECK_TIMING + _COV_FULL)
-    assert cov == {"output_bits": 8, "output_bits_timed": 8}
-
-
-def test_an_absent_out_setup_row_means_no_output_was_timed():
-    # PrimeTime drops the row entirely rather than printing a zero.
-    cov = sp.parse_coverage(_SETUP_MET + _HOLD_MET + _coverage(8, None))
-    assert cov == {"output_bits": 8, "output_bits_timed": 0}
-
-
-def test_parse_coverage_raises_without_the_boundary_line():
-    with pytest.raises(sp.ParseError):
-        sp.parse_coverage(_SETUP_MET + _HOLD_MET + _CHECK_TIMING)
-
-
-def test_parse_coverage_raises_without_the_coverage_table():
-    # A truncated report would otherwise read as a design with no outputs, which is
-    # the one wrong answer this gate cannot afford.
-    with pytest.raises(sp.ParseError):
-        sp.parse_coverage(_SETUP_MET + _HOLD_MET + "Boundary output bits: 8\n")
 
 
 # ── run() exit-code + verdict contract ─────────────────────────────────────────
@@ -213,42 +222,48 @@ def test_run_negative_number_recorded_with_sig_digits4(tmp_path):
     assert data["timing"]["hold"]["met"] is False
 
 
-def test_uncovered_is_none_only_when_the_boundary_is_whole():
-    assert sp.uncovered({"output_bits": 8, "output_bits_timed": 8}) is None
-    assert sp.uncovered({"output_bits": 0, "output_bits_timed": 0}) is None
-    assert "2 of 8 output bits" in sp.uncovered(
-        {"output_bits": 8, "output_bits_timed": 2}
-    )
-
-
-def test_an_untimed_boundary_cannot_pass(tmp_path):
-    # Both directions MET, and the SDC reached two of eight output bits. The markers
-    # grade what PrimeTime analyzed, so they cannot answer for the rest.
+def test_counts_do_not_create_a_completeness_measurement(tmp_path):
     wd = _workdir(tmp_path, report=_SETUP_MET + _HOLD_MET + _CHECK_TIMING + _COV_SHORT)
-    assert sp.build_result(wd, [], [], fix_owner="synthesis") == 0
+    assert sp.build_result(wd, [], []) == 0
     env = json.loads((wd / "result.json").read_text())
-    ss = env["stage_specific"]
-    assert env["status"] == "fail"
-    assert "2 of 8 output bits" in ss["fail_reason"]
-    assert ss["fix_owner"] == "synthesis"
-    assert ss["timing"]["setup"]["met"] is True  # the measurements still land
+    assert env["status"] == "pass"
+    assert set(env["stage_specific"]["timing"]) == {"setup", "hold"}
+
+
+def test_scope_judgment_can_reject_met_paths(tmp_path):
+    wd = _workdir(tmp_path, report=_SETUP_MET + _HOLD_MET + _CHECK_TIMING + _COV_FULL)
+    rows = [
+        {
+            "id": "IO",
+            "judge": "timing-analysis",
+            "verbatim": "Required interface paths must be constrained",
+        }
+    ]
+    judgments = [
+        {
+            "id": "IO",
+            "met": False,
+            "measured": "port report: q[1] has no required output delay",
+        }
+    ]
+    assert sp.build_result(wd, rows, judgments, fix_owner="synthesis") == 0
+    env = json.loads((wd / "result.json").read_text())
+    assert env["status"] == "fail" and "IO" in env["stage_specific"]["fail_reason"]
+    assert env["stage_specific"]["timing"]["setup"]["met"] is True
+    assert env["stage_specific"]["fix_owner"] == "synthesis"
 
 
 def test_unconstrained_endpoints_alone_never_fail_a_run(tmp_path):
-    # THE regression this metric replaced. 1461 unconstrained endpoints and 756
-    # no-clock register pins are in this report, and the boundary is fully timed, so
-    # it passes: those counts are ordinary on a healthy design, because reset ports
-    # carry no input delay. Measured 0..4242 across eight synthesized designs with a
-    # complete SDC, and identical to the broken SDC on two of them.
+    # Global warning counts are evidence for the stage owner, not an automatic
+    # scope verdict. The reported timing measurements are still available.
     wd = _workdir(tmp_path, report=_SETUP_MET + _HOLD_MET + _CHECK_TIMING + _COV_FULL)
     (wd / "config.tcl").write_text("# current test setup\n")
     assert sp.build_result(wd, [], []) == 0
     assert json.loads((wd / "result.json").read_text())["status"] == "pass"
 
 
-def test_an_untimed_boundary_outranks_a_missed_target(tmp_path):
-    # Hold is violated AND the boundary is short. The shortfall wins: routing a ppa
-    # fail would send someone to close a path on a boundary that was never timed.
+def test_report_counts_do_not_override_a_timing_violation(tmp_path):
+    # Report counts do not change the measured hold violation.
     wd = _workdir(
         tmp_path, report=_SETUP_MET + _HOLD_VIOLATED_NEG + _CHECK_TIMING + _COV_SHORT
     )
@@ -610,11 +625,9 @@ def test_golden_lean_against_a_real_run(tmp_path):
     assert sp.build_result(wd, [], []) == 0
     env = json.loads((wd / "result.json").read_text())
     ss = env["stage_specific"]
-    # A real run: both directions MET, its whole boundary timed, and 1142
-    # endpoints left unconstrained all the same. It passes, and that is the point —
-    # those endpoints are the reset paths every design has.
+    # Replay the recorded setup/hold measurements without inventing a scope metric.
     assert env["status"] == "pass"
-    assert ss["timing"]["coverage"] == {"output_bits": 74, "output_bits_timed": 74}
+    assert set(ss["timing"]) == {"setup", "hold"}
     # contract fields — exact to the real run
     assert ss["timing"]["setup"]["worst_slack_ns"] == pytest.approx(0.7252)
     assert ss["timing"]["setup"]["met"] is True
@@ -721,3 +734,14 @@ def test_rounded_violation_respects_the_comparison_direction(tmp_path, display):
     verdicts = env["stage_specific"]["requirements"]
     assert all(r["actual"] == 0 for r in verdicts)
     assert [r["met"] for r in verdicts] == [v for _, _, v in comparisons]
+
+
+def test_missing_native_coverage_report_is_incomplete(tmp_path):
+    report = _write(tmp_path, _SETUP_MET + _HOLD_MET + _CHECK_TIMING)
+    assert sp.run(report) == (3, None)
+
+
+def test_native_coverage_needs_no_custom_boundary_counter(tmp_path):
+    text = _SETUP_MET + _HOLD_MET + _CHECK_TIMING + _COV_FULL
+    rc, data = sp.run(_write(tmp_path, text))
+    assert rc == 0 and set(data["timing"]) == {"setup", "hold"}

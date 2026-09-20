@@ -5,11 +5,12 @@ import json
 import subprocess
 from pathlib import Path
 
+import pytest
+
 ROOT = Path(__file__).resolve().parents[2]
 MAIN = ROOT / "skills/simulation-plan/scripts/simplan/__main__.py"
 
-# Canonical, post-materialize, fully-valid scaffold (agents carry materialize-injected
-# interface/transaction). Built from the SKILL contract, NOT from any legacy disk artifact.
+# Complete plan fixture: boundary signals are read from specification, not copied here.
 GOOD = {
     "module": "m",
     "top": "m_top",
@@ -175,7 +176,7 @@ def test_malformed_scaffold_json_fails_loud(tmp_path):
 
 
 def test_injected_interface_transaction_tolerated(tmp_path):
-    # GOOD already carries materialize-injected interface/transaction. addP:false must not reject them.
+    # The current authored plan must satisfy its closed per-agent schema.
     assert _run(tmp_path, GOOD).returncode == 0
 
 
@@ -232,7 +233,7 @@ def test_agent_extra_key_fails(tmp_path):
 # ---- boundary: the agents must partition top-io.json's data ports ----
 def test_unclaimed_data_port_group_fails(tmp_path):
     """simulation binds the DUT by walking the ports, so a group no agent claims has nothing
-    to bind to. Held here because the plan passes a human approval gate first."""
+    to bind to. The complete plan check includes this assignment."""
     s = copy.deepcopy(GOOD)
     s["agents"] = [a for a in s["agents"] if a["name"] != "obs"]
     s["scoreboard"]["observer"] = "drv"
@@ -480,3 +481,78 @@ def test_every_sidecar_schema_resolves():
 
     for _, schema_name, _ in _plan._FILES:
         assert (_plan._REFERENCES / schema_name).is_file(), schema_name
+
+
+@pytest.mark.parametrize(
+    "fault, fragment",
+    [
+        ("unknown", "unknown interface_group"),
+        ("clock-only", "no data ports"),
+        ("duplicate-group", "claimed by both"),
+        ("duplicate-signal", "duplicate signal name"),
+        ("missing-groups", "interface_groups"),
+        ("missing-boundary", "top-io.json"),
+        ("malformed-boundary", "top-io.json"),
+    ],
+)
+def test_boundary_defects_are_rejected_by_check_and_finalize(tmp_path, fault, fragment):
+    plan = copy.deepcopy(GOOD)
+    ports = copy.deepcopy(_TOP_IO)
+    if fault == "unknown":
+        plan["agents"][0]["interface_groups"].append("not-declared")
+    elif fault == "clock-only":
+        for port in ports:
+            if port["role"] in ("clock", "reset"):
+                port["interface_group"] = "bench"
+        plan["agents"].append(
+            {"name": "clock_ctrl", "mode": "passive", "interface_groups": ["bench"]}
+        )
+    elif fault == "duplicate-group":
+        plan["agents"][0]["interface_groups"].append("cfg")
+    elif fault == "duplicate-signal":
+        ports.append(dict(ports[2]))
+    elif fault == "missing-groups":
+        del plan["agents"][0]["interface_groups"]
+    _split(tmp_path, plan)
+    _spec(tmp_path, top_io=ports)
+    if fault == "missing-boundary":
+        (tmp_path / "top-io.json").unlink()
+    elif fault == "malformed-boundary":
+        (tmp_path / "top-io.json").write_text("{invalid")
+    for verb, path_flag in (("check-scaffold", "--plan"), ("finalize", "--workdir")):
+        p = subprocess.run(
+            [
+                "python3",
+                str(MAIN),
+                verb,
+                path_flag,
+                str(tmp_path),
+                "--spec",
+                str(tmp_path),
+            ],
+            capture_output=True,
+            text=True,
+        )
+        assert p.returncode != 0 and fragment in p.stderr, (verb, p.stdout, p.stderr)
+        assert not (tmp_path / "result.json").exists()
+
+
+def test_plan_check_keeps_authored_inputs_unchanged(tmp_path):
+    _split(tmp_path, GOOD)
+    _spec(tmp_path)
+    before = {p.name: p.read_bytes() for p in tmp_path.iterdir()}
+    p = subprocess.run(
+        [
+            "python3",
+            str(MAIN),
+            "check-scaffold",
+            "--plan",
+            str(tmp_path),
+            "--spec",
+            str(tmp_path),
+        ],
+        capture_output=True,
+        text=True,
+    )
+    assert p.returncode == 0, p.stderr
+    assert {p.name: p.read_bytes() for p in tmp_path.iterdir()} == before

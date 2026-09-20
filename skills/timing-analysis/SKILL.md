@@ -40,9 +40,10 @@ and inspect warnings, effective constraints and the libraries used.
 
 ## Judge and close
 
-Review `check_timing` and untested checks against port roles and constraints. The CLI compares
-output-bit count with PrimeTime's `out_setup` Total, which includes Untested entries; matching
-counts do not establish that every output was timed.
+Review the reported endpoints, port delays, clocks and untested reasons against the task and
+applicable exceptions. These native reports are in `timing-report.txt`; the CLI's setup/hold
+measurements cover the reported paths, not the completeness or validity of the analysis scope.
+`report_units` in the same report supplies the conversion to ns.
 Numerical `timing_slack_ns` rows compare the minimum worst setup/hold slack with their own bounds;
 VIOLATED identifies negative slack even when displayed as zero. Overall STA acceptance separately
 requires both directions to be MET. Give evidence-based judgments for other timing requirements.

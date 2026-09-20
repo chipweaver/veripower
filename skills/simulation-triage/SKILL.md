@@ -48,7 +48,8 @@ python3 <skill>/scripts/simtriage/__main__.py finalize --workdir {workdir} --jso
 `<skill>` is this skill's directory. Each supported finding identifies its `root_cause` repair stage,
 `anchor` and `reason`. The owner can be `simulation` itself. Separate independently supported causes;
 do not invent an owner to obtain a route. If evidence cannot settle attribution, leave `findings`
-empty and explain the missing evidence in `reason`. The caller decides what work follows.
+empty and explain the missing evidence in `reason`. This completed diagnosis returns the unresolved
+decision to the caller; it does not request another identical investigation.
 
 Finalize validates the diagnosis structure and preserves `experiment/`; it does not prove the
 reasoning. Return `STATUS: DONE` when the diagnosis is written, including an explicit unresolved

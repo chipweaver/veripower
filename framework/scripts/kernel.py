@@ -172,6 +172,31 @@ def cmd_reap(module, rule, run):
         except Exception as e:  # noqa: BLE001
             return {"ok": False, "error": f"promote failed: {e}"}
     outputs = _fingerprint_outputs(module, rule) if verdict != "blocked" else {}
+    if diagnoses:
+        previous = next(
+            (
+                i
+                for i, e in enumerate(events)
+                if e["type"] == "outcome"
+                and e["rule"] == rule
+                and e["run"] == run
+                and e["outputs"] == outputs
+            ),
+            None,
+        )
+        if previous is not None:
+            # Recollecting the same evidence completes interrupted recording without
+            # repeating decisions that have already landed (or been resolved).
+            recorded = [
+                {k: v for k, v in e.items() if k not in ("id", "ts")}
+                for e in events[previous + 1 :]
+                if e["type"] == "diagnosis"
+            ]
+            diagnoses = [
+                d
+                for d in diagnoses
+                if {k: v for k, v in d.items() if k != "id"} not in recorded
+            ]
     ev = {
         "type": "outcome",
         "rule": rule,
@@ -305,28 +330,29 @@ def _derive_triage(env, dispatch):
     """Group triage findings by root cause and derive one diagnosis per group.
 
     The originating dispatch identifies the failed simulation run. A root cause
-    in the failed stage or its input producers can be a repair owner; other attributions require
-    clarification. Empty findings block completion."""
+    in the failed stage or its input producers can be a repair owner. An analysis
+    without an attribution records its reason for the existing decision path."""
     import uuid
 
-    ss = env.get("stage_specific", {})
-    findings = ss.get("findings") or []
-    if not findings:
-        return "blocked", "no_attribution", [], []
-    sim_hit = dispatch["params"].get("sim_run")
+    ss = env["stage_specific"]
+    findings = ss["findings"]
+    sim_hit = dispatch["params"]["sim_run"]
     # Group findings by root cause; their locations and reasoning remain in the analysis.
-    causes = list(dict.fromkeys(f["root_cause"] for f in findings))
+    causes = list(dict.fromkeys(f["root_cause"] for f in findings)) or [None]
     out = []
     for cause in causes:
         diagnosis = {
             "type": "diagnosis",
             "id": f"diag-{uuid.uuid4().hex[:12]}",
             "subject": {"proof": "simulation", "outcome_run": sim_hit},
-            "attribution": cause,
             "source": "triage",
         }
-        if cause in rules.repair_owners("simulation"):
-            diagnosis["fix_owner"] = cause
+        if cause is None:
+            diagnosis["reason"] = ss["reason"]
+        else:
+            diagnosis["attribution"] = cause
+            if cause in rules.repair_owners("simulation"):
+                diagnosis["fix_owner"] = cause
         out.append(diagnosis)
     # Completed triage records diagnoses rather than an independent failed proof.
     return "pass", None, [], out
@@ -360,11 +386,12 @@ def cmd_diagnose(
         "type": "diagnosis",
         "id": diag_id,
         "subject": {"proof": subject_proof, "outcome_run": subject_run},
-        "attribution": attribution,
         "source": "decision",
         "provenance": provenance,
         "reason": reason,
     }
+    if attribution is not None:
+        ev["attribution"] = attribution
     if fix_owner:
         ev["fix_owner"] = fix_owner
     if supersedes:
@@ -481,7 +508,7 @@ def main():
     dg.add_argument("--id", required=True, dest="diag_id")
     dg.add_argument("--subject-proof", required=True, choices=rules.FORWARD_PRIORITY)
     dg.add_argument("--subject-run", required=True, type=int)
-    dg.add_argument("--attribution", required=True)
+    dg.add_argument("--attribution", default=None)
     dg.add_argument("--fix-owner", default=None, choices=rules.FORWARD_PRIORITY)
     dg.add_argument("--provenance", required=True)
     dg.add_argument("--reason", required=True)

@@ -1,3 +1,4 @@
+Time_unit : 1.0e-09 Second
 Warning: Some timing arcs have been disabled for breaking timing loops or because of constant propagation. Use the 'report_disable_timing' command to get the list of these disabled timing arcs. (PTE-003)
 ****************************************
 Report : timing

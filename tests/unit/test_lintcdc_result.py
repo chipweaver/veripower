@@ -12,6 +12,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO_ROOT / "skills" / "lint-cdc" / "scripts"))
 from lintcdc import result as rb  # noqa: E402, I001
@@ -397,52 +399,43 @@ def test_empty_fail_reason_is_blocked_not_a_fail(tmp_path):
     assert not (wd / "result.json").exists()
 
 
-def test_unreasoned_waiver_is_blocked(tmp_path):
-    """A waiver is the only route from a real error to pass, and SpyGlass subtracts it before
-    the parser counts, so the envelope cannot distinguish a waived error from one that never
-    happened. An entry with no rationale must not be able to close the stage."""
+@pytest.mark.parametrize(
+    "body",
+    [
+        "waive -rules {W257} -comment {documented reason}",
+        "set reason {documented reason}\nwaive -rules {W257} -comment $reason",
+        "if {0} {\nwaive -rules {W257}\n}",
+    ],
+)
+def test_waiver_source_format_does_not_gate_closure(tmp_path, body):
+    # The native reports are clean and report no waived messages. Source declarations
+    # do not establish what ran or matched; they must not create an extra gate.
     wd = _clean_workdir(tmp_path)
     (wd / "scripts").mkdir(exist_ok=True)
-    (wd / "scripts" / "waiver.tcl").write_text(
-        "# a real rule id, no reason given\nwaive -rules {W257}\n"
-    )
-    assert rb.finalize(wd, [], []) == 2
-    assert not (wd / "result.json").exists()
-
-
-def test_empty_comment_waiver_is_blocked(tmp_path):
-    wd = _clean_workdir(tmp_path)
-    (wd / "scripts").mkdir(exist_ok=True)
-    (wd / "scripts" / "waiver.tcl").write_text('waive -rules {W257} -comment "   "\n')
-    assert rb.finalize(wd, [], []) == 2
-
-
-def test_reasoned_waiver_passes_across_continuations_and_comments(tmp_path):
-    """The real shape: commented-out examples must not register as entries, and a live entry
-    is spread over backslash-continued lines with the -comment on the last one."""
-    wd = _clean_workdir(tmp_path)
-    (wd / "scripts").mkdir(exist_ok=True)
-    (wd / "scripts" / "waiver.tcl").write_text(
-        "# waive -rules {W391} \\\n"
-        '#       -comment "an example, not an entry"\n'
-        "set_option mthresh 8192\n"
-        "waive -rules {W257} \\\n"
-        "      -file {foo.v} \\\n"
-        '      -comment "synthesis ignores the delay; simulation-only model"\n'
-    )
+    (wd / "scripts/waiver.tcl").write_text(body + "\n")
     assert rb.finalize(wd, [], []) == 0
     assert json.loads((wd / "result.json").read_text())["status"] == "pass"
 
 
-def test_shipped_waiver_template_satisfies_its_own_backstop(tmp_path):
-    """The deployed template must not itself be BLOCKED — its examples are commented out."""
+@pytest.mark.parametrize(
+    "body",
+    [
+        "waive -rules {W257} -comment {documented reason}",
+        'waive -rules {W257} -comment ""',
+        'if {1} {waive -rules {W257} -comment ""}',
+    ],
+)
+def test_waiver_problem_can_be_returned_without_editing_the_script(tmp_path, body):
     wd = _clean_workdir(tmp_path)
     (wd / "scripts").mkdir(exist_ok=True)
-    shutil.copy(
-        REPO_ROOT / "skills/lint-cdc/templates/scripts/waiver.tcl",
-        wd / "scripts" / "waiver.tcl",
-    )
-    assert rb.waiver_defects(wd) == []
+    (wd / "scripts/waiver.tcl").write_text(body + "\n")
+    reason = "The applied waiver lacks a task-grounded justification."
+    assert rb.finalize(wd, [], [], "lint-cdc", reason) == 0
+    result = json.loads((wd / "result.json").read_text())
+    assert result["status"] == "fail"
+    assert result["stage_specific"]["fail_reason"] == reason
+    assert result["stage_specific"]["fix_owner"] == "lint-cdc"
+    assert (wd / "scripts/waiver.tcl").read_text() == body + "\n"
 
 
 def test_finalize_blocked_on_internal_raise(tmp_path, monkeypatch):

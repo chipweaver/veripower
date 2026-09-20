@@ -2,17 +2,10 @@
 """simplan — simulation-plan-stage CLI.
 
 Verbs (one stage = one tool):
-  materialize-scaffold  resolve the agents against top-io.json          (exit 0; fail-loud)
   check-scaffold        structural+semantic+coverage gate        (exit 0 OK / 1 fix-message)
   finalize              assemble the lean result.json            (exit 0 written / 2 BLOCKED)
 
-Thin dispatcher: each subcommand parses its own flags and calls into the simplan.*
-library. Library imports are deferred into each handler (NOT top-level) so --help and
-verb dispatch run before the sibling library modules need to exist; that is the
-load-bearing reason when this template is copied per stage. A top-level `from simplan
-import materialize, scaffold, …` would ImportError if a sibling module is absent. Keep
-them lazy. (Library modules themselves use top-level absolute imports; only this thin
-dispatcher defers.)
+Each handler loads its implementation after argument parsing.
 """
 
 import argparse
@@ -28,12 +21,6 @@ from pathlib import Path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 
-def _cmd_materialize_scaffold(a: argparse.Namespace) -> int:
-    from simplan import materialize
-
-    return materialize.run(a.plan, a.spec)
-
-
 def _cmd_check_scaffold(a: argparse.Namespace) -> int:
     from simplan import scaffold
 
@@ -46,7 +33,6 @@ def _cmd_finalize(a: argparse.Namespace) -> int:
     return result.finalize(
         a.workdir,
         a.spec,
-        revision=a.revision,
         fail_reason=a.fail_reason,
         fix_owner=a.fix_owner,
     )
@@ -55,24 +41,6 @@ def _cmd_finalize(a: argparse.Namespace) -> int:
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="simplan", description="simulation-plan-stage CLI")
     sub = p.add_subparsers(dest="cmd", required=True)
-
-    sp = sub.add_parser(
-        "materialize-scaffold",
-        help="resolve the agents' interface_groups against top-io.json",
-    )
-    sp.add_argument(
-        "--plan",
-        required=True,
-        type=Path,
-        help="the simulation-plan workdir holding the sidecars",
-    )
-    sp.add_argument(
-        "--spec",
-        required=True,
-        type=Path,
-        help="the specification workdir: top-io.json is read from it",
-    )
-    sp.set_defaults(func=_cmd_materialize_scaffold)
 
     sp = sub.add_parser("check-scaffold", help="structural + semantic + coverage gate")
     sp.add_argument(
@@ -102,9 +70,6 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="the one-line reason this round could not deliver; its presence is the failure. "
         "Absent = the stage delivered what it owes",
-    )
-    sp.add_argument(
-        "--revision", default=None, help="agent-composed revision narrative"
     )
     sp.add_argument(
         "--fix-owner",

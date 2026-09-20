@@ -7,7 +7,7 @@ Orchestrator, which has no injected dispatch.json of its own and drives the
 whole tree directly via `kernel.py` CLI args — see the (d) allowlist below).
 
 Four checks, in increasing strength:
-  (a) the five self-navigation token classes are COMPLETELY
+  (a) the four self-navigation token classes are COMPLETELY
       gone from skills/ + framework/.
   (b) no cross-stage `parents[3]` climb remains in skills/ (same-stage
       self-location — a script resolving its OWN templates/ dir via
@@ -46,13 +46,14 @@ def _grep(pattern, *paths, fixed=True):
     return subprocess.run(args, capture_output=True, text=True, cwd=ROOT)
 
 
-# ── (a) the five self-navigation token classes must be COMPLETELY gone ───────
+# ── (a) legacy self-navigation tokens must be gone ──────────────────────────
+# Relative paths within a delivered artifact tree are legitimate; the checks
+# below target cross-stage locations, not the general-purpose relpath function.
 def test_self_navigation_tokens_gone():
     for pat in (
         "import seed",
         "from . import seed",
         "../../../rtl-design",
-        "os.path.relpath",
         "MY_MODULE_ROOT",
     ):
         r = _grep(pat, "skills", "framework")

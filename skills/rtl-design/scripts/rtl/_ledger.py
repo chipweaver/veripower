@@ -1,18 +1,4 @@
-"""rtl._ledger — the two authored sidecars this stage emits, and the merge helper.
-
-`rtl-files.json` (per-child files + incdirs) and `constraint-annotations.json` (per-child
-SGDC/SDC annotations) together hold everything the reaped child reports carry. They are split
-because their consumers are: simulation declares only the file layout, so bundling the two would
-invalidate simulation's proof on an annotation-only edit.
-
-In memory the two are one dict, child -> {files, incdirs?, annotations}, because that is
-the shape the child reports arrive in, so a round that re-authors a subset overlays. On disk they
-are two files, each validated against its own schema and each separately declarable as a
-downstream input.
-
-The stage authors both files itself; load_ledger() reads them back and fails loud rather than
-let finalize emit degraded output from partial state.
-"""
+"""Validate the integrated RTL inputs and the separate implementation annotations."""
 
 from __future__ import annotations
 
@@ -63,23 +49,9 @@ def paths(workdir) -> tuple[Path, Path]:
     return workdir / FILES_NAME, workdir / ANNOTATIONS_NAME
 
 
-def ledger_exists(workdir) -> bool:
-    return all(p.is_file() for p in paths(workdir))
-
-
 def load_ledger(workdir) -> dict:
-    """Read + schema-validate both sidecars and merge them into one child -> record dict.
-
-    A child present in one file and absent from the other is a defect, not a partial
-    result: the two are written together by the same verb.
-    """
+    """Validate both sidecars and return the ordered compilation inputs."""
     files_path, ann_path = paths(workdir)
     files = _read_validated(files_path, "rtl-files.schema.json")
-    anns = _read_validated(ann_path, "constraint-annotations.schema.json")
-    if set(files) != set(anns):
-        only_f, only_a = sorted(set(files) - set(anns)), sorted(set(anns) - set(files))
-        raise LedgerError(
-            f"{FILES_NAME} and {ANNOTATIONS_NAME} disagree on the child roster: "
-            f"only in files={only_f}, only in annotations={only_a}"
-        )
-    return {name: {**files[name], "annotations": anns[name]} for name in files}
+    _read_validated(ann_path, "constraint-annotations.schema.json")
+    return files

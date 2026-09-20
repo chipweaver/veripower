@@ -6,6 +6,7 @@ test_facts_*/test_rules/test_schedule.
 """
 
 import json
+import shutil
 import subprocess
 import sys
 from datetime import datetime, timezone
@@ -79,7 +80,7 @@ _STAGE_SPECIFIC = {
                 "id": "R-1",
                 "met": True,
                 "actual": 0.0,
-                "measured": "qor.rpt worst Critical Path Slack — setup only",
+                "measured": "timing_setup.rpt minimum setup slack",
             }
         ]
     },
@@ -89,10 +90,6 @@ _STAGE_SPECIFIC = {
         "timing": {
             "setup": {"worst_slack_ns": 0.1, "met": True, "worst_path": "p"},
             "hold": {"worst_slack_ns": 0.1, "met": True, "worst_path": "p"},
-            "coverage": {
-                "output_bits": 4,
-                "output_bits_timed": 4,
-            },
         },
     },
     "simulation": {},
@@ -512,17 +509,14 @@ def test_triage_splits_one_analysis_into_one_diagnosis_per_root_cause(
 
 
 def test_triage_complete_reap_never_yields_fail_verdict(tmp_path, monkeypatch):
-    # triage 无独立 fail 态. A schema-legal result.json (the envelope allows
-    # status ∈ {pass, fail}; the triage schema does not pin it) that carries status="fail"
-    # carrying findings[] must NOT produce an outcome verdict="fail" — a non-proof
-    # rule's fail outcome must not enter the stage-proof work set.
+    # A completed diagnosis records analysis completion, not a verification failure.
     monkeypatch.chdir(tmp_path)
     module = "triagefail"
     d = _dispatch_triage(tmp_path, module, sim_run=4)
     _write_triage_result(
         module,
         d["workdir"],
-        status="fail",  # schema-legal, but triage has no fail state
+        status="pass",
         stage_specific={
             "findings": [
                 {"anchor": "a.v:1", "root_cause": "rtl-design", "reason": "why"}
@@ -547,45 +541,92 @@ def test_triage_complete_reap_never_yields_fail_verdict(tmp_path, monkeypatch):
     assert any(e["type"] == "diagnosis" for e in store.read_events(module))
 
 
-def test_triage_skipped_reap_blocks_no_diagnosis(tmp_path, monkeypatch):
+def test_unresolved_triage_is_delivered_and_uses_existing_decision_path(
+    tmp_path, monkeypatch
+):
     monkeypatch.chdir(tmp_path)
-    module = "triage2"
-    d = _dispatch_triage(tmp_path, module, sim_run=3)
-    _write_triage_result(
-        module,
-        d["workdir"],
-        status="fail",
-        stage_specific={
-            "findings": [],
-            "reason": "no fail case to analyze",
-        },
+    module = "unresolved"
+    _build_full_chain(tmp_path, module)
+    d = kernel.cmd_dispatch(module, "simulation", None)
+    sim_cli = ROOT / "skills/simulation/scripts/sim/__main__.py"
+    proc = subprocess.run(
+        [
+            sys.executable,
+            str(sim_cli),
+            "finalize",
+            "--workdir",
+            d["workdir"],
+            "--phase",
+            "fail",
+            "--fail-reason",
+            "Mismatch; cause needs investigation",
+        ],
+        capture_output=True,
+        text=True,
     )
-    r = _run_json(
-        tmp_path,
-        "reap",
-        "--module",
-        module,
-        "--rule",
-        "simulation-triage",
-        "--run",
-        str(d["run"]),
+    assert proc.returncode == 0, proc.stderr
+    assert kernel.cmd_reap(module, "simulation", d["run"])["verdict"] == "fail"
+    action = kernel.schedule.decide(module)
+    assert action["rule"] == "simulation-triage"
+    td = kernel.cmd_dispatch(
+        module, action["rule"], None, action["params"], action["caused_by"]
     )
-    assert r["ok"] is True
-    assert r["verdict"] == "blocked"
-
+    tri_cli = ROOT / "skills/simulation-triage/scripts/simtriage/__main__.py"
+    reason = (
+        "The retained run lacks the observation needed to distinguish the two causes"
+    )
+    proc = subprocess.run(
+        [
+            sys.executable,
+            str(tri_cli),
+            "finalize",
+            "--workdir",
+            td["workdir"],
+            "--json-stdin",
+        ],
+        input=json.dumps({"findings": [], "reason": reason}),
+        capture_output=True,
+        text=True,
+    )
+    assert proc.returncode == 0, proc.stderr
+    assert kernel.cmd_reap(module, "simulation-triage", td["run"])["verdict"] == "pass"
     events = store.read_events(module)
-    outcomes = [e for e in events if e["type"] == "outcome"]
-    assert len(outcomes) == 1
-    assert outcomes[0]["verdict"] == "blocked"
-    assert outcomes[0]["reason"] == "no_attribution"
-    assert outcomes[0]["proofs"] == [] and outcomes[0]["outputs"] == {}
-    assert not any(e["type"] == "diagnosis" for e in events)
-
-    # blocked -> never promoted
-    canonical = (
-        store.module_root(module) / "Verification" / "simulation-triage" / "result.json"
-    )
-    assert not canonical.exists()
+    diagnosis = events[-1]
+    # Repeated collection preserves one unresolved decision.
+    assert kernel.cmd_reap(module, "simulation-triage", td["run"])["verdict"] == "pass"
+    events = store.read_events(module)
+    assert [e for e in events if e["type"] == "diagnosis"] == [diagnosis]
+    assert diagnosis["type"] == "diagnosis" and diagnosis["reason"] == reason
+    assert "attribution" not in diagnosis and "fix_owner" not in diagnosis
+    assert (
+        store.module_root(module) / "Verification/simulation-triage/result.json"
+    ).exists()
+    for _ in range(2):
+        action = kernel.schedule.decide(module)
+        assert action["action"] == "ESCALATE"
+        assert action["candidates"] == [
+            {"diagnosis": diagnosis["id"], "reason": reason}
+        ]
+    assert store.read_events(module) == events
+    assert kernel.cmd_diagnose(
+        module,
+        "resolved",
+        "simulation",
+        d["run"],
+        None,
+        "simulation",
+        "delegated fixture",
+        "New observation identifies the checker defect",
+        diagnosis["id"],
+    )["ok"]
+    action = kernel.schedule.decide(module)
+    assert action["action"] == "DISPATCH" and action["rule"] == "simulation"
+    assert action["caused_by"] == [["simulation", d["run"]]]
+    assert action["diagnosis_refs"] == ["resolved"]
+    # Recollecting the same analysis must not undo the resolved attribution.
+    assert kernel.cmd_reap(module, "simulation-triage", td["run"])["verdict"] == "pass"
+    action = kernel.schedule.decide(module)
+    assert action["action"] == "DISPATCH" and action["diagnosis_refs"] == ["resolved"]
 
 
 def test_triage_local_root_cause_names_local_repair(tmp_path, monkeypatch):
@@ -756,7 +797,25 @@ def test_re_reap_old_triage_run_uses_its_own_sim_run(tmp_path, monkeypatch):
         str(d1["run"]),
     )
     diags = [e for e in store.read_events(module) if e["type"] == "diagnosis"]
-    # the last diagnosis is from re-reaping run 1 -> must carry run 1's sim_run (5), not 9.
+    # Unchanged collection does not add a diagnosis.
+    assert [d["subject"]["outcome_run"] for d in diags] == [5, 9]
+    # Changed evidence in the old run still refers to that run's original subject.
+    _write_triage_result(
+        module,
+        d1["workdir"],
+        status="pass",
+        stage_specific={
+            "findings": [
+                {
+                    "anchor": "a.v:2",
+                    "root_cause": "rtl-design",
+                    "reason": "new evidence",
+                }
+            ]
+        },
+    )
+    assert kernel.cmd_reap(module, "simulation-triage", d1["run"])["ok"]
+    diags = [e for e in store.read_events(module) if e["type"] == "diagnosis"]
     assert diags[-1]["subject"]["outcome_run"] == 5
 
 
@@ -792,10 +851,8 @@ def test_outputs_name_the_artifacts_that_are_the_evidence(tmp_path, monkeypatch)
     assert "evidence" not in proof
 
 
-def test_triage_complete_without_findings_blocked(tmp_path, monkeypatch):
-    # A triage that attributes MUST carry non-empty findings[] each with an
-    # anchor (so the record the fix owner opens always says where). A complete analysis
-    # with no findings violates the schema -> reap derives blocked.
+def test_unresolved_triage_without_reason_is_incomplete(tmp_path, monkeypatch):
+    # An unresolved diagnosis needs a reason; an empty object is incomplete.
     monkeypatch.chdir(tmp_path)
     module = "d4a"
     d = _dispatch_triage(tmp_path, module, sim_run=1)
@@ -803,7 +860,7 @@ def test_triage_complete_without_findings_blocked(tmp_path, monkeypatch):
         module,
         d["workdir"],
         status="pass",
-        stage_specific={"findings": [], "reason": "nothing to analyse"},
+        stage_specific={"findings": []},
     )  # no findings
     r = _run_json(
         tmp_path,
@@ -1235,3 +1292,90 @@ def test_dispatch_preserves_a_diagnosis_reason_from_any_source(tmp_path, source)
     assert result["ok"]
     dispatch = json.loads((Path(result["workdir"]) / "dispatch.json").read_text())
     assert dispatch["reasons"] == [reason]
+
+
+def test_blocked_rechecks_never_reuse_an_earlier_pass(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    _build_full_chain(tmp_path, "baseline")
+    assert kernel.cmd_signoff("baseline", "fixture", "accept baseline")["ok"]
+    for rule in rules.FORWARD_PRIORITY:
+        for cause in ("missing", "unparseable"):
+            module = f"{rule}-{cause}"
+            shutil.copytree("baseline", module)
+            d = kernel.cmd_dispatch(module, rule, None)
+            wd = Path(d["workdir"])
+            if cause == "unparseable":
+                (wd / "result.json").write_text("{incomplete json")
+            result = kernel.cmd_reap(module, rule, d["run"])
+            assert result["verdict"] == "blocked" and result["reason"] == cause
+            events = store.read_events(module)
+            assert facts.proof_outcome(events, rule) is None
+            assert not facts.proof_valid(module, events, rule)
+            assert not facts.signed_off(module, events)
+            assert not kernel.cmd_signoff(module, "fixture", "incomplete delivery")[
+                "ok"
+            ]
+            action = kernel.schedule.decide(module, closing=True)
+            assert action["action"] == "DISPATCH" and action["rule"] == rule
+            # Correct and collect the same attempt; no historical event is edited.
+            canonical = Path("baseline").joinpath(*rules.workdir_root(rule))
+            env = json.loads((canonical / "result.json").read_text())
+            for a in env["artifacts"]:
+                source, target = canonical / a["path"], wd / a["path"]
+                target.parent.mkdir(parents=True, exist_ok=True)
+                if source.is_dir():
+                    shutil.copytree(source, target, dirs_exist_ok=True)
+                else:
+                    shutil.copy2(source, target)
+            env["produced_at"] = _now_iso()
+            (wd / "result.json").write_text(json.dumps(env))
+            assert kernel.cmd_reap(module, rule, d["run"])["verdict"] == "pass"
+            assert kernel.schedule.decide(module)["action"] == "DONE"
+            assert not facts.signed_off(module, store.read_events(module))
+
+
+def test_triage_recollection_completes_interrupted_diagnosis_recording(
+    tmp_path, monkeypatch
+):
+    monkeypatch.chdir(tmp_path)
+    module = "interrupted-triage"
+    d = _dispatch_triage(tmp_path, module, sim_run=4)
+    _write_triage_result(
+        module,
+        d["workdir"],
+        status="pass",
+        stage_specific={
+            "findings": [
+                {
+                    "anchor": "a.v:1",
+                    "root_cause": "rtl-design",
+                    "reason": "implementation defect",
+                },
+                {
+                    "anchor": "tb.sv:2",
+                    "root_cause": "simulation",
+                    "reason": "independent checker defect",
+                },
+            ]
+        },
+    )
+    append = store.append_event
+
+    def interrupted(module, event, ts):
+        if event["type"] == "diagnosis" and event.get("fix_owner") == "simulation":
+            raise OSError("recording interrupted")
+        return append(module, event, ts)
+
+    monkeypatch.setattr(store, "append_event", interrupted)
+    with pytest.raises(OSError, match="recording interrupted"):
+        kernel.cmd_reap(module, "simulation-triage", d["run"])
+    first = [e for e in store.read_events(module) if e["type"] == "diagnosis"]
+    assert len(first) == 1
+    monkeypatch.setattr(store, "append_event", append)
+    for _ in range(2):
+        assert (
+            kernel.cmd_reap(module, "simulation-triage", d["run"])["verdict"] == "pass"
+        )
+    diags = [e for e in store.read_events(module) if e["type"] == "diagnosis"]
+    assert len(diags) == 2 and diags[0] == first[0]
+    assert {d["fix_owner"] for d in diags} == {"rtl-design", "simulation"}

@@ -21,10 +21,10 @@ def dut_port_map(agents: list[dict], boundary) -> str:
     """Validate the agent-to-group assignment and build tb_top's DUT port bindings.
 
     Walks the BOUNDARY, not the agents, so a port cannot be silently left out: every entry in
-    top-io.json is bench-driven or resolves to exactly one agent, and anything else exits here.
+    top-io.json is top-level control or resolves to exactly one agent, and anything else exits here.
     Called during the in-memory render pass before any file is written, so a failure leaves
     nothing on disk. Returns the block with a leading ',\\n' so it concatenates after the
-    bench-driven ports.
+    top-level control ports.
     """
     owner: dict[str, str] = {}
     for agent in agents:
@@ -53,8 +53,8 @@ def dut_port_map(agents: list[dict], boundary) -> str:
     }
     lines: list[str] = []
     for name in boundary.port_order:
-        if name in boundary.bench_driven:
-            continue  # emitted by the caller, which knows how it drives each one
+        if name in boundary.control_ports:
+            continue  # connected by the caller
         aname = port_agent.get(name)
         if aname is None:
             group = next(

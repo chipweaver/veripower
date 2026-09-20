@@ -91,14 +91,14 @@ def test_minimal_complete_writes_result_json_with_envelope(tmp_path):
     ).validate(env)
 
 
-def test_no_attribution_derives_status_fail(tmp_path):
+def test_unresolved_analysis_is_a_completed_result(tmp_path):
     r = _run(
         tmp_path,
         {"findings": [], "reason": "input incomplete: no fail_reason"},
     )
     assert r.returncode == 0, r.stderr
     env = json.loads((tmp_path / "result.json").read_text())
-    assert env["status"] == "fail"
+    assert env["status"] == "pass"
     assert env["stage_specific"]["findings"] == []
 
 

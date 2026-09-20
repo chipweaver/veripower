@@ -160,7 +160,7 @@ The third column in artifact tables tells you whether to read it. **Must read** 
 
 **The pipeline follows the actual authorization.** It presents unresolved decisions when human input is needed, continues within an existing delegation, and records acceptance when it is in scope.
 
-The items marked "read xx" or "glance at xx" are review actions. The pipeline won't stop for them. Review lint-cdc's `waiver.tcl` directly; it has no separate approval prompt.
+The items marked "read xx" or "glance at xx" are review actions. The pipeline won't stop for them. Review lint-cdc's waived findings and their basis in its reports; there is no separate approval prompt.
 
 ---
 
@@ -215,7 +215,7 @@ The items marked "read xx" or "glance at xx" are review actions. The pipeline wo
 | `semantic-review/*.md` | Review of RTL against design intent | Useful for reviewing this delivery |
 | `*.v` | RTL source | Optional |
 | `constraint-annotations.json` | Timing exceptions and generated clocks implied by this RTL, using real module names. Lint-cdc and synthesis constraints come from here | Optional |
-| `rtl-files.json` | Per-child `files[]` + `incdirs[]`, every downstream filelist is generated from it | No need |
+| `rtl-files.json` | Global ordered `files[]`, include paths and simulation-only DPI sources; downstream filelists are generated from it | No need |
 
 **Your participation:** `semantic-review/*.md` explains the RTL review findings and their resolution. Use it to assess the delivery or discuss a concrete concern.
 
@@ -231,13 +231,14 @@ After this stage, the pipeline forks into the implementation chain and the simul
 
 | File | What it is | Read it? |
 |---|---|---|
-| `scripts/waiver.tcl` | Violations it judged acceptable, each with a reason | **Must read** |
-| `lint-report.txt` / `cdc-report.txt` | Raw SpyGlass reports | Optional |
+| `scripts/waiver.tcl` | Waiver declarations and analysis options | As needed |
+| `lint-report.txt` / `cdc-report.txt` | Native reported and waived findings, including recorded waiver reasons | Review when waivers are used |
 | `lint-violations.json` / `cdc-violations.json` | Structured violation lists | Optional |
 | `scripts/local.sgdc` | SGDC annotations added by this stage for port/clock associations the seed can't know | Optional |
 | `scripts/constraints.sgdc` | Assembled SGDC: spec seed + RTL annotations + `local.sgdc` | Reassembled each run; edit `scripts/local.sgdc` for stage-local annotations |
 
-**Your action: glance at `scripts/waiver.tcl`.** Violations it deems acceptable are written as `waive` entries with reasons. **Review waived violations as well as the reported counts.** Pass/fail itself is determined by the SpyGlass ruleset. No input needed from you.
+Review the actual waived findings and their basis against the task's requirements and authorization.
+The scripts check report completeness and counts; they do not judge whether a waiver is justified.
 
 ---
 
@@ -249,12 +250,13 @@ After this stage, the pipeline forks into the implementation chain and the simul
 
 | File | What it is | Read it? |
 |---|---|---|
-| `reports/qor.rpt` | QoR report. PPA judgment reads this | Optional |
+| `reports/timing_setup.rpt` / `reports/area.rpt` | Precise setup slack and cell-area measurements | Optional |
+| `reports/qor.rpt` | QoR summary and consistency context | Optional |
 | `constraints.local.sdc` | Timing exceptions transcribed from `constraint-annotations.json` | Optional |
 | `out/<TOP>_syn.v` / `_syn.sdc` / `_syn.sdf` | Post-synthesis netlist, exported SDC, delay annotation | Consumed by downstream timing/power |
 | `constraints.sdc` | Assembled constraints: spec SDC + `constraints.local.sdc` | Assembly product |
 
-**Your action: none.** To review, read `reports/qor.rpt` and `result.json`'s `requirements[]`. The judgment comes from dc_shell's QoR report, against the requirements recorded in the ledger. SDC exceptions come from the `constraint-annotations.json` declared by rtl-design. A path that cannot meet timing is routed upstream for repair.
+**Your action: none.** To review, read the timing and area reports alongside `result.json`'s `requirements[]`. Their measurements are compared with the requirements recorded in the ledger. SDC exceptions come from the `constraint-annotations.json` declared by rtl-design. A path that cannot meet timing is routed upstream for repair.
 
 ---
 
@@ -266,9 +268,9 @@ After this stage, the pipeline forks into the implementation chain and the simul
 
 | File | What it is | Read it? |
 |---|---|---|
-| `timing-report.txt` | Setup/hold slack report. The judgment reads this | Optional |
+| `timing-report.txt` | Setup/hold slack, endpoint checks, port delays and untested reasons | Optional |
 
-**Your action: none.** To review, read `timing-report.txt`. The judgment comes from pt_shell's report.
+**Your action: none.** To review, read `timing-report.txt`. The stage assesses reported timing and whether the analysis scope and exceptions match the task.
 
 Synthesis and STA choose work from the actual change. Applicable measurements can be judged against current requirements without recalculation. The `run` entrypoint uses `config.tcl` and temporary working data. Successful calculations move checked products into the workdir; failed calculations retain logs and temporary output for diagnosis until retry. Source notes travel with the result without becoming downstream hardware inputs. Setup, calculation and closure are independent; a new stage run does not require a new synthesis.
 
@@ -340,7 +342,7 @@ The one thing that needs you: the interrupted round will still show as "in-fligh
 
 **It's stuck / keeps editing the same thing**
 
-The flow presents the unresolved cause and candidate repair owners. Resolve the attribution from evidence under the actual task authorization; `diagnose` records that decision.
+The flow reports what prevents progress. Address that cause under the actual task authorization, then resume scheduling. Stage results and triage findings can already route repairs; `diagnose` records a later addition or correction to repair ownership.
 
 A stage may repair its own work. Revise intent only when the evidence and authorization support a requirement change.
 
@@ -417,7 +419,7 @@ The body of this manual uses familiar terms where possible. Below are the words 
 | event log / `events.jsonl` | Audit log, the only persistent state file |
 | dispatch / reap | Send a stage off to run / collect its result |
 | decide | The scheduler. Ask it "what next?" and it returns exactly one action |
-| DISPATCH / REAP / YIELD / DONE / ESCALATE | Send off / collect / something is still running, wait / all green / **needs an attribution or decision** |
+| DISPATCH / REAP / YIELD / DONE / ESCALATE | Send off / collect / something is still running, wait / all green / **a reported blocker needs resolution** |
 | workdir / run | A stage's working directory for a particular round / the round number |
 | input closure | All upstream artifacts a result transitively depends on |
 | fix_owner | Which stage should fix this failure |
@@ -433,7 +435,7 @@ The body of this manual uses familiar terms where possible. Below are the words 
 | 2 | Requirements and boundary decisions | specification | Resolve open requirements and confirm bounds/boundary with their evidence | Follow the actual authorization; do not infer technical proof from approval | §1.4 |
 | 3 | Delivery handoff | specification, after independent review | Review the design and findings; the stage resolves violations before passing | Yes | §1.4 |
 | 4 | Delivery handoff | simulation-plan | Review the plan and findings as needed | Yes | §1.4 |
-| 5 | ESCALATE | any stage | Attribute the failure to a stage and say why | No | §1.5 |
+| 5 | ESCALATE | any stage | Address the reported blocker; clarify repair ownership when needed | The blocker must be resolved; human involvement follows authorization | §1.5 |
 | 6 | Signoff | after all stages | Accept the evidence under the actual authorization | Only needed when recorded acceptance is in scope | §1.6 |
 
 These are decision and review points, not mandatory permission prompts. Human participation follows the actual authorization; signoff records acceptance when the task calls for it.

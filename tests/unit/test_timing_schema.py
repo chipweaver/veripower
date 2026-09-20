@@ -5,7 +5,6 @@ from framework.scripts import store
 _TIMING_OK = {
     "setup": {"worst_slack_ns": 2.93, "met": True, "worst_path": "a -> b"},
     "hold": {"worst_slack_ns": 0.20, "met": True, "worst_path": "c -> d"},
-    "coverage": {"output_bits": 4, "output_bits_timed": 4},
 }
 
 

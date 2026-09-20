@@ -57,6 +57,8 @@ def main():
     log_path = root / "regression-log.txt"
     counts_path = root / "case-results.json"
     summary_path = root / "case-results-summary.md"
+    for path in (root / "result.json", counts_path, summary_path):
+        path.unlink(missing_ok=True)
 
     if not testlist_path.is_file():
         sys.exit(
@@ -158,7 +160,7 @@ def main():
 
 ## Status Legend
 
-- `PASS`: testbench reported no UVM_FATAL or UVM_ERROR.
+- `PASS`: UVM completed without UVM_FATAL/UVM_ERROR and the simulator exited successfully.
 - `FAIL`: errors reported; investigate per-test log in `{log_dir}/`.
 - `NOT_RUN`: testcase declared but no result line present (likely a compile or selection issue).
 """

@@ -222,34 +222,68 @@ _CARRY_EXCLUDE = (
 def carry_self(root: Path, rule: str, workdir) -> None:
     """Copy the rule's selected canonical products into a fresh run directory.
 
-    Use writable copies so edits leave the source run unchanged. Exclude framework
-    files and the rule's per-round review records."""
+    Preserve links between copied products; copy the content of references outside
+    that set. All copies are writable without modifying the original targets.
+    Exclude framework files and the rule's per-round review records."""
     r = rules.RULES[rule]
     if not r.carry:
         return
-    stage_dir = _result_path(root, rule).parent
+    stage_dir = _result_path(root, rule).parent.resolve()
     if not stage_dir.is_dir():
         return
-    dest = Path(workdir)
-    products = (
-        p
-        for p in stage_dir.iterdir()
-        if p.name not in _CARRY_EXCLUDE and not p.is_symlink()
+    dest = Path(workdir).resolve()
+    products = (p for p in stage_dir.iterdir() if p.name not in _CARRY_EXCLUDE)
+    sources = (
+        src
+        for p in products
+        for src in ([p, *p.rglob("*")] if p.is_dir() and not p.is_symlink() else [p])
     )
-    sources = (src for p in products for src in (p.rglob("*") if p.is_dir() else [p]))
+    copies = {}
     for src in sources:
-        if not src.is_file() or src.is_symlink():
-            continue
         rel = src.relative_to(stage_dir)
         rel_str = rel.as_posix()
         if not any(fnmatch.fnmatch(rel_str, g) for g in r.carry):
             continue
         if any(fnmatch.fnmatch(rel_str, ng) for ng in r.no_carry):
             continue
-        d = dest / rel
-        d.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(src, d)
-        os.chmod(d, d.stat().st_mode | 0o200)
+        copies[src] = rel
+    with tempfile.TemporaryDirectory(prefix=".carry-", dir=dest.parent) as temporary:
+        pending = Path(temporary)
+        _copy_products({src: pending / rel for src, rel in copies.items()})
+        pending.chmod(dest.stat().st_mode)
+        os.replace(pending, dest)
+
+
+def _copy_products(copies: dict[Path, Path], ancestors=frozenset()) -> None:
+    for src, dst in copies.items():
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        if src.is_symlink():
+            target = src.parent / os.readlink(src)
+            if target not in copies:
+                target = src.resolve(strict=True)
+            if target in copies:
+                dst.symlink_to(os.path.relpath(copies[target], dst.parent))
+            else:
+                _copy_content(src, dst, ancestors)
+        elif src.is_dir():
+            dst.mkdir(exist_ok=True)
+        else:
+            _copy_content(src, dst, ancestors)
+
+
+def _copy_content(src: Path, dst: Path, ancestors=frozenset()) -> None:
+    """Materialize a referenced file or tree as independent, writable content."""
+    resolved = src.resolve(strict=True)
+    if src.is_dir():
+        if resolved in ancestors or dst.is_relative_to(resolved):
+            raise ValueError(f"cannot copy recursive directory reference: {src}")
+        copies = {
+            p: dst / p.relative_to(resolved) for p in [resolved, *resolved.rglob("*")]
+        }
+        _copy_products(copies, ancestors | {resolved})
+    else:
+        shutil.copy2(src, dst)
+        dst.chmod(dst.stat().st_mode | 0o200)
 
 
 def _cp_al(src: Path, dst: Path) -> None:

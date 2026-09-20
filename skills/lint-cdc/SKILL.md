@@ -28,8 +28,9 @@ declarations at their source.
 
 Run `make lint`, `make cdc`, or `make all` from the prepared workdir; `all` shares elaboration.
 The entrypoint withdraws the selected check's old summaries before execution. Wait for completion,
-read the reports and inspect violations. A waiver needs a specific `-comment` explaining why it is
-valid under the requirements; determine whether a warning limit applies before or after waivers.
+read the reports and inspect both reported and waived violations. The reports include native
+waiver details when messages were waived. Record the basis in `-comment`, with evidence references
+where needed; assess it against the requirements, including whether limits apply before or after waivers.
 Repair local setup errors and rerun the affected checks.
 
 ## Judge and close
@@ -41,8 +42,8 @@ python3 <skill>/scripts/lintcdc/__main__.py finalize --workdir {workdir} \
 ```
 
 Declare a judgment for every lint-cdc requirement using the reports and the actual waiver policy.
-`finalize` reads `lint-violations.json` and `cdc-violations.json` and checks waiver reasoning.
-Use `--fail-reason` for invalid or incomplete checks even if old reports contain numbers. Name
+`finalize` reads `lint-violations.json` and `cdc-violations.json`; it does not judge waiver reasoning.
+Use `--fail-reason` for unjustified waivers or invalid/incomplete checks, even when counts are zero. Name
 the repair owner from the defect, including this stage for its own setup; do not infer ownership
 from the path of an error. [Attribution guidance](references/attribution-rules.md) describes the constraint sources to check.
 Acceptance changes follow the user's actual authorization.

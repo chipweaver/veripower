@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://veripower.local/skills/simulation/result.schema.json",
   "title": "simulation result.json contract",
-  "description": "Complete contract for <module>/Verification/simulation/result.json. On status=fail, stage_specific.fail_reason is required (if/then below): the one-line failure narrative, absent on pass, and the only thing that says which sub-step tripped. Companions ride along when the reaped verify verdict held them — failing_cases on a smoke/regress failure, the two gap lists on a Rule-B route-out. Only routing-relevant fields are enumerated below; informational fields (total_cases, coverage_summary, etc.) live free under additionalProperties.",
+  "description": "Functional verification result. A failure records its cause and optional repair owner; the published regression log, case summary and per-test logs contain the case evidence.",
   "allOf": [
     {
       "$ref": "https://veripower.local/schemas/envelope.schema.json"
@@ -22,32 +22,6 @@
             "fail_reason": {
               "type": "string",
               "minLength": 1
-            },
-            "failing_cases": {
-              "description": "Failed testcase identifiers and diagnostics for simulation-triage.",
-              "type": "array",
-              "items": {
-                "type": "object",
-                "required": [
-                  "test_id",
-                  "error_message"
-                ],
-                "additionalProperties": false,
-                "properties": {
-                  "test_id": {
-                    "type": "string",
-                    "minLength": 1
-                  },
-                  "error_message": {
-                    "type": "string",
-                    "minLength": 1
-                  },
-                  "log_snippet": {
-                    "description": "Optional: the tail around the first UVM_ERROR / UVM_FATAL. Triage falls back to the full per-case log when it is absent or truncated.",
-                    "type": "string"
-                  }
-                }
-              }
             }
           },
           "additionalProperties": true

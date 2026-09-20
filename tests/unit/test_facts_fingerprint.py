@@ -31,6 +31,7 @@ def test_same_size_and_mtime_replacement_invalidates_recorded_input(tmp_path):
     recorded = facts.fingerprint(path)
     outcome = {
         "type": "outcome",
+        "rule": "timing-analysis",
         "outputs": {},
         "proofs": [
             {

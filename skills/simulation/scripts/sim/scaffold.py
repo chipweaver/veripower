@@ -48,16 +48,9 @@ def run_scaffold(plan_dir, template_dir: Path, out_dir: Path, spec_dir) -> int:
     sequences = spec.get("sequences", [])
     tests = spec.get("tests", [])
 
-    clk_port_name = boundary.primary["name"]
-    clk_half_period = float(boundary.primary["period_ns"]) / 2
-    rst_port_name = boundary.reset["name"]
-    # The bench's rst_n is active-low for every DUT so no agent branches on polarity; the
-    # inversion happens once, in the port binding below.
-    rst_drive = "rst_n" if boundary.reset["polarity"] == 0 else "~rst_n"
-
     rm_name = rm_cfg.get("name", "rule_rm")
     sb_name = sb_cfg.get("name", "scoreboard")
-    # Determine the observer agent (passive agent whose txn is compared by scoreboard)
+    # Determine the agent whose transactions the scoreboard checks.
     obs_agent = sb_cfg.get("observer", "")
     if not obs_agent:
         # Omitting it is legal only with one agent (simplan check-scaffold rejects the rest),
@@ -70,7 +63,7 @@ def run_scaffold(plan_dir, template_dir: Path, out_dir: Path, spec_dir) -> int:
             )
         obs_agent = agents[0]["name"]
 
-    # Inport agents for RM (active agents that feed into RM)
+    # Agent monitor streams feeding the RM.
     rm_inports = rm_cfg.get("inports", [])
 
     # Two sets, split on who owns the content. `pending` is stubs: created once, then the
@@ -80,13 +73,22 @@ def run_scaffold(plan_dir, template_dir: Path, out_dir: Path, spec_dir) -> int:
     pending: list[tuple[Path, str]] = []
     derived: list[tuple[Path, str]] = []
 
+    reset_connections = "".join(f", .{r['name']}({r['name']})" for r in boundary.resets)
+    reset_ports = "\n".join(
+        f"{', ' if i else ''}input logic [{r['width'] - 1}:0] {r['name']}  // active {r['reset_polarity']}, "
+        f"{r['reset_kind']}, clock domain {r['clock_domain']}"
+        for i, r in enumerate(boundary.resets)
+    )
+    # Keep the derived port list outside the authored clocking blocks and modports.
+    derived.append(
+        (out_dir / "tb/uvm/interface" / f"{module}_reset_ports.svh", reset_ports)
+    )
+
     # --- Per-agent files ---
     for agent in agents:
         aname = agent["name"]
         mode = agent["mode"]
-        # The agent's ports are its interface_groups resolved against top-io.json. Clock and
-        # reset never appear: agent_if's header already takes clk/rst_n and tb_top drives them,
-        # so a DUT clock re-declared in a vif would bind that port to a signal nothing drives.
+        # Data ports come from the agent groups; clocks and resets connect separately at tb_top.
         signals = boundary.signals_for(agent.get("interface_groups") or [])
         fields = [{**sig, "type": "logic", "rand": True} for sig in signals]
 
@@ -146,7 +148,16 @@ def run_scaffold(plan_dir, template_dir: Path, out_dir: Path, spec_dir) -> int:
         # Driver (rendered for every agent so agent_agent.sv's `m_driver` type
         # declaration always resolves; a passive agent's driver class compiles but is
         # never instantiated -- agent_agent.sv guards creation with get_is_active()).
-        content = _render_template_file(template_dir, "agent_driver.sv", base)
+        content = _render_template_file(
+            template_dir,
+            "agent_driver.sv",
+            {
+                **base,
+                "DRIVER_TASK_NOTE": "  // TODO(driver): Implement the drive protocol through vif."
+                if mode == "active"
+                else "",
+            },
+        )
         dest = out_dir / "tb" / "uvm" / "agent" / f"{module}_{aname}_driver.sv"
         pending.append((dest, content))
 
@@ -330,28 +341,61 @@ def run_scaffold(plan_dir, template_dir: Path, out_dir: Path, spec_dir) -> int:
 
     # --- tb_top ---
     if_inst_lines: list[str] = []
+    clock_connections: list[str] = []
     config_db_lines: list[str] = []
     for agent in agents:
         aname = agent["name"]
+        groups = agent["interface_groups"]
+        clock = boundary.clock_for(groups)
+        if clock is None:
+            domains = sorted(
+                {d for g in groups for d in boundary.group_domain.get(g, set())}
+            )
+            clock_connections.append(
+                f"// TODO(interface): Connect {aname}_if.clk or author the required clocking; "
+                f"hardware domains: {', '.join(domains)}."
+            )
+        else:
+            clock_connections.append(f"assign {aname}_if.clk = {clock};")
         if_inst_lines.append(
-            f"  {module}_{aname}_if {aname}_if"
-            f"(.clk({boundary.clock_for(aname, agent.get('interface_groups') or [])}), "
-            f".rst_n(rst_n));"
+            f"  {module}_{aname}_if {aname}_if({reset_connections.removeprefix(', ')});"
         )
         config_db_lines.append(
             f'    uvm_config_db#(virtual {module}_{aname}_if)::set(null, "uvm_test_top.*", "{aname}_vif", {aname}_if);'
         )
 
     port_map = dut_port_map(agents, boundary)
-    extra_decls = "".join(f"  logic {c['name']};\n" for c in boundary.extra)
-    extra_gens = "".join(
-        f"\n  initial begin\n"
-        f"    {c['name']} = 0;\n"
-        f"    forever #{float(c['period_ns']) / 2:g} {c['name']} = ~{c['name']};\n"
-        f"  end\n"
-        for c in boundary.extra
+    clock_decls = "\n".join(
+        f"  {'wire' if c['direction'] == 'inout' else 'logic'} "
+        f"[{c['width'] - 1}:0] {c['name']};"
+        for c in boundary.clocks
     )
-    extra_ports = "".join(f",\n    .{c['name']}({c['name']})" for c in boundary.extra)
+    clock_gens = "\n".join(
+        f"  initial begin\n"
+        f"    {c['name']} = '0;\n"
+        f"    forever #{float(c['period_ns']) / 2:g} {c['name']} = ~{c['name']};\n"
+        f"  end"
+        for c in boundary.clocks
+        if c["direction"] == "input"
+    )
+    for c in boundary.clocks:
+        if c["direction"] == "inout":
+            clock_connections.append(
+                f"// TODO(interface): Connect the bidirectional clock {c['name']} for this test."
+            )
+    pending.append(
+        (
+            out_dir / "tb/uvm/top" / f"{module}_clocks.svh",
+            "// Agent observation clocks; authored and preserved across rounds.\n"
+            "// Included inside the TB top; DUT and top-level control signals are in scope.\n"
+            + "\n".join(clock_connections)
+            + "\n",
+        )
+    )
+    control_ports = ",\n".join(
+        f"    .{p['name']}({p['name']})" for p in boundary.clocks + boundary.resets
+    )
+    dut_connections = (control_ports + port_map).lstrip(",\n")
 
     content = _render_template_file(
         template_dir,
@@ -359,15 +403,15 @@ def run_scaffold(plan_dir, template_dir: Path, out_dir: Path, spec_dir) -> int:
         {
             "MODULE": module,
             "TOP": top,
-            "CLK_HALF_PERIOD": f"{clk_half_period:g}",
-            "CLK_PORT_NAME": clk_port_name,
-            "RST_PORT_NAME": rst_port_name,
-            "RST_DRIVE": rst_drive,
-            "EXTRA_CLOCK_DECLS": extra_decls,
-            "EXTRA_CLOCK_GENS": extra_gens,
-            "EXTRA_CLOCK_PORTS": extra_ports,
-            "DUT_PORT_MAP": port_map,
             "IF_INSTANTIATIONS": "\n".join(if_inst_lines),
+            "CLOCK_DECLS": clock_decls,
+            "CLOCK_GENS": clock_gens,
+            "RESET_DECLS": "\n".join(
+                f"  {'wire' if r['direction'] == 'inout' else 'logic'} "
+                f"[{r['width'] - 1}:0] {r['name']};"
+                for r in boundary.resets
+            ),
+            "DUT_CONNECTIONS": dut_connections,
             "CONFIG_DB_SETS": "\n".join(config_db_lines),
         },
     )
@@ -378,7 +422,19 @@ def run_scaffold(plan_dir, template_dir: Path, out_dir: Path, spec_dir) -> int:
     # from the plan and rewritten every round, and a reset placed to reach a state the design
     # only passes through has to outlive that.
     content = _render_template_file(
-        template_dir, "reset.svh", {"MODULE": module, "TOP": top}
+        template_dir,
+        "reset.svh",
+        {
+            "MODULE": module,
+            "TOP": top,
+            "RESET_TASKS": "\n".join(
+                f"// {r['name']}: active {r['reset_polarity']}, {r['reset_kind']}, "
+                f"clock domain {r['clock_domain']}.\n"
+                f"// TODO(reset): Drive {r['name']} for the planned initialization and reset tests."
+                for r in boundary.resets
+                if r["direction"] != "output"
+            ),
+        },
     )
     dest = out_dir / "tb" / "uvm" / "top" / f"{module}_reset.svh"
     pending.append((dest, content))

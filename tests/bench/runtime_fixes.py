@@ -252,7 +252,6 @@ def timing(BASE):
      report_timing -delay max
      report_timing -delay min
      check_timing
-     puts "Boundary output bits: [sizeof_collection [all_outputs]]"
      report_analysis_coverage
     }
     exit

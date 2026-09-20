@@ -24,7 +24,10 @@ def test_render_strict_leaves_sv_braces():
 
 def test_signal_decl_width():
     out = _render._signal_declarations(
-        [{"name": "a", "width": 8}, {"name": "b", "width": 1}]
+        [
+            {"name": "a", "width": 8, "direction": "input"},
+            {"name": "b", "width": 1, "direction": "output"},
+        ]
     )
     assert "logic [7:0] a;" in out
     assert "logic        b;" in out

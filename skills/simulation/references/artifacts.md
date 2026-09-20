@@ -4,10 +4,10 @@ All paths are relative to `{workdir}`.
 
 | Artifact | Purpose |
 |---|---|
-| `logs/<test>.status` | Test-written `PASS` or `FAIL`; a missing status means incomplete execution. |
+| `logs/<test>.status` | `PASS` or `FAIL` written after all UVM phases complete; missing status or a nonzero simulator exit fails the case. |
 | `regression-log.txt` | `RESULT` lines from the latest `make smoke` or `make regress`; the latter replaces the smoke summary. |
 | `structural-coverage.json` | URG instance subtrees in `per_instance`, keyed by full path, plus `uncovered[]` items. The gate judges `<top>_tb_top.u_dut`, using the scaffold's RTL `top`. |
-| `cov_merge/` | Original URG reports. |
+| `cov_merge/` | URG reports combining test/seed data from the current compilation. |
 | `case-results.json` | Suite counts from `write_summary.py`, using the regression log and test roster. Read by finalize. |
 | `case-results-summary.md` | Human-readable test results and failure pointers. |
 | `tb/`, `tests/`, `scripts/` | Verification sources, test roster (`tests/testlist.json`), data and helpers. |

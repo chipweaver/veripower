@@ -1,7 +1,8 @@
 # Run and assess verification
 
 Read the assigned work scope, plan/testpoints, requirements, current TB and earlier results in
-`{workdir}`. Run the required regression (`make regress`) and obtain the summary (`make summary`),
+`{workdir}`. Compile changed sources (`make simv`), run the required regression (`make regress`)
+and obtain the summary (`make summary`),
 using existing valid evidence where the task permits. Wait for tools to finish and inspect failed
 or missing tests; do not infer a cause from a missing status alone.
 
@@ -15,8 +16,7 @@ supporting evidence to their owner; do not edit upstream artifacts. Keep raw rep
 experiment used to support a diagnosis. Do not change acceptance to make a result pass.
 
 Return log/report paths and the outcome of the assigned work. For an unresolved regression failure,
-include the existing `failing_cases` records (`test_id`, `error_message`, optional `log_snippet`)
-so triage can locate it. Coverage gaps can be described in the failure reason and referenced
+identify the failing tests and their log locations. Coverage gaps can be described in the failure reason and referenced
 reports; their presence in a testpoint list does not determine repair ownership.
 
 Return `STATUS: DONE` when this work is complete, including an assessed failure; otherwise return

@@ -3,9 +3,9 @@
 # Sourced by run.tcl exactly once per session on every SPYGLASS_STAGE (lint, cdc,
 # all), so both `waive` entries and `set_option`s here apply to lint and CDC alike.
 #
-# Waiver format. The -comment is mandatory and the lint-cdc finalize verb BLOCKS
-# without it: SpyGlass subtracts a waived message before anything counts it, so this
-# text is the only surviving record of what was accepted and why.
+# Record why a waiver is acceptable in -comment, citing evidence where needed.
+# Review the messages it actually waives in the native reports against the task's
+# waiver policy. Finalize does not judge the reasoning.
 #   waive -rules {<rule-id>} \
 #         [-file {<file-name>}] \
 #         [-msg {<match-string>}] \

@@ -56,23 +56,14 @@ def _tcl_word(value: str) -> str:
 
 
 def _render_rtl_load_tcl(rtl_dir: Path) -> str | None:
-    """Render RTL in child-name order, preserving each child's declared file order."""
+    """Render RTL in the integrated compilation order."""
     rtl_files = _load_rtl_files(rtl_dir)
     if rtl_files is None:
         _err(f"missing or unreadable {rtl_dir / 'rtl-files.json'}")
         _err("  rtl-design writes it from its children's reports; re-run that stage.")
         return None
-    rtl_entries: list[str] = []
-    incdirs: list[str] = []
-    for name in sorted(rtl_files):
-        rec = rtl_files[name]
-        for d in rec.get("incdirs") or []:
-            entry = f"{rtl_dir}/{d}"
-            if entry not in incdirs:
-                incdirs.append(entry)
-        for f in rec.get("files") or []:
-            if f not in rtl_entries:
-                rtl_entries.append(f)
+    rtl_entries = rtl_files["files"]
+    incdirs = [f"{rtl_dir}/{d}" for d in rtl_files.get("incdirs", [])]
     if not rtl_entries:
         _err(f"{rtl_dir / 'rtl-files.json'} lists no RTL files")
         _err("  rtl-design writes it from its children's reports; re-run that stage.")

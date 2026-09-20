@@ -4,6 +4,8 @@ import json
 import sys
 from pathlib import Path
 
+import pytest
+
 REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO_ROOT / "skills" / "lint-cdc" / "templates" / "scripts"))
 
@@ -89,6 +91,45 @@ def _stage(root, body, stage_path="cdc/cdc_verify_struct/spyglass"):
     d.mkdir(parents=True, exist_ok=True)
     (d / "moresimple.rpt").write_text(body)
     (root / "env.sh").write_text('export TOP="${TOP:-spi_master}"\n')
+
+
+@pytest.mark.parametrize("duplicates", [False, True])
+def test_waived_messages_and_reasons_travel_in_the_existing_report(
+    tmp_path, duplicates
+):
+    _stage(tmp_path, _hdr(1, 1, 0, 0))
+    source = cr.locate("cdc", tmp_path / "spyglass_work")
+    row = "[4] W240 Warning work with spaces/core.v 1 10 Input is unused\n"
+    waiver = _hdr(1, 1, 0, 0) + "Waiver comment : See design rationale.\n" + row
+    if duplicates:
+        waiver += "Waiver comment : Overlapping waiver.\n" + row
+    source.with_name("waiver.rpt").write_text(waiver)
+    assert cr.run("cdc", tmp_path) == 0
+    assert waiver in (tmp_path / "cdc-report.txt").read_text()
+    doc = json.loads((tmp_path / "cdc-violations.json").read_text())
+    assert doc["totals"]["waived"] == 1
+    assert doc["violations"] == []
+
+
+@pytest.mark.parametrize("evidence", [None, "truncated", "wrong-count"])
+def test_incomplete_waiver_evidence_does_not_publish_a_clean_summary(
+    tmp_path, evidence
+):
+    _stage(tmp_path, _hdr(1, 1, 0, 0))
+    source = cr.locate("cdc", tmp_path / "spyglass_work")
+    for name in ("cdc-report.txt", "cdc-violations.json"):
+        (tmp_path / name).write_text("old success")
+    if evidence is not None:
+        body = _hdr(1, 1, 0, 0) if evidence == "truncated" else _hdr(0, 0, 0, 0)
+        source.with_name("waiver.rpt").write_text(body)
+    assert cr.run("cdc", tmp_path) != 0
+    assert not (tmp_path / "cdc-report.txt").exists()
+    assert not (tmp_path / "cdc-violations.json").exists()
+
+
+def test_zero_waived_messages_do_not_require_a_waiver_report(tmp_path):
+    _stage(tmp_path, CLEAN)
+    assert cr.run("cdc", tmp_path) == 0
 
 
 # ── parsing units ──────────────────────────────────────────────────────────
@@ -251,3 +292,45 @@ def test_run_location_precedence_verify_struct_wins(tmp_path):
     (setup / "cdc_setup.rpt").write_text(CLEAN)
     got = cr.locate("cdc", tmp_path / "spyglass_work").as_posix()
     assert got.endswith("cdc_verify_struct/spyglass/moresimple.rpt")
+
+
+@pytest.mark.parametrize("goal", ["cdc_setup", "cdc_setup_check"])
+def test_setup_only_cannot_publish_cdc_verdict_inputs(tmp_path, goal):
+    _stage(tmp_path, CLEAN, f"top/cdc/{goal}/spyglass_reports")
+    source = tmp_path / f"spyglass_work/top/cdc/{goal}/spyglass_reports/moresimple.rpt"
+    for name in ("cdc-report.txt", "cdc-violations.json"):
+        (tmp_path / name).write_text("previous result")
+
+    assert cr.run("cdc", tmp_path) == 1
+    assert not (tmp_path / "cdc-report.txt").exists()
+    assert not (tmp_path / "cdc-violations.json").exists()
+    assert source.read_text() == CLEAN
+
+
+@pytest.mark.parametrize("design_alias", [False, True])
+def test_structural_report_and_waivers_survive_both_native_locations(
+    tmp_path, design_alias
+):
+    work = tmp_path / "spyglass_work"
+    report_dir = work / "project/consolidated_reports/core_cdc_cdc_verify_struct"
+    report_dir.mkdir(parents=True)
+    source = report_dir / "moresimple.rpt"
+    source.write_text(_hdr(1, 1, 0, 0))
+    waiver = _hdr(1, 1, 0, 0) + (
+        "Waiver comment : See design rationale.\n"
+        "[4] Ac_unsync01 Warning core.v 1 10 Crossing uses a reviewed protocol\n"
+    )
+    source.with_name("waiver.rpt").write_text(waiver)
+    if design_alias:
+        aliases = work / "project/core/cdc/cdc_verify_struct/spyglass_reports"
+        aliases.mkdir(parents=True)
+        for name in ("moresimple.rpt", "waiver.rpt"):
+            (aliases / name).symlink_to(report_dir / name)
+    _stage(tmp_path, MIXED, "project/core/cdc/cdc_setup/spyglass_reports")
+
+    assert cr.run("cdc", tmp_path) == 0
+    data = json.loads((tmp_path / "cdc-violations.json").read_text())
+    assert Path(data["source"]).resolve() == source
+    assert data["totals"]["waived"] == 1
+    assert data["counts"] == {"error": 0, "warning": 0, "info": 0}
+    assert waiver in (tmp_path / "cdc-report.txt").read_text()

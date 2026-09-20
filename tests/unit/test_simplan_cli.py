@@ -6,7 +6,6 @@ ROOT = Path(__file__).resolve().parents[2]
 MAIN = ROOT / "skills/simulation-plan/scripts/simplan/__main__.py"
 
 _VERBS = (
-    "materialize-scaffold",
     "check-scaffold",
     "finalize",
 )

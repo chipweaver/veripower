@@ -40,6 +40,11 @@ Use [verify-task-contract.md](references/verify-task-contract.md) to run the req
 existing evidence; do not repeat unrelated tool work. Before closure, the case results and coverage
 must describe the tests and implementation being delivered, including any failed or unrun cases.
 
+`make simv`, `make smoke`/`make regress`, `make coverage` and `make summary` are independent:
+compile changed sources before running tests. Execution replaces the affected current evidence;
+coverage can combine multiple tests and seeds from the current compilation. Recompilation
+replaces that executable and its coverage databases; reporting alone preserves them.
+
 Read RTL, TB, reports and traces as needed. A focused experiment can distinguish missed stimulus,
 an incorrect check, instrumentation, an implementation defect and a requirement ambiguity. A
 behavior missing from the testpoint list does not determine which of these is responsible.
@@ -55,8 +60,7 @@ issue must return to the caller. Use a failure result for a known violation or i
 
 ```bash
 python3 <skill>/scripts/sim/__main__.py finalize --workdir {workdir} \
-  --phase fail --fail-reason "<unresolved cause and evidence>" [--fix-owner <rule>] \
-  [--verify-verdict <case-failure-record.json>]
+  --phase fail --fail-reason "<unresolved cause and evidence>" [--fix-owner <rule>]
 ```
 
 When the evidence supports acceptance, run the deterministic final checks:
@@ -69,7 +73,8 @@ python3 <skill>/scripts/sim/__main__.py finalize --workdir {workdir} --phase fin
 
 Finalize checks materialization, unresolved `BLOCKING` review headings, bounded coverage and test
 results. It cannot adjudicate prose: a known violation not marked by the reviewer still needs
-`--phase fail --fail-reason`. Keep the evidence in the existing reports/review record.
+`--phase fail --fail-reason`. Keep failure locations and causes in `fail_reason`; retain per-test logs, the regression log,
+case summaries and review records as the evidence.
 
 Name the owner from the actual defect, not the filename or the failed step. Local TB repair is
 `simulation`; an implementation defect is `rtl-design`; a wrong plan or requirement goes to its

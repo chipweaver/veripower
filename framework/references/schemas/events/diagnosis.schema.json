@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://veripower.local/schemas/events/diagnosis.schema.json",
   "type": "object",
-  "required": ["ts", "type", "id", "subject", "attribution", "source"],
+  "required": ["ts", "type", "id", "subject", "source"],
   "additionalProperties": true,
   "properties": {
     "ts": {"type": "string"},
@@ -11,7 +11,7 @@
     "subject": {"type": "object", "required": ["proof", "outcome_run"], "properties": {
       "proof": {"type": "string"}, "outcome_run": {"type": "integer", "minimum": 1}
     }},
-    "attribution": {"type": "string", "description": "Root-cause stage, including the failed stage itself for its own checks or setup."},
+    "attribution": {"type": "string", "description": "Root-cause stage when established; omitted when attribution is unresolved."},
     "fix_owner": {"type": "string", "description": "Repair target: the failed stage itself or one of its transitive input producers. Absent when the repair owner is unresolved."},
     "source": {"type": "string", "enum": ["triage", "decision"]},
     "provenance": {"type": "string", "description": "Decision maker and authorization basis; required when source=decision"},

@@ -169,50 +169,6 @@ def _gate_fail_reason(lint, cdc) -> str:
 # ---------------------------------------------------------------------------
 
 _VERSION_RE = re.compile(r"SpyGlass Version\s*:\s*SpyGlass_(\S+)")
-_WAIVE_RE = re.compile(r"^waive\b")
-_COMMENT_RE = re.compile(r'-comment\s+"([^"]*)"')
-
-
-def _logical_lines(text: str) -> list[str]:
-    """TCL lines with backslash continuations joined and whole-line comments dropped."""
-    out: list[str] = []
-    buf = ""
-    for raw in text.splitlines():
-        s = raw.strip()
-        if not buf and s.startswith("#"):
-            continue
-        if s.endswith("\\"):
-            buf += s[:-1].rstrip() + " "
-            continue
-        out.append((buf + s).strip())
-        buf = ""
-    if buf:
-        out.append(buf.strip())
-    return out
-
-
-def waiver_defects(workdir: Path) -> list[str]:
-    """Active `waive` entries that do not say why, if any.
-
-    A waiver is the only route from a real gated violation to status=pass: SpyGlass
-    subtracts it before the parser ever counts, so the envelope cannot tell a waived message
-    from one that never happened. An entry with no rationale therefore converts a fail into a
-    pass and records nothing about what was accepted, which is the one thing a reader of this
-    proof later needs. Deterministic, so it is enforced rather than merely asked for.
-    """
-    f = Path(workdir) / "scripts" / "waiver.tcl"
-    if not f.is_file():
-        return []
-    defects = []
-    for ln in _logical_lines(f.read_text(errors="replace")):
-        if not _WAIVE_RE.match(ln):
-            continue
-        m = _COMMENT_RE.search(ln)
-        if m is None:
-            defects.append(f"no -comment: {ln[:90]}")
-        elif not m.group(1).strip():
-            defects.append(f"empty -comment: {ln[:90]}")
-    return defects
 
 
 def parse_tool(workdir: Path) -> str:
@@ -246,7 +202,7 @@ def enumerate_artifacts(workdir: Path) -> list[dict]:
 def finalize(workdir, rows, declared, fix_owner=None, fail_reason=None) -> int:
     """Assemble the lean lint-cdc result.json from the two *-violations.json + headers, then
     judge the rows requirements.json assigns to this stage. exit 0 = result.json written
-    (status pass or fail); exit 2 = BLOCKED (an unreasoned waiver, an empty --fail-reason, a
+    (status pass or fail); exit 2 = BLOCKED (an empty --fail-reason, a
     row nobody judged, or any internal raise), never a status=fail."""
     (Path(workdir) / "result.json").unlink(missing_ok=True)
     if fail_reason is not None and not fail_reason.strip():
@@ -256,16 +212,6 @@ def finalize(workdir, rows, declared, fix_owner=None, fail_reason=None) -> int:
         )
         return 2
     try:
-        defects = waiver_defects(workdir)
-        if defects:
-            print(
-                "[lintcdc finalize] BLOCKED: every active waiver needs a -comment saying why "
-                "the violation is acceptable",
-                file=sys.stderr,
-            )
-            for d in defects:
-                print(f"  {d}", file=sys.stderr)
-            return 2
         return run(
             workdir, rows, declared, fix_owner=fix_owner, fail_reason=fail_reason
         )

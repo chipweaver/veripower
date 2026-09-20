@@ -13,7 +13,7 @@ set WORKDIR [pwd]
 
 set target_library [list $LIB_DB]
 set link_library [concat [list "*"] $target_library]
-set report_default_significant_digits 4
+set report_default_significant_digits 13
 
 # These commands return 0 on failure without raising a Tcl error.
 if {![read_verilog $NETLIST_DIR/out/${TOP}_syn.v]} {
@@ -30,11 +30,11 @@ if {![read_sdc $NETLIST_DIR/out/${TOP}_syn.sdc]} {
 }
 
 redirect $WORKDIR/timing-report.txt {
+    report_units
     report_timing -delay max                ;# setup — worst path(s), MET/VIOLATED marker
     report_timing -delay min                ;# hold  — worst path(s), MET/VIOLATED marker
-    check_timing                            ;# for the reader: what the SDC left open
-    # out_setup Total includes untested checks; count agreement is not timing coverage.
-    puts "Boundary output bits: [sizeof_collection [all_outputs]]"
-    report_analysis_coverage
+    check_timing -verbose
+    report_analysis_coverage -status_details {untested}
+    report_port -verbose
 }
 exit

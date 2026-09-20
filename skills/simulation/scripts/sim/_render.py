@@ -42,15 +42,16 @@ def _render_template_file(
 
 
 def _signal_declarations(signals: list[dict]) -> str:
-    """Generate SystemVerilog signal declarations from interface signal list."""
+    """Use nets for bidirectional connections and variables for other data ports."""
     lines = []
     for sig in signals:
         name = sig["name"]
         width = int(sig.get("width", 1))
+        kind = "wire" if sig["direction"] == "inout" else "logic"
         if width > 1:
-            lines.append(f"  logic [{width - 1}:0] {name};")
+            lines.append(f"  {kind} [{width - 1}:0] {name};")
         else:
-            lines.append(f"  logic        {name};")
+            lines.append(f"  {kind}        {name};")
     return "\n".join(lines)
 
 

@@ -110,6 +110,8 @@ produced.
 Validity is not stored anywhere. It's recomputed as a query. A proof holds
 right now only if the verdict was pass, every recorded fingerprint for inputs
 and outputs still matches what's on disk.
+Only the latest collected outcome of that stage can supply the proof. An incomplete
+collection leaves no current conclusion until it is resolved.
 
 Say you edit one line of RTL. Next time anything checks the log, lint-cdc's,
 synthesis's, and simulation's input fingerprints won't match anymore. Three

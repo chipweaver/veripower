@@ -57,9 +57,9 @@ back, and name every gap you find.
 
 ## The document, and handing it off
 
-Keep the engineer's own document when they brought one. `specification` transcribes it whole,
-one ledger row per atomic proposition in their words, and reads no heading — so what you owe is
-one proposition per statement, not a layout.
+Keep the engineer's own document when they brought one, including the context and referenced
+sources needed to interpret it. `specification` identifies obligations and organizes the ledger
+by what must be judged, preserving their meaning, conditions and scope.
 
 Re-read what you wrote and fix inline anything that would survive the freeze: a placeholder, a
 two-way-ambiguous requirement, a contradiction between two parts of the document, or between

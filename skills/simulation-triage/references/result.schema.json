@@ -2,12 +2,13 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://veripower.local/skills/simulation-triage/result.schema.json",
   "title": "simulation-triage result.json contract",
-  "description": "Complete contract for <module>/Verification/simulation-triage/result.json. One entry per finding: `root_cause` names the rule that must act on THAT finding (the reap mints one diagnosis per distinct value, so one analysis routes to as many owners as it found causes), `anchor` is its fix locus, and `reason` is the argument the fix owner acts on — the fix owner is handed this file and nothing else, so a finding whose reason is absent arrives as a coordinate with no account, and the owner fixes whatever is at that line. An empty findings[] is the only way to say the analysis reached no attribution, and then the top-level `reason` says why. Whatever an experiment produced rides in the envelope's own artifacts[], like every other stage's products.",
+  "description": "Complete contract for <module>/Verification/simulation-triage/result.json. A completed analysis uses status=pass, including when attribution remains unresolved. One entry per finding: `root_cause` names the rule that must act on THAT finding (the reap mints one diagnosis per distinct value, so one analysis routes to as many owners as it found causes), `anchor` is its fix locus, and `reason` is the argument the fix owner acts on — the fix owner is handed this file and nothing else, so a finding whose reason is absent arrives as a coordinate with no account, and the owner fixes whatever is at that line. An empty findings[] is the only way to say the analysis reached no attribution, and then the top-level `reason` says why. Whatever an experiment produced rides in the envelope's own artifacts[], like every other stage's products.",
   "allOf": [
     {"$ref": "https://veripower.local/schemas/envelope.schema.json"},
     {
       "properties": {
         "stage": {"const": "simulation-triage"},
+        "status": {"const": "pass"},
         "stage_specific": {
           "type": "object",
           "required": ["findings"],
@@ -25,7 +26,7 @@
                   "reason":     {"type": "string", "minLength": 1,
                                  "description": "Why this cause and this locus: the evidence you read and the inference from it, in enough detail that the fix owner can check your reading against the artifact rather than take it on trust."},
                   "cases":      {"type": "array", "items": {"type": "string"},
-                                 "description": "Which of the failing run's cases this finding explains, by the test_id the failing envelope's failing_cases[] used."}
+                                 "description": "Test identifiers from the failed run's regression log or case summary that this finding explains."}
                 }
               }
             },

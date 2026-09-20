@@ -94,27 +94,22 @@ def build_result(
     scaffold=None,
     requirements=None,
     check_review=None,
-    verify_verdict=None,
     fail_reason=None,
     fix_owner=None,
 ) -> int:
     """Assemble the lean simulation result.json for the given exit phase.
-    final -> re-derive compile/check-review/coverage from on-disk artifacts, fold the reaped
-             verify verdict, write pass|fail.
-    fail  -> write the status=fail envelope from the caller's reason, carrying whatever the
-             reaped verify verdict holds.
+    final -> judge materialization, review, coverage and case results on disk.
+    fail  -> record the unresolved cause; logs and reports remain the case evidence.
     Returns 0 (result.json written). A raise -> main() exit 2 (BLOCKED)."""
     workdir = Path(workdir)
     artifacts = enumerate_artifacts(workdir)
-    verify = json.loads(Path(verify_verdict).read_text()) if verify_verdict else {}
 
     if phase != "final" or fail_reason is not None:
-        ss = _early_exit_ss(fail_reason, verify)
         _write_result(
             workdir,
             _envelope(
                 status="fail",
-                stage_specific=ss,
+                stage_specific={"fail_reason": fail_reason},
                 artifacts=artifacts,
                 fix_owner=fix_owner,
             ),
@@ -125,8 +120,6 @@ def build_result(
         workdir, scaffold, requirements, check_review
     )
     if not ok:
-        # companions keyed off the resolved phase, the same way _early_exit_ss keys them,
-        # so triage reads one shape per phase whichever call site wrote it.
         ss = {"fail_reason": freason}
         if fphase == "coverage":
             ss["coverage_extractable"] = gate["coverage_extractable"]
@@ -237,14 +230,6 @@ def enumerate_artifacts(workdir: Path) -> list[dict]:
     return [{"path": p} for p in candidates if (workdir / p).exists()]
 
 
-def _early_exit_ss(fail_reason, verify) -> dict:
-    """Preserve the cause and case evidence; coverage reports carry the missed items."""
-    ss = {"fail_reason": fail_reason}
-    if verify.get("failing_cases"):
-        ss["failing_cases"] = verify["failing_cases"]
-    return ss
-
-
 def finalize(
     workdir,
     *,
@@ -252,7 +237,6 @@ def finalize(
     scaffold=None,
     requirements=None,
     check_review=None,
-    verify_verdict=None,
     fail_reason=None,
     fix_owner=None,
 ) -> int:
@@ -273,7 +257,6 @@ def finalize(
             scaffold=scaffold,
             requirements=requirements,
             check_review=check_review,
-            verify_verdict=verify_verdict,
             fail_reason=fail_reason,
             fix_owner=fix_owner,
         )

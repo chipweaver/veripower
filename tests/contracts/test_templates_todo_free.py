@@ -39,13 +39,13 @@ def test_scaffold_headers_have_no_nonmarker_todo():
 
 
 def test_real_fill_markers_survive():
-    # the cleanup must NOT delete any of the agent's fill markers.
+    # Static markers remain; the active-only driver marker is checked after rendering
+    # in test_sim_scaffold.test_passive_driver_is_reusable_without_an_unused_authoring_task.
     blob = "".join(p.read_text() for p in SCAFFOLD.glob("*.sv"))
     for marker in (
         "TODO(sequence)",
         "TODO(rm)",
         "TODO(scoreboard)",
-        "TODO(driver)",
         "TODO(monitor)",
         "TODO(transaction)",
         "TODO(interface)",

@@ -37,7 +37,7 @@ def _make_tree(
     tmp_path,
     *,
     top="dut",
-    rtl_files={"c": {"files": ["rtl/dut.v"]}},
+    rtl_files={"files": ["rtl/dut.v"]},
     carried_local=None,
     carried_waiver=None,
     cold="# seed\ncurrent_design dut\nclock -name clk -period 10.0\n",
@@ -164,7 +164,7 @@ def test_filelist_synced_and_rebased(tmp_path):
     # ABSOLUTE paths. Skip set is {#, blank} ONLY: a comment is dropped, real .v lines
     # are re-anchored.
     m, workdir, main = _make_tree(
-        tmp_path, rtl_files={"c": {"files": ["rtl/dut.v", "rtl/sub/u.sv"]}}
+        tmp_path, rtl_files={"files": ["rtl/dut.v", "rtl/sub/u.sv"]}
     )
     rtl_root = _rtl_dir(workdir)
     r = _run(workdir, main, extra=["--top", "dut"])
@@ -183,7 +183,7 @@ def test_filelist_reanchors_to_absolute_rtl(tmp_path):
     # Bootstrap reads the upstream rtl-design location from the injected
     # dispatch.json "rtl" key — not by self-navigating tree_root/asic/<module>/....
     # scripts/filelist.txt must bake the ABSOLUTE rtl root, never a relative climb.
-    m, workdir, main = _make_tree(tmp_path, rtl_files={"c": {"files": ["rtl/dut.v"]}})
+    m, workdir, main = _make_tree(tmp_path, rtl_files={"files": ["rtl/dut.v"]})
     rtl_root = _rtl_dir(workdir)
     r = _run(workdir, main, extra=["--top", "dut"])
     assert r.returncode == 0, r.stderr
@@ -194,7 +194,7 @@ def test_filelist_reanchors_to_absolute_rtl(tmp_path):
 
 def test_empty_filelist_fail_closed(tmp_path):
     # rtl-files.json listing no files -> exit 1.
-    m, workdir, main = _make_tree(tmp_path, rtl_files={"c": {"files": []}})
+    m, workdir, main = _make_tree(tmp_path, rtl_files={"files": []})
     # --top given so we reach the filelist generation.
     r = _run(workdir, main, extra=["--top", "dut"])
     assert r.returncode == 1
@@ -234,7 +234,7 @@ def test_reprepare_preserves_authored_setup_and_refreshes_upstream_inputs(tmp_pa
     for name in authored:
         (workdir / name).write_text("# MY_TOP is authored literal\n")
     rtl = _rtl_dir(workdir)
-    (rtl / "rtl-files.json").write_text('{"dut":{"files":["src/new.sv"]}}')
+    (rtl / "rtl-files.json").write_text('{"files":["src/new.sv"]}')
     seed = workdir.parents[2] / "specification/constraints/dut.sgdc"
     seed.write_text("current_design dut\nclock -name clk -period 20\n")
     r2 = _run(workdir, main)

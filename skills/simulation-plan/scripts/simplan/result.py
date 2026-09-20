@@ -50,9 +50,7 @@ def enumerate_artifacts(workdir) -> list:
     return [{"path": p} for p in fixed + reviews if (workdir / p).exists()]
 
 
-def build_result(
-    workdir, spec_workdir, *, revision, fail_reason=None, fix_owner=None
-) -> int:
+def build_result(workdir, spec_workdir, *, fail_reason=None, fix_owner=None) -> int:
     """Assemble the lean simulation-plan result.json from the workdir.
 
     The pass path validates the current sidecars. Invalid inputs block closure until repaired
@@ -60,14 +58,11 @@ def build_result(
 
     The stage handles plan review findings before calling finalize and supplies fail_reason
     for an unresolved blocking defect. This function does not interpret review prose.
-    `revision` is an amendment marker, not an outcome.
     Returns 0 (result.json written, pass or fail). A raise -> finalize() exit 2 (BLOCKED)."""
     workdir = Path(workdir)
 
     if fail_reason:
         ss = {"fail_reason": fail_reason}
-        if revision:
-            ss["revision"] = revision
         _write_result(
             workdir,
             _envelope(
@@ -88,14 +83,11 @@ def build_result(
             f"check-scaffold failed: {listed}. Repair the plan or report the unresolved cause."
         )
 
-    ss = {}
-    if revision:
-        ss["revision"] = revision
     _write_result(
         workdir,
         _envelope(
             status="pass",
-            stage_specific=ss,
+            stage_specific={},
             artifacts=enumerate_artifacts(workdir),
             fix_owner=fix_owner,
         ),
@@ -103,9 +95,7 @@ def build_result(
     return 0
 
 
-def finalize(
-    workdir, spec_workdir, *, revision, fail_reason=None, fix_owner=None
-) -> int:
+def finalize(workdir, spec_workdir, *, fail_reason=None, fix_owner=None) -> int:
     """build_result, with the exit-code contract. exit 0 = result.json written (pass or fail);
     exit 2 = BLOCKED (an empty --fail-reason, a re-run check-scaffold failure, or any internal
     raise) — never conflated with status=fail."""
@@ -120,7 +110,6 @@ def finalize(
         return build_result(
             workdir,
             spec_workdir,
-            revision=revision,
             fail_reason=fail_reason,
             fix_owner=fix_owner,
         )

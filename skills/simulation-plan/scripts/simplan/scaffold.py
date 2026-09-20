@@ -1,21 +1,7 @@
-"""The check-scaffold gate — validate the three plan sidecars.
+"""Validate the complete plan used by check-scaffold and finalize.
 
-Runs after materialize-scaffold checks the agents' interface groups. Signals and
-transaction fields are derived by simulation from the specification boundary.
-
-The three layers short-circuit because each makes the next readable: a schema violation
-makes the referential checks meaningless, and one unresolved name makes the coverage join
-unreadable. The merge in `_plan.load_plan` exists for the middle layer — the referential
-integrity joins the scaffold and sequence roster (`tests[].seqs[]`
-resolve against `sequences[]`), so no single schema can express it.
-
-finalize re-runs the whole thing in-process. That is affordable because every layer is a
-set operation over the workdir's own files plus the authored check hints, and it is what
-makes the verdict part of the proof rather than a dev-time lint: a clean gate stays true
-unless an artifact was edited afterwards.
-
-Pairs with simulation's renderer and its thin consumer-side backstops (defense-in-depth for
-scaffolds that bypass this gate).
+Checks structure, references, boundary ownership and check coverage. Simulation
+reads the declared boundary directly when generating its scaffold.
 """
 
 import json
@@ -179,31 +165,45 @@ def scenario_errors(scaffold: dict, spec_workdir) -> list:
 
 
 def boundary_errors(scaffold: dict, spec_workdir) -> list:
-    """The agents' interface_groups must PARTITION top-io.json's data ports.
-
-    simulation binds the DUT by walking those ports, so a port no agent claims has nothing to
-    bind to. Before this gate existed that rendered as a DUT port left open — which Verilog
-    accepts and VCS compiles without an error, so the signal was dead for the whole run and no
-    report named the bench. Held here rather than only there because the plan passes a human
-    approval gate first, and a defect found after it costs a specification round and a
-    re-approval."""
+    """Resolve each agent's groups and assign every data port exactly once."""
     try:
         ports = json.loads(
             (Path(spec_workdir) / "top-io.json").read_text(encoding="utf-8")
         )
     except (OSError, json.JSONDecodeError) as e:
         return [f"top-io.json unreadable: {e}"]
+    by_group: dict[str, list[dict]] = {}
+    for port in ports:
+        by_group.setdefault(port["interface_group"], []).append(port)
     owner: dict[str, str] = {}
     errs = []
-    for agent in scaffold.get("agents", []):
-        for g in agent.get("interface_groups") or []:
-            if g in owner:
+    for agent in scaffold["agents"]:
+        groups = agent["interface_groups"]
+        unknown = sorted(set(groups) - by_group.keys())
+        if unknown:
+            errs.append(
+                f"agent {agent['name']!r} references unknown interface_group(s) {unknown}"
+            )
+        matched = [
+            p for g in groups for p in by_group.get(g, []) if p["role"] == "data"
+        ]
+        if not matched:
+            errs.append(
+                f"agent {agent['name']!r} has no data ports in interface_groups {groups}"
+            )
+        names = [p["name"] for p in matched]
+        duplicates = sorted({name for name in names if names.count(name) > 1})
+        if duplicates:
+            errs.append(
+                f"agent {agent['name']!r} has duplicate signal name(s) {duplicates}"
+            )
+        for group in groups:
+            if group in owner:
                 errs.append(
-                    f"interface_group {g!r} is claimed by both {owner[g]!r} and "
-                    f"{agent.get('name')!r}. One group is one virtual interface, so its ports "
-                    f"would be bound twice."
+                    f"interface_group {group!r} is claimed by both {owner[group]!r} "
+                    f"and {agent['name']!r}; each group must be assigned once"
                 )
-            owner[g] = agent.get("name")
+            owner[group] = agent["name"]
     unclaimed = sorted(
         {
             p["interface_group"]

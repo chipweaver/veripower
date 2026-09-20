@@ -21,12 +21,10 @@ def _write_state(d, ledger):
     """rtl-design's two sidecars from the merged {child: {files, incdirs?, annotations}} shape."""
     import json as _json
 
-    files, anns = {}, {}
+    files, anns = {"files": [], "incdirs": []}, {}
     for name, rec in ledger.items():
-        e = {"files": rec.get("files", [])}
-        if rec.get("incdirs"):
-            e["incdirs"] = rec["incdirs"]
-        files[name] = e
+        files["files"].extend(rec.get("files", []))
+        files["incdirs"].extend(rec.get("incdirs", []))
         anns[name] = rec.get("annotations", {})
     (d / "rtl-files.json").write_text(_json.dumps(files))
     (d / "constraint-annotations.json").write_text(_json.dumps(anns))
@@ -178,10 +176,12 @@ def test_a_child_dropped_from_the_sidecars_leaves_its_rtl_unclaimed(tmp_path):
     # the dropped child's file: artifacts[] is the new canonical view and promote deletes what
     # it omits, so src/ stays whole while rtl-files.json stops naming that file.
     wd = _workdir(tmp_path, children=("mac", "ctrl"))
-    for name in ("rtl-files.json", "constraint-annotations.json"):
-        doc = json.loads((wd / name).read_text())
-        del doc["ctrl"]
-        (wd / name).write_text(json.dumps(doc))
+    files = json.loads((wd / "rtl-files.json").read_text())
+    files["files"].remove("src/ctrl.v")
+    (wd / "rtl-files.json").write_text(json.dumps(files))
+    annotations = json.loads((wd / "constraint-annotations.json").read_text())
+    del annotations["ctrl"]
+    (wd / "constraint-annotations.json").write_text(json.dumps(annotations))
     assert ve.finalize(wd) == 0
     env = json.loads((wd / "result.json").read_text())
     assert env["status"] == "pass"
@@ -191,7 +191,7 @@ def test_a_child_dropped_from_the_sidecars_leaves_its_rtl_unclaimed(tmp_path):
         "constraint-annotations.json",
         "semantic-review",
     }
-    assert "ctrl" not in json.loads((wd / "rtl-files.json").read_text())
+    assert "src/ctrl.v" not in json.loads((wd / "rtl-files.json").read_text())["files"]
 
 
 def test_finalize_on_an_empty_workdir_is_blocked(tmp_path, capsys):
@@ -322,13 +322,12 @@ _ANN = {
 def _sidecars(tmp_path, files, *, write_rtl=True):
     (tmp_path / "rtl-files.json").write_text(json.dumps(files))
     (tmp_path / "constraint-annotations.json").write_text(
-        json.dumps({name: _ANN for name in files})
+        json.dumps({"implementation": _ANN})
     )
     if write_rtl:
-        for rec in files.values():
-            for f in rec["files"]:
-                (tmp_path / f).parent.mkdir(parents=True, exist_ok=True)
-                (tmp_path / f).write_text("module m; endmodule\n")
+        for f in files["files"]:
+            (tmp_path / f).parent.mkdir(parents=True, exist_ok=True)
+            (tmp_path / f).write_text("module m; endmodule\n")
 
 
 def test_exit_artifacts_raises_when_a_sidecar_is_absent(tmp_path):
@@ -345,7 +344,7 @@ def test_exit_artifacts_raises_on_a_file_no_child_wrote(tmp_path):
     # Named here instead, where re-dispatching the owning child still fixes it.
     _sidecars(
         tmp_path,
-        {"leaf": {"files": ["src/leaf.v"]}, "topc": {"files": ["src/top.v"]}},
+        {"files": ["src/leaf.v"] + ["src/top.v"]},
         write_rtl=False,
     )
     with pytest.raises(LedgerError, match="src/leaf.v"):
@@ -356,9 +355,7 @@ def test_exit_artifacts_is_the_tree_and_both_sidecars(tmp_path):
     # The RTL leaves as ONE tree entry, never a file enumeration: the tree's version is a merkle
     # over everything under it, so a header, a subdirectory and a file the sidecars do not name
     # are all inside the version a consumer records.
-    _sidecars(
-        tmp_path, {"leaf": {"files": ["src/leaf.v"]}, "topc": {"files": ["src/top.v"]}}
-    )
+    _sidecars(tmp_path, {"files": ["src/leaf.v"] + ["src/top.v"]})
     assert {a["path"] for a in exit_artifacts(tmp_path)} == {
         "src",
         "rtl-files.json",
@@ -370,9 +367,7 @@ def test_ledger_artifacts_survives_a_file_the_sidecars_name_and_nobody_wrote(tmp
     # The caller-reported fail path must still write an envelope over a workdir no verdict can be
     # derived from. It lists the tree, so a file the sidecars name and no child wrote cannot make
     # promote raise — the entry promote hardlinks is the directory, whatever is inside it.
-    _sidecars(
-        tmp_path, {"leaf": {"files": ["src/leaf.v"]}, "topc": {"files": ["src/top.v"]}}
-    )
+    _sidecars(tmp_path, {"files": ["src/leaf.v"] + ["src/top.v"]})
     (tmp_path / "src/leaf.v").unlink()
     assert {a["path"] for a in ledger_artifacts(tmp_path)} == {
         "src",

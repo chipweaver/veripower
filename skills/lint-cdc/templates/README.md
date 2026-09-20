@@ -4,15 +4,17 @@ SpyGlass lint + CDC for one module, deployed here by the `veripower:lint-cdc` st
 bootstrap verb. That skill's own `SKILL.md` is the stage SOP.
 
 `make help` lists the targets. `make all` runs lint and CDC in a single session and is the
-recommended first run; `make lint` and `make cdc` run one goal each.
+recommended first run. `make lint` runs `lint_rtl`; `make cdc` runs `cdc_setup`,
+`cdc_setup_check` and `cdc_verify_struct`.
 
-## The two files you edit
+## Setup
+
+Bootstrap regenerates `scripts/filelist.txt` from the RTL file layout and
+`scripts/constraints.sgdc` from the specification seed and RTL annotations. Correct these
+inputs at their sources. It installs missing setup and preserves existing files, including
+`env.sh`, `scripts/spyglass_lint.prj` and `scripts/run.tcl`.
 
 | File | Content |
 |---|---|
 | `scripts/local.sgdc` | This stage's port/clock associations and analysis scope, carried into the next round. SpyGlass reads it after the generated seed and annotations in `scripts/constraints.sgdc` on every run. |
-| `scripts/waiver.tcl` | Reviewed waivers, and any `set_option` the analysis needs. `run.tcl` sources it for both goals. |
-
-Everything else here is generated or make-internal. `scripts/filelist.txt` is regenerated from
-the rtl-design file layout on every deploy, so edits to it do not survive. Each file carries a
-header comment describing its own format.
+| `scripts/waiver.tcl` | Reviewed waivers and analysis options, sourced before the goals run. |

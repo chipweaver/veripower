@@ -5,14 +5,18 @@ description: Use when progressing IC design through stages, checking module stat
 
 # Design Flow
 
-Coordinate stage work through `python3 <skill>/../../framework/scripts/kernel.py`, written
-`kernel.py` below. `<skill>` is this skill's directory; `{module}` contains `events.jsonl`,
+Coordinate module stages, rework and delivery through
+`python3 <skill>/../../framework/scripts/kernel.py`, written `kernel.py` below.
+`<skill>` is this skill's directory; `{module}` contains `events.jsonl`,
 `intent/brainstorm.md` and the stage trees.
 
 The kernel owns events and scheduling. Stage executors own their workdir artifacts and close
-through the stage CLI. An executor may run in this conversation or in a subagent; its stage
-responsibilities are the same. While orchestrating, use the kernel rather than editing events
-or stage results directly. Inspect source when needed to understand an operation.
+through the stage CLI, whether running in this conversation or in a subagent. While orchestrating,
+use the kernel rather than editing events or stage results directly. Inspect source when needed
+to understand an operation.
+
+Use `kernel.py status --module {module}` to check current status. Command arguments are available
+through `kernel.py <command> --help`.
 
 ## Run the work
 
@@ -34,54 +38,41 @@ the workdir and identifies the executor; it does not start that executor.
 | `task` | Render [the stage prompt](../../framework/references/prompts/stage-subagent.md.tpl) with the module, rule, skill and workdir from dispatch; launch it with `Task(run_in_background=True, prompt=<rendered>)`. |
 
 After launching a background executor, query `decide` again so other ready work can proceed.
-After an executor exits, pass `--wake <rule>:<run>` to `decide`. Carry out the returned action:
+Confirm executor exit through the host before waking or reaping its run; a result file or `YIELD`
+does not establish exit. Once it exits, pass `--wake <rule>:<run>` to `decide`, including when it
+left no result. Carry out the returned action:
 
 - `REAP`: run `kernel.py reap --module {module} --rule <rule> --run <run>`, then query again.
   Reap uses that run's result; an absent result is handled as an incomplete execution.
 - `YIELD`: report the running work and wait for an executor completion before resuming.
-- `ESCALATE`: resolve the reported decision under the authorization below; resume after recording
-  it, or wait when information or a human decision is needed.
-- `DONE`: report what the evidence establishes and its limits; complete signoff if it is in scope.
+- `ESCALATE`: address the reported blocker under the authorization below, then query `decide`
+  again. Wait when needed information or a reserved human decision is unavailable.
+  `kernel.py diagnose` records a later addition or correction to repair ownership;
+  `--supersedes` identifies the diagnosis being replaced.
+- `DONE`: deliver the conclusions and complete any acceptance in scope, as described below.
 
-Executor completion comes from the host; `YIELD` and a result file alone do not establish that
-an executor has exited. Wait for exit before waking or reaping its run. Use
-`kernel.py status --module {module}` for a read-only status query. A failed CLI operation leaves
-its reported cause to resolve; it does not constitute a completed action.
+A failed CLI operation remains incomplete until its reported cause is resolved.
 
 ## Decisions and authorization
 
-Assess the evidence and the user's actual authorization. Present the specific decision, basis and
-unresolved issues when human input is needed, and wait for that decision. Within an existing
-explicit delegation, decide and act in scope. A refusal or a reserved decision remains binding.
-Record who decided and the authorization basis in `--provenance`, and the engineering grounds in
-`--reason`. A host's permission to execute a command is separate from authorization for its decision.
+Follow the user's actual authorization. For a reserved decision, present the specific choice,
+evidence and unresolved issues, then wait. Within explicit delegation, decide and act in scope.
+A refusal remains binding. Host execution permission is separate from decision authorization.
+For `diagnose` and `signoff`, `--provenance` identifies the decision maker and authorization;
+`--reason` gives the engineering grounds.
 
-## `ESCALATE` — resolve the decision
-
-`decide` returns a reason and, where relevant, candidates. Inspect the evidence and identify what
-needs deciding. `kernel.py consequences --module {module} --paths <path…>` shows the valid proofs
-a proposed change would invalidate. Record a resolved repair attribution with:
-
-```bash
-kernel.py diagnose --module {module} --id <diag-id> \
-  --subject-proof <failed proof> --subject-run <run> \
-  --attribution <stage> --fix-owner <subject stage or its input producer> \
-  --provenance "<decision maker and authorization>" --reason "<evidence and reasoning>" \
-  [--supersedes <prior diag-id>]
-```
-
-This records `source=decision`; simulation-triage records `source=triage`. Both support the failed
-stage itself or an input producer as repair owner. Omit ownership when the evidence cannot settle it.
+For artifact changes, `kernel.py consequences --module {module} --paths <path…>` shows which
+valid proofs the change would invalidate.
 
 ## Completion and acceptance
 
-Report what the delivered evidence establishes and any remaining limits. Completion does not
-require a separate user approval unless the task reserves that decision. Recheck concrete issues
-through the responsible stage; its result follows the existing repair flow.
+Report what the delivered evidence establishes and any remaining limits. Recheck concrete issues
+through the responsible stage and existing repair flow. Completion requires separate approval
+only when the task reserves that decision.
 
 When the task calls for a recorded acceptance, use `decide --closing` to check the current
-conclusions and delivered artifacts and present their basis. Follow the actual authorization:
-wait for a reserved user decision; act within an existing delegation. Record acceptance with:
+conclusions and delivered artifacts. Present the returned basis, follow the authorization above,
+and record acceptance with:
 
 ```bash
 kernel.py signoff --module {module} --provenance "<decision maker and authorization>" \
