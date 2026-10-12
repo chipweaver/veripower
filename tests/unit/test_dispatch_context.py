@@ -21,7 +21,7 @@ def test_claude_reports_only_background_dispatch_context(execution, kernel):
         "tool_response": {"stdout": json.dumps(result)},
     }
     p = subprocess.run(
-        [sys.executable, str(ROOT / "hooks/loop_after_task_dispatch.py")],
+        [sys.executable, str(ROOT / "claude/loop_after_dispatch.py")],
         input=json.dumps(event),
         text=True,
         capture_output=True,
@@ -43,28 +43,39 @@ def test_opencode_keeps_context_until_the_next_kernel_action(
     program = r"""
 import assert from 'node:assert/strict';
 const {default: plugin} = await import(process.argv[1]);
-const hooks = await plugin();
+let context;
+await plugin.setup({
+ skill: {async transform(editor) { editor({add() {}}); }},
+ session: {async hook(name, callback) { if(name === 'context') context = callback; }},
+});
 const response = JSON.stringify({ok:true,execution:'task',rule:'synthesis',run:3});
-const tool = (command, output=response) => ({type:'tool',tool:'bash',state:{status:'completed',input:{command},output}});
-const messages=[{info:{role:'user'},parts:[{type:'text',text:'Continue the design task'}]},
- {info:{role:'assistant'},parts:[tool(`python3 ${process.argv[2]} dispatch --module example`)]}];
+let id = 0;
+const tool = (command, output=response) => {
+ const callID = String(id++);
+ return [{role:'assistant',content:[{type:'tool-call',id:callID,name:'shell',input:{command}}]},
+ {role:'tool',content:[{type:'tool-result',id:callID,name:'shell',result:{type:'text',value:output}}]}];
+};
+const messages=[{role:'user',content:[{type:'text',text:'Continue the design task'}]},
+ ...tool(`python3 ${process.argv[2]} dispatch --module example`)];
 const original=structuredClone(messages);
 async function inspect(input,expected) {
- const output={messages:structuredClone(input)};
- await hooks['experimental.chat.messages.transform']({},output);
- const notices=output.messages.flatMap(m=>m.parts).filter(p=>p.type==='text' && p.text.startsWith('veripower loop:'));
+ const event={sessionID:'parent',system:[],messages:structuredClone(input)};
+ await context(event);
+ const notices=event.system.filter(p=>p.text.startsWith('veripower loop:'));
  assert.equal(notices.length,expected);
  if(expected) assert.ok(notices[0].text.includes('synthesis') && notices[0].text.includes('3'));
- const dispatch=output.messages[1].parts.find(p=>p.type==='tool');
- assert.equal(dispatch.state.output,response);
+ assert.deepEqual(event.messages,input);
 }
 await inspect(messages,1);
-messages.push({info:{role:'assistant'},parts:[{type:'tool',tool:'task',state:{status:'completed',input:{background:true},output:'executor started'}}]});
+messages.push({role:'tool',content:[{type:'tool-result',id:'launch',name:'subagent',
+ result:{type:'text',value:'executor started'}}]});
 await inspect(messages,1);
 await inspect(messages,1);
-messages.push({info:{role:'assistant'},parts:[tool(`python3 ${process.argv[3]} decide --module example`,'{"action":"YIELD"}') ]});
+await inspect([{role:'user',content:[{type:'text',text:'child task'}]}],0);
+messages.push(...tool(`python3 ${process.argv[3]} decide --module example`,'{"action":"YIELD"}'));
 await inspect(messages,0);
-assert.deepEqual(messages.slice(0,2),original);
+assert.deepEqual(messages.slice(0,3),original);
+
 """
     subprocess.run(
         [
@@ -72,7 +83,7 @@ assert.deepEqual(messages.slice(0,2),original);
             "--input-type=module",
             "-e",
             program,
-            (ROOT / ".opencode/plugins/veripower.js").as_uri(),
+            (ROOT / ".opencode/plugins/veripower/server.js").as_uri(),
             dispatch_kernel,
             next_kernel,
         ],

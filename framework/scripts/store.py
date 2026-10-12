@@ -52,7 +52,7 @@ def envelope_registry() -> Registry:
 
 
 def freeze_inputs(module: str) -> None:
-    """Remove owner-write permission from the intent tree at each CLI invocation.
+    """Keep intent owner-read-only, including between runs and during queries.
 
     Preserve other permission bits and leave symlink targets unchanged."""
     for key in rules.PIPELINE_INPUTS:
@@ -64,7 +64,9 @@ def freeze_inputs(module: str) -> None:
                 q.is_symlink()
             ):  # chmod follows a link; its target may be outside the tree
                 continue
-            q.chmod(q.stat().st_mode & ~0o200)
+            mode = q.stat().st_mode
+            if mode & 0o200:
+                q.chmod(mode & ~0o200)
 
 
 def append_event(module: str, event: dict, ts: str) -> None:
@@ -99,7 +101,7 @@ def validate_result(rule_name: str, result: dict) -> str | None:
     """Return the first stage-schema error, or None for a valid result.
 
     Schema files are maintained with the plugin; loading errors propagate."""
-    skill_name = rules.RULES[rule_name].skill.split(":", 1)[1]
+    skill_name = rules.RULES[rule_name].skill
     schema_path = PLUGIN_ROOT / "skills" / skill_name / "references/result.schema.json"
     stage_schema = json.loads(schema_path.read_text())
     validator = jsonschema.Draft202012Validator(

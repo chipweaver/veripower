@@ -6,9 +6,10 @@ import { createUserMessage } from '@deepseek-ai/dsh-llm'
 import * as skillFilesystem from '@deepseek-ai/dsh-skill-filesystem'
 
 /** This file is `<repo>/.dsh/plugins/veripower.js`, so the skills root is two levels up. */
-const SKILLS_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..', 'skills')
+const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
+const SKILLS_ROOT = resolve(ROOT, 'skills')
 
-const SOURCE = { kind: 'plugin', plugin: 'veripower-dsh' }
+const SOURCE = { kind: 'veripower-dsh' }
 
 const DISPATCH = /kernel\.py["']?\s+dispatch\b/
 
@@ -41,8 +42,10 @@ export function apply(ctx) {
   ctx.systemPrompt.section({
     name: 'veripower:tool-mapping',
     order: 0,
-    text: 'VeriPower tool translations: invoke Skill(veripower:X) with the skill tool using the bare name X. '
-      + 'For Task(run_in_background=True, prompt=P), use subagent with prompt P and run_in_background: true.',
+    text: 'VeriPower on DeepSeek Harness: load a bare skill X with skill using { name: X }. '
+      + 'Launch a background executor with subagent using { prompt: P, description: "short task label" }; '
+      + 'it returns subagentId immediately and delivers completion to the parent. '
+      + `The kernel is python3 ${ROOT}/framework/scripts/kernel.py.`,
   })
 
   // An isolated provider keeps these skills out of the user's own roots and needs

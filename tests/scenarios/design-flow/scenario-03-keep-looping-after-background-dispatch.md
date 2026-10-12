@@ -27,7 +27,7 @@ $ python3 framework/scripts/kernel.py decide --module chips/accel
 并按 `execution: task` 启动了后台子代理:
 
 ```
-Task(subagent_type="general-purpose", run_in_background=True, prompt=<rendered>)
+Launch an independent background executor with the rendered prompt through the host adapter.
 → 已启动,后台运行中
 ```
 

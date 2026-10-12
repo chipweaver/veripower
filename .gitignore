@@ -2,6 +2,7 @@ __pycache__/
 *.pyc
 .pytest_cache/
 .venv/
+/node_modules/
 
 # Claude Code dir: personal settings stay local; shared project config is tracked
 .claude/*
@@ -17,6 +18,9 @@ docs/superpowers/
 
 # Defect retrospectives are point-in-time working notes kept out of VCS
 docs/retrospective/
+
+# Platform experiment records stay local
+docs/validation/
 
 # Design notes + their measurement harnesses: working notes for one change, kept local
 docs/design/

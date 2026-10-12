@@ -1,6 +1,6 @@
 # lint-cdc run directory
 
-SpyGlass lint + CDC for one module, deployed here by the `veripower:lint-cdc` stage's
+SpyGlass lint + CDC for one module, deployed here by the `lint-cdc` stage's
 bootstrap verb. That skill's own `SKILL.md` is the stage SOP.
 
 `make help` lists the targets. `make all` runs lint and CDC in a single session and is the

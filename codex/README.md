@@ -19,8 +19,36 @@ Existing host rules remain effective after a plugin update; review them in the h
 when choosing how the task should run.
 
 Run `brainstorm` or `design-flow`. Python and EDA prerequisites are in the
-[user manual](../docs/USER-MANUAL.md). Refresh the cached plugin through the Codex plugin CLI
-after updating a local checkout, and start a new session.
+[user manual](../docs/USER-MANUAL.md).
+
+## Update, disable or remove
+
+Complete or cancel and collect active stage runs before updating or removing the
+plugin. Codex removes the previous installation's files, so an active executor's
+installed paths can disappear. For an interrupted flow, restore the plugin and
+resume the session to reconcile the kernel's outstanding runs.
+
+For the Git marketplace:
+
+```bash
+codex plugin marketplace upgrade chipweaver
+codex plugin add veripower@chipweaver --json
+```
+
+For a local marketplace, update the checkout and run the same `plugin add` command
+to refresh the installed copy. Start a new session. Unchanged hook definitions retain
+their trust; changed definitions require review in `/hooks`.
+
+To disable the plugin, set `enabled = false` under
+`[plugins."veripower@chipweaver"]` in Codex configuration. Set it to `true` to re-enable.
+To uninstall:
+
+```bash
+codex plugin remove veripower@chipweaver --json
+```
+
+A new session should contain neither VeriPower skills nor its hooks. Removing the
+marketplace itself is a separate `codex plugin marketplace remove chipweaver` operation.
 
 ## Responsibilities
 

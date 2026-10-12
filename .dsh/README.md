@@ -5,7 +5,8 @@ the shared skills through the native provider.
 
 ## Install
 
-With [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) installed,
+Use DeepSeek Harness 0.2.1-alpha.2 or later in the 0.2.1 release line. With
+[DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) installed,
 add VeriPower to the profile you will run:
 
 ```bash
@@ -40,9 +41,10 @@ The adapter locates this installation's `skills/` directory and registers it
 through an isolated filesystem skill provider. No global skill symlink or
 manually configured skill path is needed.
 
-The adapter maps `Skill(veripower:X)` to `skill` with the bare name `X`, and background
-`Task` to `subagent` with `run_in_background: true`. These translations are supplied
-through the host's system prompt to the parent and child agents.
+The adapter loads bare skill names through `skill`. Background executors use native
+`subagent` activations, which return `subagentId` immediately and deliver completion
+notices to the parent. The host's system prompt supplies these native operations to
+both parent and child agents.
 
 The adapter supplies post-dispatch scheduling context. The profile supplies execution tools
 and permissions. The shared design-flow skill coordinates
@@ -64,6 +66,21 @@ dsh plugin --profile web remove veripower
 
 Restart the profile after either operation. Plugin management forwards to pnpm
 in that profile and updates its bundle layers.
+
+Collect active stage runs before uninstalling. Removal can delete the CLI files
+that an executor or its parent still needs. Restore the bundle and resume the
+session before collecting work interrupted by removal.
+
+To disable the installed adapter, add this entry to the profile's `cordis.patch.yml`:
+
+```yaml
+- id: veripower-dsh
+  disabled: true
+```
+
+Remove the entry to re-enable it and restart the profile. After removal, the profile
+should contain neither the `veripower` dependency nor its bundle layer, and a fresh
+runtime should expose neither its skills nor its tool mapping.
 
 ## Check the integration
 

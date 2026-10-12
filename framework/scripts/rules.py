@@ -9,8 +9,6 @@ from dataclasses import dataclass, field
 class Rule:
     name: str
     skill: str
-    # A rule that fans out into Level-1 sub-Tasks must be "main-thread": a task
-    # subagent may dispatch none.
     execution: str  # "task" | "main-thread"
     workdir_root: tuple[str, ...]
     inputs: dict[str, tuple[str, ...]] = field(default_factory=dict)
@@ -29,7 +27,7 @@ class Rule:
 RULES: dict[str, Rule] = {
     "specification": Rule(
         name="specification",
-        skill="veripower:specification",
+        skill="specification",
         execution="main-thread",
         workdir_root=("Design", "specification"),
         inputs={"intent": ("intent",)},
@@ -39,7 +37,7 @@ RULES: dict[str, Rule] = {
     ),
     "simulation-plan": Rule(
         name="simulation-plan",
-        skill="veripower:simulation-plan",
+        skill="simulation-plan",
         execution="main-thread",
         workdir_root=("Verification", "simulation-plan"),
         inputs={
@@ -57,7 +55,7 @@ RULES: dict[str, Rule] = {
     ),
     "rtl-design": Rule(
         name="rtl-design",
-        skill="veripower:rtl-design",
+        skill="rtl-design",
         execution="main-thread",
         workdir_root=("Design", "rtl-design"),
         inputs={
@@ -76,7 +74,7 @@ RULES: dict[str, Rule] = {
     ),
     "lint-cdc": Rule(
         name="lint-cdc",
-        skill="veripower:lint-cdc",
+        skill="lint-cdc",
         execution="task",
         workdir_root=("Design", "lint-cdc"),
         inputs={
@@ -95,7 +93,7 @@ RULES: dict[str, Rule] = {
     ),
     "synthesis": Rule(
         name="synthesis",
-        skill="veripower:synthesis",
+        skill="synthesis",
         execution="task",
         workdir_root=("Design", "synthesis"),
         inputs={
@@ -114,7 +112,7 @@ RULES: dict[str, Rule] = {
     ),
     "timing-analysis": Rule(
         name="timing-analysis",
-        skill="veripower:timing-analysis",
+        skill="timing-analysis",
         execution="task",
         workdir_root=("Design", "timing-analysis"),
         inputs={
@@ -128,7 +126,7 @@ RULES: dict[str, Rule] = {
     ),
     "simulation": Rule(
         name="simulation",
-        skill="veripower:simulation",
+        skill="simulation",
         execution="main-thread",
         workdir_root=("Verification", "simulation"),
         inputs={
@@ -162,7 +160,7 @@ RULES: dict[str, Rule] = {
     ),
     "power-analysis": Rule(
         name="power-analysis",
-        skill="veripower:power-analysis",
+        skill="power-analysis",
         execution="task",
         workdir_root=("Verification", "power-analysis"),
         inputs={
@@ -187,7 +185,7 @@ RULES: dict[str, Rule] = {
     ),
     "simulation-triage": Rule(
         name="simulation-triage",
-        skill="veripower:simulation-triage",
+        skill="simulation-triage",
         execution="task",
         workdir_root=("Verification", "simulation-triage"),
         inputs={

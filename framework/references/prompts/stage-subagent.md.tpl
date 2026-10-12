@@ -4,9 +4,9 @@ Module:   {module}
 Stage:    {stage}
 Workdir:  {workdir}
 
-Invoke Skill({skill}). Read {workdir}/dispatch.json for the current inputs and task context,
+Load the {skill} skill. Read {workdir}/dispatch.json for the current inputs and task context,
 and assess the materials already carried into the workdir. Write only under {workdir};
-inputs remain read-only. The parent owns kernel commands, routing and further dispatches.
+inputs remain read-only. The parent owns kernel commands, routing and further stage dispatches.
 
 Wait for every job you start to exit. Close through the stage's CLI using the actual evidence.
 

@@ -1,4 +1,4 @@
-"""Codex hook delivery for the installed plugin."""
+"""Native hook delivery for the installed plugin."""
 
 import json
 import subprocess
@@ -11,9 +11,10 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 @pytest.mark.parametrize("event", ["SessionStart", "SubagentStart"])
-def test_hook_delivers_installed_paths(event):
+@pytest.mark.parametrize("host", ["codex", "claude"])
+def test_hook_delivers_installed_paths(event, host):
     result = subprocess.run(
-        [sys.executable, str(ROOT / "codex/adapter.py")],
+        [sys.executable, str(ROOT / host / "adapter.py")],
         input=json.dumps({"hook_event_name": event}),
         text=True,
         capture_output=True,

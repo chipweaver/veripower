@@ -13,7 +13,7 @@
 
 VeriPower is an open-source plugin for chip front-end design and verification. Working from your specification, a coding agent develops RTL and a UVM testbench, runs EDA tools, and revises the design based on their results. VeriPower manages the work across stages, keeping track of what has passed and what needs to run again.
 
-Works with [Claude Code](.claude-plugin/README.md), [opencode](.opencode/README.md), [DeepSeek Harness](.dsh/README.md), and [Codex](codex/README.md).
+The shared workflow is host-neutral, with native adapters for [Claude Code](.claude-plugin/README.md), [opencode](.opencode/README.md), [DeepSeek Harness](.dsh/README.md), and [Codex](codex/README.md).
 
 ## How it works
 
@@ -72,24 +72,13 @@ See [Claude Code setup and runtime behavior](.claude-plugin/README.md).
 <details>
 <summary><strong>opencode</strong></summary>
 
-Add the plugin to `~/.config/opencode/opencode.json`, or to a project-level
-`opencode.json`:
-
-```json
-{ "plugin": ["veripower@git+https://github.com/chipweaver/veripower.git"] }
-```
-
-Stage dispatch runs subagents in the background, which opencode gates behind an environment
-variable, so start it with:
+Use OpenCode 2 (validated on 2.0.26) and install with its native plugin CLI:
 
 ```bash
-OPENCODE_EXPERIMENTAL_BACKGROUND_SUBAGENTS=true \
-OPENCODE_EXPERIMENTAL_OUTPUT_TOKEN_MAX=131072 opencode
+opencode plugin add git+https://github.com/chipweaver/veripower.git
 ```
 
-opencode 1.18.30 has a default 32,000-token completion ceiling. For models that support
-longer output, set the second flag to the model's declared output limit; `131072` is
-an example.
+The adapter uses native skills, background subagents and completion notifications.
 
 See [opencode setup and runtime behavior](.opencode/README.md).
 
@@ -97,6 +86,8 @@ See [opencode setup and runtime behavior](.opencode/README.md).
 
 <details>
 <summary><strong>DeepSeek Harness</strong></summary>
+
+The adapter targets DeepSeek Harness 0.2.1-alpha.2.
 
 Install into the profile you run:
 
@@ -113,7 +104,7 @@ See [DeepSeek Harness setup and runtime behavior](.dsh/README.md).
 <details>
 <summary><strong>Codex</strong></summary>
 
-Native plugin and subagents (tested with CLI 0.154.0 on Linux):
+Native plugin and subagents (validated with CLI 0.162.1 on Linux):
 
 ```bash
 codex plugin marketplace add chipweaver/veripower

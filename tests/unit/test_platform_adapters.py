@@ -16,17 +16,24 @@ def test_opencode_registers_skills_without_changing_permissions(policy):
 import assert from 'node:assert/strict';
 const {default: plugin} = await import(process.argv[1]);
 const policy = process.argv[2];
-const config = {permission: {bash: {'*': policy, '*kernel.py*signoff*': policy}, external_directory: 'deny'},
- agent: {general: {permission: {bash: policy}}}};
-const original = structuredClone(config);
-const hooks = await plugin();
-await hooks.config(config);
-assert.deepEqual(config.permission, original.permission);
-assert.deepEqual(config.agent, original.agent);
-assert.ok(config.skills.paths.length > 0);
-const output = {args: {command: 'python3 /plugin/kernel.py signoff --module M --help'}};
-if (hooks['tool.execute.before']) await hooks['tool.execute.before']({}, output);
-assert.equal(output.args.command, 'python3 /plugin/kernel.py signoff --module M --help');
+const permission = {shell: policy, external_directory: 'deny'};
+const original = structuredClone(permission);
+const skills = [];
+const hooks = {};
+await plugin.setup({
+  permission,
+  skill: {async transform(editor) { editor({add(skill) { skills.push(skill); }}); }},
+  session: {async hook(name, callback) { hooks[name] = callback; }},
+});
+assert.deepEqual(permission, original);
+assert.equal(skills.length, 12);
+for (const skill of skills) {
+  assert.equal(skill.id, `veripower:${skill.name}`);
+  assert.ok(skill.path.endsWith(`/skills/${skill.name}/SKILL.md`));
+  assert.ok(skill.content.trim().length > 0);
+}
+assert.ok(hooks.context);
+
 """
     subprocess.run(
         [
@@ -34,7 +41,7 @@ assert.equal(output.args.command, 'python3 /plugin/kernel.py signoff --module M 
             "--input-type=module",
             "-e",
             program,
-            (ROOT / ".opencode/plugins/veripower.js").as_uri(),
+            (ROOT / ".opencode/plugins/veripower/server.js").as_uri(),
             policy,
         ],
         check=True,

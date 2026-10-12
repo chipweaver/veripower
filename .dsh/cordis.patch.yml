@@ -1,4 +1,4 @@
 # Register skills and post-dispatch context.
 - insert:
     - id: veripower-dsh
-      name: veripower/.dsh/plugins/veripower.js
+      name: veripower/dsh

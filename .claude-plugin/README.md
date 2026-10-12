@@ -26,12 +26,13 @@ describes installation scopes and plugin management.
 
 ## Runtime behavior
 
-The plugin loads the shared skills under the `veripower:` namespace. Stages run
+The adapter supplies native tool mappings through SessionStart and SubagentStart.
+It loads the shared skills under the `veripower:` namespace. Stages run
 in the main conversation or a background subagent as requested by the shared
 orchestrator.
 
 The shared design-flow skill coordinates dispatch, execution and collection.
-[The post-dispatch hook](../hooks/hooks.json) supplies scheduling context. Stage skills own
+[The adapter hooks](../claude/hooks.json) supply scheduling context. Stage skills own
 their artifacts; the kernel owns routing and validity. Native execution permissions are unchanged.
 
 ## Update or remove
@@ -47,13 +48,17 @@ Start a new session to load the updated plugin. To remove it:
 claude plugin uninstall veripower@chipweaver
 ```
 
+Use `claude plugin disable veripower@chipweaver` and
+`claude plugin enable veripower@chipweaver` to toggle it without uninstalling. Check a new session after
+either operation. Uninstall removes registration; Claude Code may retain cached files.
+
 ## Check the integration
 
 From a checkout:
 
 ```bash
 claude plugin validate .
-python -m pytest -q tests/unit/test_platform_adapters.py
+python -m pytest -q tests/unit/test_host_context.py tests/unit/test_dispatch_context.py
 ```
 
 These check plugin structure and adapter behavior. In a running session, check skill discovery

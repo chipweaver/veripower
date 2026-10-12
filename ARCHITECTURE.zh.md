@@ -2,9 +2,11 @@
 
 [English](ARCHITECTURE.md)
 
-VeriPower 由流程引擎、阶段 skills 及与 coding agent harness 的集成组成。本文说明它们的边界、共享的数据和执行规则。安装与使用见[用户手册](docs/USER-MANUAL.zh.md)。
+VeriPower 是平台中立的 plugin，由流程引擎、阶段 skills 和各 coding agent harness 的原生适配器组成。本文说明它们的边界、共享的数据和执行规则。安装与使用见[用户手册](docs/USER-MANUAL.zh.md)。
 
 ## 1. 系统边界
+
+Claude Code、OpenCode、DeepSeek Harness 和 Codex 是同级适配平台。共享指令使用裸 skill 名称；原生工具调用、命名空间和生命周期 hooks 由各适配器负责。适配保留各平台的并发执行与独立审查能力。
 
 宿主 harness 提供模型、会话上下文、文件访问、命令执行和子 agent。VeriPower 提供设计与验证任务，以及协调这些任务的机制。EDA 工具作为外部程序运行，其输出文件由各阶段分析并发布。
 

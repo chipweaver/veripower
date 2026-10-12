@@ -1,7 +1,7 @@
 # Contributing to VeriPower
 
-VeriPower shares its design flow across Claude Code, opencode, DeepSeek Harness and
-Codex. Start with the problem and the behavior you want to change. Read the relevant
+VeriPower is a host-neutral plugin with native adapters for coding agents.
+Start with the problem and the behavior you want to change. Read the relevant
 code and try the current behavior; existing documentation and implementation can both
 be wrong and are open to revision.
 
@@ -15,7 +15,8 @@ be wrong and are open to revision.
 - Add a field or schema only when an actual consumer needs structured data. Use prose
   for engineering judgment; do not build a parser and validator just to formalize it.
 - Keep shared capabilities in `framework/` and `skills/`. Use each platform's native
-  facilities in its adapter, and preserve the other platforms' capabilities.
+  facilities in its adapter, and preserve each platform's capabilities. Do not reduce
+  concurrency, independent review or completion handling to a common minimum.
 - State guidance once, close to its use. Delete stale instructions instead of adding
   exceptions around them.
 
@@ -25,7 +26,7 @@ be wrong and are open to revision.
 |---|---|
 | Stage work, instructions and EDA tools | `skills/<stage>/` |
 | Scheduling, event history and artifact provenance | `framework/scripts/` |
-| Claude Code integration | `.claude-plugin/`, `hooks/` |
+| Claude Code integration | `.claude-plugin/`, `claude/` |
 | opencode integration | `.opencode/` |
 | DeepSeek Harness integration | `.dsh/` |
 | Codex integration | `.codex-plugin/`, `codex/` |
@@ -52,6 +53,7 @@ Use Python 3.10 or later:
 python3 -m venv .venv
 source .venv/bin/activate
 python -m pip install -r requirements.txt -r requirements-dev.txt
+npm ci
 python -m pytest tests/unit/ tests/contracts/
 pre-commit run --all-files
 ```

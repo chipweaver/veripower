@@ -2,8 +2,8 @@
 
 [中文版](ARCHITECTURE.zh.md)
 
-VeriPower consists of a workflow engine, stage skills, and integration with a
-coding agent harness. This document describes their boundaries, the data they
+VeriPower is a host-neutral plugin consisting of a workflow engine, stage skills,
+and native adapters for coding agent harnesses. This document describes their boundaries, the data they
 share, and the rules that govern execution. Setup and usage are covered in the
 [user manual](docs/USER-MANUAL.md).
 
@@ -73,8 +73,13 @@ list, and stage-specific evidence. This interface lets stages use different
 tools and checking methods while participating in the same workflow.
 
 The `design-flow` skill connects the engine to the host's execution facilities.
-Platform integration supplies the corresponding tool calls. Stage definitions
-and result semantics remain in the shared engine and stage packages.
+Each platform adapter supplies native skill loading, background executors, completion
+handling and shell execution. Shared instructions use bare skill names and describe
+execution without naming host tools. Claude Code, OpenCode, DeepSeek Harness and Codex
+are peer integrations; their namespaces and lifecycle hooks belong to their adapters.
+Stage definitions and result semantics remain in the shared engine and stage packages.
+Adaptation preserves concurrency and independent reviews on each host, rather than
+restricting the flow to capabilities common to all hosts.
 
 ## 3. Project data model
 

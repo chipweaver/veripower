@@ -1,70 +1,68 @@
-# VeriPower on opencode
+# VeriPower on OpenCode
 
-The adapter loads the shared `framework/` and `skills/` through opencode's plugin
-API, maps skill and task calls to native tools, and supplies post-dispatch scheduling
-context.
+The adapter uses OpenCode's native plugin API, skills, background subagents and
+completion notifications. It targets OpenCode 2.0.26; OpenCode 1 is no longer supported.
 
 ## Install
 
-The integration below is verified on opencode 1.18.30.
-
-Add VeriPower to `~/.config/opencode/opencode.json`, or a project's
-`opencode.json`:
-
-```json
-{ "plugin": ["veripower@git+https://github.com/chipweaver/veripower.git"] }
-```
-
-On opencode 1.18.30, background subagents require the following launch flag:
+Install through the native plugin CLI:
 
 ```bash
-OPENCODE_EXPERIMENTAL_BACKGROUND_SUBAGENTS=true \
-OPENCODE_EXPERIMENTAL_OUTPUT_TOKEN_MAX=131072 opencode
+opencode plugin add git+https://github.com/chipweaver/veripower.git
 ```
 
-Set the output-token value to your selected model's declared output limit;
-`131072` is the example used here. The second flag lifts opencode 1.18.30's
-32,000-token completion ceiling for models that support longer output.
+For a working copy, run `npm ci` in the checkout and launch OpenCode there. It
+discovers `.opencode/plugins/veripower/server.js`. Use either the package installation
+or the project plugin for a session, as described in the
+[native plugin guide](https://opencode.ai/v2/docs/plugins).
 
-For a working copy, launch opencode from the checkout with the same environment
-flags. It discovers `.opencode/plugins/veripower.js` as a project plugin. Choose
-either the installed package or the project plugin for a session: opencode loads
-local and package plugins separately. See opencode's
-[plugin loading guide](https://opencode.ai/docs/plugins/).
-
-Ask opencode to list the VeriPower skills, then run `brainstorm` and `design-flow`.
+Ask the agent to list VeriPower skills, then run `brainstorm` and `design-flow`.
 Python and EDA prerequisites are in the [user manual](../docs/USER-MANUAL.md).
 
 ## Runtime behavior
 
-The adapter registers its installed `skills/` directory through
-`config.skills.paths`. The main agent and its subagents discover the same skills
-under bare names, such as `design-flow`.
+The adapter registers shared skills through `ctx.skill.transform`, with IDs
+such as `veripower:synthesis`. Each skill retains its installed file location
+and references. Session context supplies native tool mappings to parents and
+children: `skill` loads an ID, `subagent` with `background: true` starts an
+executor, and `shell` runs commands. OpenCode 2 needs no experimental background flag.
 
-[plugins/veripower.js](plugins/veripower.js) supplies each session with the
-installed root and tool translations: `Skill` becomes `skill`, and background
-`Task` becomes `task` with `background: true`. Child prompts use the same bare
-skill names and installed paths.
+The dispatch reminder is reconstructed from native conversation history. It
+survives executor launch and ends at the next kernel action. The adapter leaves
+host permissions unchanged; the shared kernel and skills own routing and evidence.
 
-The adapter preserves global and agent permissions and leaves command text unchanged.
-A dispatch reminder stays in context until the next kernel action, including across executor launch.
-The shared kernel owns stage routing and artifact validity. Design-flow coordinates execution
-and collection and follows the task's actual authorization for engineering decisions.
+## Update, disable or remove
 
-## Removal
-
-Remove the plugin entry from `opencode.json`, or remove the project plugin if
-installed locally. Start a new session after changing the plugin or its configuration.
-
-## Check the integration
-
-From a checkout:
+With the plugin active in a running OpenCode session:
 
 ```bash
-node --check .opencode/plugins/veripower.js
+opencode plugin check
+opencode plugin update git+https://github.com/chipweaver/veripower.git
+```
+
+Start a new session after updating. A working copy loads its local changes after
+restarting OpenCode.
+
+To disable an installed plugin, append `"-veripower"` to the `plugins` array.
+Remove that entry to re-enable it. To uninstall the package:
+
+```bash
+opencode plugin remove git+https://github.com/chipweaver/veripower.git
+```
+
+For a local project plugin, remove its directory. Start a new session and check
+that VeriPower skills are absent. OpenCode may retain downloaded package files.
+
+## Check
+
+```bash
+npm ci
+node --check .opencode/plugins/veripower/server.js
 python -m pytest tests/unit/ tests/contracts/
 ```
 
-The first command checks adapter syntax; the Python suite checks the shared
-flow. To check the host integration, use an opencode session with the launch
-flags above and confirm skill discovery, background task completion and the configured host permissions. See [testing](../tests/README.md) for experiment scope.
+These check syntax and adapter behavior. Native checks must also establish skill
+loading in parent and child sessions, background completion and host permissions.
+See [testing](../tests/README.md) for the difference between runtime, model and EDA checks.
+Lifecycle checks cover installation, update, disable, removal and reinstallation;
+inspect fresh registrations and actual installed revisions.

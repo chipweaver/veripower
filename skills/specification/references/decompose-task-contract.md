@@ -1,8 +1,6 @@
 # Spec decompose sub-Task contract
 
 Author `design.md` and the boundary sidecars from `{workdir}/requirements.json`.
-Do not call the Task tool: a sub-Task writes no events, so anything you dispatch is work the kernel
-cannot see or audit.
 
 ## Read
 Read `{workdir}/requirements.json`, the original intent and relevant referenced sources.

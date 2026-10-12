@@ -35,7 +35,9 @@ the workdir and identifies the executor; it does not start that executor.
 | `execution` | Start the work |
 |---|---|
 | `main-thread` | Invoke the returned skill in this conversation, acting as that stage's executor. |
-| `task` | Render [the stage prompt](../../framework/references/prompts/stage-subagent.md.tpl) with the module, rule, skill and workdir from dispatch; launch it with `Task(run_in_background=True, prompt=<rendered>)`. |
+| `task` | Render [the stage prompt](../../framework/references/prompts/stage-subagent.md.tpl) with the module, rule, skill and workdir from dispatch; launch an independent background executor with that prompt through the host adapter. |
+
+Skill names are bare stage names. The host adapter supplies native skill loading and delegation.
 
 After launching a background executor, query `decide` again so other ready work can proceed.
 Confirm executor exit through the host before waking or reaping its run; a result file or `YIELD`

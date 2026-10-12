@@ -31,8 +31,35 @@ not model reasoning or EDA quality. See [codex/README.md](../codex/README.md) fo
 adapter's verification scope. Other tests may also require optional local tools;
 inspect skips when interpreting a run.
 
+OpenCode 2 native checks use a packed plugin and a scripted localhost provider:
+
+```bash
+VERIPOWER_OPENCODE_TESTS=1 python -m pytest -q tests/unit/test_platform_runtime.py -k opencode
+```
+
+Set `VERIPOWER_OPENCODE_BIN` when using a separate OpenCode 2 binary. These checks
+cover installed skills, fresh child context, background completion, scheduling reminders
+and host command refusal. DeepSeek native checks use published 0.2.1-alpha.2 packages;
+set `VERIPOWER_DSH_NODE_MODULES` to their `node_modules` directory and run the same
+file with `-k dsh`. They cover skill registration, scoped prompt assembly and native
+post-execution decisions. Neither check measures model reasoning or EDA quality.
+
+Claude Code parent/child skill loading and background completion use a scripted
+localhost Messages endpoint:
+
+```bash
+VERIPOWER_CLAUDE_TESTS=1 python -m pytest -q tests/unit/test_platform_runtime.py -k claude
+```
+
 Model scenarios and EDA experiments are manual checks outside the default pytest run.
+Run `npm ci` first for the JavaScript adapter dependencies.
 Use the target platform for platform claims, and report unrun checks explicitly.
+
+Lifecycle checks inspect fresh registrations and actual installed revisions after
+installation, update, disable, removal and reinstallation. Installed execution checks
+exercise concurrency, delegated review, in-flight lifecycle operations, restart recovery
+and controlled failures. The native DeepSeek test sends the adapter's deferred context
+through the current session-format writer.
 
 Shared helpers live in `skills_source.py`; fixtures live beside the tests that use them.
 

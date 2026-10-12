@@ -33,7 +33,7 @@ def test_skill_dir_rule_bidirectional_coverage():
         for p in SKILLS_DIR.iterdir()
         if (p / "SKILL.md").exists() and p.name not in NON_RULE_SKILLS
     }
-    rule_skills = {r.skill.split(":", 1)[1] for r in rules.RULES.values()}
+    rule_skills = {r.skill for r in rules.RULES.values()}
     assert skill_dirs == rule_skills
 
 

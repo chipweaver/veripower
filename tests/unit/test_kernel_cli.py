@@ -1087,20 +1087,92 @@ def test_bare_import_single_module_identity():
 
 
 def test_a_read_only_verb_freezes_the_intent_tree(tmp_path, monkeypatch):
-    """The enforcement hangs off the CLI, not off an event append: an operator poking at a
-    reaped module reaches for `status`, which writes nothing, and that is exactly the window
-    in which a reader's __pycache__ invalidated every proof."""
+    """Keep references protected between rounds, when no dispatch or append occurs."""
     monkeypatch.chdir(tmp_path)
     module = "frozen"
     write_file(module, "intent/reference/model.py", "X = 1\n")
-    ref = Path(module) / "intent" / "reference" / "model.py"
-    assert ref.stat().st_mode & 0o200  # the test wrote it, so it starts writable
+    ref = Path(module) / "intent/reference/model.py"
+    assert ref.stat().st_mode & 0o200
+    reply = run_json(tmp_path, "status", "--module", module)
+    assert reply["stages"]["specification"] == "missing"
+    for path in (ref, ref.parent, Path(module) / "intent"):
+        assert not path.stat().st_mode & 0o200
 
-    r = run_json(tmp_path, "status", "--module", module)
-    assert r["stages"]["specification"] == "missing"
 
-    for p in (ref, ref.parent, Path(module) / "intent"):
-        assert not p.stat().st_mode & 0o200, p
+@pytest.mark.parametrize(
+    "arguments",
+    [
+        ("status",),
+        ("decide",),
+        ("consequences", "--paths", "intent/reference/model.py"),
+    ],
+)
+def test_queries_do_not_chmod_protected_intent(
+    tmp_path, monkeypatch, capsys, arguments
+):
+    module = tmp_path / "observed"
+    write_file(module, "intent/reference/model.py", "X = 1\n")
+    run_json(tmp_path, "status", "--module", str(module))
+
+    def denied_chmod(*args, **kwargs):
+        raise PermissionError("Read-only sandbox rejects chmod")
+
+    monkeypatch.setattr(Path, "chmod", denied_chmod)
+    monkeypatch.setattr(sys, "argv", [SCRIPT, *arguments, "--module", str(module)])
+    kernel.main()
+    json.loads(capsys.readouterr().out)
+    assert not (module / "events.jsonl").exists()
+
+
+def test_query_freeze_prevents_reference_bytecode_without_touching_link_targets(
+    tmp_path,
+):
+    module = tmp_path / "protected"
+    reference = write_file(module, "intent/reference/model.py", "X = 1\n")
+    outside = tmp_path / "external-model.py"
+    outside.write_text("X = 2\n")
+    original_mode = outside.stat().st_mode
+    (reference.parent / "external.py").symlink_to(outside)
+    run_json(tmp_path, "status", "--module", str(module))
+    assert outside.stat().st_mode == original_mode
+    assert (reference.parent / "external.py").is_symlink()
+    before = facts.fingerprint(module / "intent")
+    reader = (
+        "import importlib.util, sys; sys.dont_write_bytecode=False; "
+        "spec=importlib.util.spec_from_file_location('reference',sys.argv[1]); "
+        "model=importlib.util.module_from_spec(spec); spec.loader.exec_module(model); "
+        "print(model.X)"
+    )
+    imported = subprocess.run(
+        [sys.executable, "-c", reader, str(reference)],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    assert imported.stdout.strip() == "1"
+    assert not (reference.parent / "__pycache__").exists()
+    assert facts.fingerprint(module / "intent") == before
+    control = tmp_path / "writable/model.py"
+    control.parent.mkdir()
+    control.write_text("X = 1\n")
+    subprocess.run(
+        [sys.executable, "-c", reader, str(control)], check=True, capture_output=True
+    )
+    assert (control.parent / "__pycache__").is_dir()
+
+
+def test_freeze_reports_denial_when_intent_still_needs_protection(
+    tmp_path, monkeypatch
+):
+    module = tmp_path / "unprotected"
+    write_file(module, "intent/brainstorm.md", "Requirements\n")
+
+    def denied_chmod(*args, **kwargs):
+        raise PermissionError("Host refused intent protection")
+
+    monkeypatch.setattr(Path, "chmod", denied_chmod)
+    with pytest.raises(PermissionError, match="Host refused"):
+        store.freeze_inputs(str(module))
 
 
 def test_dispatch_rejects_non_object_params_before_allocating_run(tmp_path):
