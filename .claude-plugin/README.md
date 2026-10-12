@@ -57,7 +57,8 @@ either operation. Uninstall removes registration; Claude Code may retain cached 
 From a checkout:
 
 ```bash
-claude plugin validate .
+claude plugin validate . --strict
+claude plugin validate .claude-plugin/plugin.json --strict
 python -m pytest -q tests/unit/test_host_context.py tests/unit/test_dispatch_context.py
 ```
 

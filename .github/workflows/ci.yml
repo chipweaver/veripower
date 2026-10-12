@@ -26,10 +26,7 @@ jobs:
       - uses: actions/checkout@v7
       - run: npm install -g @anthropic-ai/claude-code
       - run: claude plugin validate . --strict
-      # The plugin manifest (plus every SKILL.md frontmatter and hooks/hooks.json)
-      # is checked non-strict: the root CLAUDE.md is repo instructions, not shipped
-      # context, and warns permanently. Real errors still fail the step.
-      - run: claude plugin validate .claude-plugin/plugin.json
+      - run: claude plugin validate .claude-plugin/plugin.json --strict
 
   test:
     runs-on: ubuntu-latest

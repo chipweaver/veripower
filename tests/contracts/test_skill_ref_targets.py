@@ -13,7 +13,7 @@ does not exist — a child sub-design is §1–§5):
   B. **`<doc> §section`** — a doc-prefixed section ref must resolve to a real
      heading in that doc's static source. Runtime artifacts resolve via their
      template (`design.md`→design-template, `<child>.md`→child-design-template);
-     static docs (ARCHITECTURE.md, CLAUDE.md, docs/*.md, …) resolve directly.
+     static docs (ARCHITECTURE.md, AGENTS.md, docs/*.md, …) resolve directly.
 
 **Scope (deliberate):** only references that are *deterministically resolvable*
 are checked. Bare section refs (`§1.6` with no doc prefix) are ambiguous about
@@ -66,7 +66,7 @@ DOC_SOURCES = {
     "<child>.md": "skills/specification/references/child-design-template.md",
     "design.md": "skills/specification/references/design-template.md",
     "ARCHITECTURE.md": "ARCHITECTURE.md",
-    "CLAUDE.md": "CLAUDE.md",
+    "AGENTS.md": "AGENTS.md",
     "CONTRIBUTING.md": "CONTRIBUTING.md",
     "README.md": "README.md",
 }
