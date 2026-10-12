@@ -13,7 +13,7 @@
 
 VeriPower is an open-source plugin for chip front-end design and verification. Working from your specification, a coding agent develops RTL and a UVM testbench, runs EDA tools, and revises the design based on their results. VeriPower manages the work across stages, keeping track of what has passed and what needs to run again.
 
-The shared workflow is host-neutral, with native adapters for [Claude Code](.claude-plugin/README.md), [opencode](.opencode/README.md), [DeepSeek Harness](.dsh/README.md), and [Codex](codex/README.md).
+The shared workflow is host-neutral, with native adapters for [Claude Code](.claude/README.md), [opencode](.opencode/README.md), [DeepSeek Harness](.dsh/README.md), and [Codex](.codex-plugin/README.md).
 
 ## How it works
 
@@ -65,7 +65,7 @@ claude plugin install veripower@chipweaver
 
 Or point at a working copy: `claude --plugin-dir /path/to/veripower`.
 
-See [Claude Code setup and runtime behavior](.claude-plugin/README.md).
+See [Claude Code setup and runtime behavior](.claude/README.md).
 
 </details>
 
@@ -113,7 +113,7 @@ codex plugin add veripower@chipweaver --json
 
 Launch with `codex --enable hooks --enable multi_agent`, review the two VeriPower hooks in
 `/hooks`, and start a new session. The plugin uses native subagents and preserves the host's
-permission configuration. See [Codex setup and runtime behavior](codex/README.md).
+permission configuration. See [Codex setup and runtime behavior](.codex-plugin/README.md).
 
 </details>
 
@@ -142,4 +142,4 @@ Paper forthcoming.
 ```
 -->
 
-**Version:** v0.2.5. [MIT License](LICENSE). [Contributing](CONTRIBUTING.md). [Issues](https://github.com/chipweaver/veripower/issues).
+**Version:** v0.2.8. [MIT License](LICENSE). [Contributing](CONTRIBUTING.md). [Issues](https://github.com/chipweaver/veripower/issues).

@@ -21,7 +21,7 @@ def test_claude_reports_only_background_dispatch_context(execution, kernel):
         "tool_response": {"stdout": json.dumps(result)},
     }
     p = subprocess.run(
-        [sys.executable, str(ROOT / "claude/loop_after_dispatch.py")],
+        [sys.executable, str(ROOT / ".claude/loop_after_dispatch.py")],
         input=json.dumps(event),
         text=True,
         capture_output=True,

@@ -5,7 +5,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"${PLUGIN_ROOT}/codex/adapter.py\""
+            "command": "python3 \"${PLUGIN_ROOT}/.codex-plugin/adapter.py\""
           }
         ]
       }
@@ -15,7 +15,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"${PLUGIN_ROOT}/codex/adapter.py\""
+            "command": "python3 \"${PLUGIN_ROOT}/.codex-plugin/adapter.py\""
           }
         ]
       }

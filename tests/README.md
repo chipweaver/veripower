@@ -27,7 +27,7 @@ VERIPOWER_CODEX_TESTS=1 python -m pytest -q tests/unit/test_codex_runtime.py
 ```
 
 These use a local Codex app-server with scripted responses. They test host mechanics,
-not model reasoning or EDA quality. See [codex/README.md](../codex/README.md) for the
+not model reasoning or EDA quality. See [Codex setup](../.codex-plugin/README.md) for the
 adapter's verification scope. Other tests may also require optional local tools;
 inspect skips when interpreting a run.
 

@@ -11,7 +11,7 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 @pytest.mark.parametrize("event", ["SessionStart", "SubagentStart"])
-@pytest.mark.parametrize("host", ["codex", "claude"])
+@pytest.mark.parametrize("host", [".codex-plugin", ".claude"])
 def test_hook_delivers_installed_paths(event, host):
     result = subprocess.run(
         [sys.executable, str(ROOT / host / "adapter.py")],

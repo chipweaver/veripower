@@ -7,6 +7,11 @@ __pycache__/
 # Claude Code dir: personal settings stay local; shared project config is tracked
 .claude/*
 !.claude/CLAUDE.md
+!.claude/README.md
+!.claude/adapter.py
+!.claude/hooks.json
+!.claude/instructions.md
+!.claude/loop_after_dispatch.py
 !.claude/skills/
 !.claude/settings.json
 !.claude/hooks/

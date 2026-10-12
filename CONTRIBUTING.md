@@ -26,10 +26,10 @@ be wrong and are open to revision.
 |---|---|
 | Stage work, instructions and EDA tools | `skills/<stage>/` |
 | Scheduling, event history and artifact provenance | `framework/scripts/` |
-| Claude Code integration | `.claude-plugin/`, `claude/` |
+| Claude Code integration | `.claude-plugin/` manifests, `.claude/` implementation |
 | opencode integration | `.opencode/` |
 | DeepSeek Harness integration | `.dsh/` |
-| Codex integration | `.codex-plugin/`, `codex/` |
+| Codex integration | `.codex-plugin/` |
 
 For a stage change, follow its inputs through the skill, scripts and outputs. Keep
 commands, callers and result readers consistent. A new stage also needs registration

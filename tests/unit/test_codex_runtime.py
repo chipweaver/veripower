@@ -57,10 +57,10 @@ def run_codex(
     """Drive one app-server turn; fixtures and hook overrides stay under tmp_path."""
     fixture = tmp_path / "plugin"
     (fixture / "framework/scripts").mkdir(parents=True)
-    (fixture / "codex").mkdir()
+    (fixture / ".codex-plugin").mkdir()
     (fixture / "skills/design-flow").mkdir(parents=True)
-    (fixture / "codex/instructions.md").write_text(
-        (ROOT / "codex/instructions.md").read_text()
+    (fixture / ".codex-plugin/instructions.md").write_text(
+        (ROOT / ".codex-plugin/instructions.md").read_text()
     )
     (fixture / "framework/scripts/kernel.py").write_text(
         "from pathlib import Path\n"
@@ -75,9 +75,13 @@ def run_codex(
             f"prefix_rule(pattern={json.dumps(pattern)}, decision={json.dumps(host_rule)}, "
             'justification="fixture host policy")\n'
         )
-    shutil.copyfile(ROOT / "codex/adapter.py", fixture / "codex/adapter.py")
+    shutil.copyfile(
+        ROOT / ".codex-plugin/adapter.py", fixture / ".codex-plugin/adapter.py"
+    )
     (config / "hooks.json").write_text(
-        (ROOT / "codex/hooks.json").read_text().replace("${PLUGIN_ROOT}", str(fixture))
+        (ROOT / ".codex-plugin/hooks.json")
+        .read_text()
+        .replace("${PLUGIN_ROOT}", str(fixture))
     )
     requests = []
     errors = []

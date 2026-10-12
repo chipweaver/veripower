@@ -14,7 +14,7 @@ only tests a stated choice.
 [scenario-run.sh](scenario-run.sh) currently invokes `claude -p --model opus`.
 It is a Claude-specific runner, not a requirement to use Claude for other platforms.
 There is no Codex scenario runner in this directory. Codex experiments should use
-Codex; the [native runtime tests](../../codex/README.md#verification) use scripted
+Codex; the [native runtime tests](../../.codex-plugin/README.md#verification) use scripted
 responses and do not substitute for model scenarios.
 
 ```bash

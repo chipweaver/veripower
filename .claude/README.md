@@ -32,7 +32,7 @@ in the main conversation or a background subagent as requested by the shared
 orchestrator.
 
 The shared design-flow skill coordinates dispatch, execution and collection.
-[The adapter hooks](../claude/hooks.json) supply scheduling context. Stage skills own
+[The adapter hooks](hooks.json) supply scheduling context. Stage skills own
 their artifacts; the kernel owns routing and validity. Native execution permissions are unchanged.
 
 ## Update or remove
@@ -64,3 +64,7 @@ python -m pytest -q tests/unit/test_host_context.py tests/unit/test_dispatch_con
 
 These check plugin structure and adapter behavior. In a running session, check skill discovery
 and background stage dispatch. See [testing](../tests/README.md) for verification scope.
+
+`hooks.json` configures installed plugin execution. `settings.json`, `CLAUDE.md` and
+`hooks/` configure development sessions in this repository; installing the plugin does
+not activate those project settings in another workspace.

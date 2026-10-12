@@ -10,7 +10,11 @@ ROOT = Path(__file__).resolve().parent.parent
 
 def main() -> None:
     event = json.load(sys.stdin)
-    text = (ROOT / "codex/instructions.md").read_text().replace("@ROOT@", str(ROOT))
+    text = (
+        (ROOT / ".codex-plugin/instructions.md")
+        .read_text()
+        .replace("@ROOT@", str(ROOT))
+    )
     print(
         json.dumps(
             {

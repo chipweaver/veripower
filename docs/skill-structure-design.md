@@ -67,8 +67,9 @@ Use descriptive filenames. Markdown references generally use kebab-case,
 Python modules use snake_case, and suffixes such as `.schema.json`,
 `-template.md`, and `-task-contract.md` identify a file's purpose.
 
-Refer to another executable skill by its `veripower:` name, for example
-`veripower:simulation-plan`. Link to supporting documents where they are read.
+Refer to another executable skill by its bare name, for example `simulation-plan`.
+Platform adapters supply the host's namespace and loading syntax.
+Link to supporting documents where they are read.
 Avoid loading another skill's full instructions merely to explain a dependency
 already represented by the rule registry. Shared contracts should be referenced
 from their common home.

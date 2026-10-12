@@ -1,4 +1,4 @@
-# Spec decompose sub-Task contract
+# Specification decomposition task
 
 Author `design.md` and the boundary sidecars from `{workdir}/requirements.json`.
 

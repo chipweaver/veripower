@@ -10,9 +10,9 @@ when asking the agent to work on it.
 ## 1. Prepare the environment
 
 Install VeriPower using the [README quickstart](../README.md#quickstart).
-Host-specific setup is documented for [Claude Code](../.claude-plugin/README.md),
+Host-specific setup is documented for [Claude Code](../.claude/README.md),
 [opencode](../.opencode/README.md), [DeepSeek Harness](../.dsh/README.md), and
-[Codex](../codex/README.md).
+[Codex](../.codex-plugin/README.md).
 
 The Python scripts require Python 3.10 or later and the packages listed in
 `requirements.txt`. From a source checkout, install them with:
@@ -200,8 +200,9 @@ in version control and state that requirement when continuing.
 
 ### Revise the requirements
 
-The running flow treats `intent/` as read-only. Finish or stop active work
-before revising it. Ask the agent to update the specification, or use the
+The kernel keeps `intent/` read-only, including between runs. Finish or stop active
+work and restore write permission on the files and directories being revised.
+Ask the agent to update the specification, or use the
 brainstorm skill again in a separate session to discuss the revision.
 Then resume the flow with the updated input. Every stage records the intent
 tree, so a content change there causes the flow to reassess all eight stages.

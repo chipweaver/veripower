@@ -6,7 +6,7 @@
 
 ## 1. 准备环境
 
-按 [README 快速开始](../README.md#quickstart)安装 VeriPower。各宿主的配置说明分别见 [Claude Code](../.claude-plugin/README.md)、[opencode](../.opencode/README.md)、[DeepSeek Harness](../.dsh/README.md) 和 [Codex](../codex/README.md)。
+按 [README 快速开始](../README.md#quickstart)安装 VeriPower。各宿主的配置说明分别见 [Claude Code](../.claude/README.md)、[opencode](../.opencode/README.md)、[DeepSeek Harness](../.dsh/README.md) 和 [Codex](../.codex-plugin/README.md)。
 
 Python 脚本需要 Python 3.10 或更高版本，以及 `requirements.txt` 中的依赖。在源码仓库目录下执行：
 
@@ -131,7 +131,7 @@ RTL 源码位于 `Design/rtl-design/src/`，源文件清单及相关编译输入
 
 ### 修订需求
 
-运行中的流程将 `intent/` 视为只读输入。修订前先完成或停止正在执行的工作。可以让 agent 更新规格，也可以在独立会话中重新使用 brainstorm skill 讨论修订。随后使用更新后的输入继续流程。所有阶段都记录了意图目录树，因此其中的内容变化会使流程重新评估全部八个阶段。
+Kernel 将 `intent/` 保持为只读，包括两次运行之间。修订前先完成或停止正在执行的工作，并恢复待修改文件和目录的写权限。可以让 agent 更新规格，也可以在独立会话中重新使用 brainstorm skill 讨论修订。随后使用更新后的输入继续流程。所有阶段都记录了意图目录树，因此其中的内容变化会使流程重新评估全部八个阶段。
 
 ### 中断后继续
 

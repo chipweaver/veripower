@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/claude/adapter.py\""
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/.claude/adapter.py\""
           }
         ]
       }
@@ -16,7 +16,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/claude/adapter.py\""
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/.claude/adapter.py\""
           }
         ]
       }
@@ -27,7 +27,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/claude/loop_after_dispatch.py\""
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/.claude/loop_after_dispatch.py\""
           }
         ]
       }
