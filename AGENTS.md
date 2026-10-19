@@ -1,43 +1,46 @@
 # VeriPower
 
-VeriPower provides a shared IC design workflow with independent stage skills.
-Read CONTRIBUTING.md for development principles and validation, and docs/ARCHITECTURE.md
-for the runtime model. Existing code and documentation are open to correction.
+VeriPower is a host-neutral IC design workflow plugin with independent stage skills.
+This file guides development of the plugin repository. Existing code and documentation
+are open to correction.
+
+## Task references
+
+- For repository changes, follow [CONTRIBUTING.md](CONTRIBUTING.md) for development and validation.
+- For scheduling, artifact provenance or acceptance changes, consult
+  [the architecture](docs/ARCHITECTURE.md) and [the framework guide](framework/README.md)
+  for the runtime model and implementation entry points.
+- For stage changes, inspect `skills/<stage>/SKILL.md`, its scripts and relevant references together.
+  Shared machine interfaces live in `framework/references/schemas/`.
+- For installation and platform integration, use [README.md](README.md) and the relevant adapter guide.
+
+Instructions needed to execute an installed skill belong in the skills and adapters, so execution
+works without this repository's AGENTS.md or the author's session context.
 
 ## Runtime boundaries
 
-- `framework/scripts/kernel.py` owns the module's append-only `events.jsonl`, dispatch,
-  outcome collection, decisions and signoff. `decide` derives the next action from events
-  and current artifact fingerprints; `status` reports state without appending events.
-  Kernel commands, including queries, remove owner-write permission from `intent/`
-  to protect source materials from incidental writes.
+- `framework/scripts/kernel.py` owns the module's append-only `events.jsonl`, dispatch and
+  outcome collection, and records decisions and signoff. Kernel commands, including queries,
+  remove owner-write permission from `intent/` to protect source materials from incidental writes.
 - `framework/scripts/rules.py` declares stage inputs, directory roots and execution placement.
   These declarations define dependencies and legal repair owners, including the failed stage.
-  Each stage's `result.json` lists the outputs delivered by that run.
-- `framework/scripts/facts.py` computes validity and signoff readiness;
-  `schedule.py` selects work; `store.py` handles artifacts and event storage.
 - `skills/design-flow/SKILL.md` defines orchestration and applies the task's actual
   authorization to decisions. Platform adapters provide native tool integration and preserve
   host permissions.
 
 `signoff` records acceptance when the task calls for it, after checking current proofs.
-`provenance` and `reason` identify the decision maker, authorization and basis. The record
-applies to the accepted evidence; readiness alone does not record acceptance.
+The record applies to the accepted evidence; readiness alone does not record acceptance.
 
-## Stage artifacts
+## Stage boundaries
 
-Each module holds `intent/`, `Design/`, `Verification/` and `events.jsonl`. Stages obtain input
-locations from their dispatch, write within their workdir and close through their own CLI.
-The intent tree contains the original requirements and referenced authorities. Readers may
-consult it to resolve discrepancies in derived documents.
+Stages own their workdir artifacts and close through their own CLI; the kernel publishes
+the outputs declared in each run's `result.json`. The module's `intent/` tree contains the
+original requirements and referenced authorities used to resolve discrepancies in derived documents.
 
 Specification owns requirements, design choices and interface/clock boundaries. RTL design owns
 the module split and implementation. Verification derives expected behavior from independent
 requirements; implementation evidence may support diagnosis. Stage owners assess review findings
 and resolve demonstrated defects before acceptance.
 
-Schemas under `framework/references/schemas/` and each skill's references define the machine
-interfaces. Skill references contain stage-specific tool and authoring guidance.
-
 `brainstorm` and `env-precheck` are pre-pipeline skills. They neither close stages nor write
-kernel events. Installation and platform usage are described in README.md and adapter guides.
+kernel events.
