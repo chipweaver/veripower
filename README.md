@@ -29,7 +29,7 @@ The verification plan and reference model are based on the specification. Stage 
 
 Before the flow completes, the engine checks that all required stages have passed and their results still apply. The generated RTL, testbench, constraints, and reports are available in the project directory.
 
-More in the [architecture guide](ARCHITECTURE.md) ([中文](ARCHITECTURE.zh.md)).
+More in the [architecture guide](docs/ARCHITECTURE.md) ([中文](docs/ARCHITECTURE.zh.md)).
 
 ## Design flow
 

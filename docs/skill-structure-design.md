@@ -1,7 +1,7 @@
 # Skill and reference organization
 
 This guide describes where stage instructions and shared contracts belong.
-For the execution model, see [Architecture](../ARCHITECTURE.md). General
+For the execution model, see [Architecture](ARCHITECTURE.md). General
 contribution guidance is in [Contributing](../CONTRIBUTING.md).
 
 ## Skill responsibilities

@@ -65,7 +65,7 @@ def symbol_defined(module: str, symbol: str) -> bool:
 DOC_SOURCES = {
     "<child>.md": "skills/specification/references/child-design-template.md",
     "design.md": "skills/specification/references/design-template.md",
-    "ARCHITECTURE.md": "ARCHITECTURE.md",
+    "ARCHITECTURE.md": "docs/ARCHITECTURE.md",
     "AGENTS.md": "AGENTS.md",
     "CONTRIBUTING.md": "CONTRIBUTING.md",
     "README.md": "README.md",

@@ -34,7 +34,7 @@ be wrong and are open to revision.
 For a stage change, follow its inputs through the skill, scripts and outputs. Keep
 commands, callers and result readers consistent. A new stage also needs registration
 in [rules.py](framework/scripts/rules.py); dependencies are derived from its inputs.
-See [ARCHITECTURE.md](ARCHITECTURE.md) for the current scheduling and provenance model.
+See [ARCHITECTURE.md](docs/ARCHITECTURE.md) for the current scheduling and provenance model.
 
 Skills may link to references and scripts. They should be usable from an installed
 plugin without relying on repository instructions or the author's session memory.

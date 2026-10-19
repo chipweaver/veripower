@@ -2,7 +2,7 @@
 
 A directory guide: what lives here and who consumes it. Protocol *semantics*
 (proof validity, failure attribution, the trust boundary) are described in
-[ARCHITECTURE.md](../ARCHITECTURE.md).
+[ARCHITECTURE.md](../docs/ARCHITECTURE.md).
 
 This directory is the **framework layer** of the VeriPower plugin: the protocol,
 schemas, and CLI tooling that the stage skills and orchestrator both work against.

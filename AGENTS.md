@@ -1,7 +1,7 @@
 # VeriPower
 
 VeriPower provides a shared IC design workflow with independent stage skills.
-Read CONTRIBUTING.md for development principles and validation, and ARCHITECTURE.md
+Read CONTRIBUTING.md for development principles and validation, and docs/ARCHITECTURE.md
 for the runtime model. Existing code and documentation are open to correction.
 
 ## Runtime boundaries

@@ -269,4 +269,4 @@ required files and environment settings.
 | Signoff reports an invalid stage | Resume the flow to resolve its missing, failed, or stale result |
 | Signoff reports unrecorded files | Review whether those files belong in the delivery, then have the stage record the intended artifacts or remove the extras |
 
-For the execution and data model, see [Architecture](../ARCHITECTURE.md).
+For the execution and data model, see [Architecture](ARCHITECTURE.md).
