@@ -101,6 +101,6 @@ non-obvious decision. Include relevant validation and what remains unverified;
 scale the detail to the change. Link an issue when applicable.
 
 Write runtime skill instructions in English. User-facing material may follow the
-user's language; see the [language conventions](docs/language-posture-design.md)
-for source quotations, machine identifiers and bilingual documentation. Keep prose
-direct and link to detailed references instead of copying them into every document.
+user's language. Update existing English/Chinese document pairs in the same change,
+keeping their meaning aligned. Keep prose direct and link to detailed references
+instead of copying them into every document.

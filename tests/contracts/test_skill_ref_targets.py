@@ -93,7 +93,7 @@ def resolve_doc_source(doc: str):
         return None
     if doc in DOC_SOURCES:
         return PLUGIN_ROOT / DOC_SOURCES[doc]
-    if "/" in doc:  # a repo-relative path like docs/skill-structure-design.md
+    if "/" in doc:  # a repo-relative path like docs/ARCHITECTURE.md
         p = PLUGIN_ROOT / doc
         return p if p.is_file() else None
     return None  # bare unknown doc → skip
