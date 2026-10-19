@@ -13,8 +13,6 @@ This group includes simulation-triage, a diagnostic stage that submits result.js
 These tests turn the SKILL.md / schema runtime failures (`dispatch` from a
 missing skill, schema 404 inside `validate_result`) into clear unit-test
 diagnostics naming the exact path that's missing.
-
-Select scenarios for the behavior they exercise; see `tests/scenarios/README.md`.
 """
 
 import pytest

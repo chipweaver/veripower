@@ -7,7 +7,6 @@ Choose tests by the behavior a change could affect. Contribution guidance lives 
 |---|---|
 | `unit/` | Code behavior, including CLI and adapter integration tests |
 | `contracts/` | Consistency across declarations, files and documented commands |
-| `scenarios/` | Agent behavior on concrete tasks; see the [scenario guide](scenarios/README.md) |
 
 Contract checks may invoke code, for example to verify a documented CLI command.
 Prefer exercising the shipped producer over reproducing its logic in a test. Review
@@ -51,7 +50,7 @@ localhost Messages endpoint:
 VERIPOWER_CLAUDE_TESTS=1 python -m pytest -q tests/unit/test_platform_runtime.py -k claude
 ```
 
-Model scenarios and EDA experiments are manual checks outside the default pytest run.
+Model and EDA experiments are manual checks outside the default pytest run.
 Run `npm ci` first for the JavaScript adapter dependencies.
 Use the target platform for platform claims, and report unrun checks explicitly.
 
