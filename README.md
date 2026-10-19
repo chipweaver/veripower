@@ -11,15 +11,15 @@
 
 ---
 
-VeriPower helps coding agents develop chip front-end designs from original
+VeriPower helps coding agents **develop chip front-end designs from original
 requirements through implementation, verification and power, performance and
-area (PPA) evaluation. Its goal is a complete delivery in which the implementation
+area (PPA) evaluation**. Its goal is a complete delivery in which the implementation
 and its checking artifacts jointly meet the task requirements.
 
 Implemented as an open-source plugin for agent harnesses such as Claude Code,
 OpenCode, DeepSeek Harness and Codex, VeriPower combines professional guidance
-from domain-specific skills with a workflow engine. Design and checking evolve together
-through continuing feedback and coordinated revisions under shared requirements.
+from domain-specific skills with a workflow engine. **Design and checking evolve together
+through continuing feedback and coordinated revisions under shared requirements.**
 
 <p align="center">
   <a href="assets/veripower-methodology-and-mechanisms.png">
@@ -46,23 +46,23 @@ through continuing feedback and coordinated revisions under shared requirements.
   its effects on other requirements and artifact consistency. The responsible
   task performs the revision in coordination with affected work.
 
-The workflow engine connects these activities across iterations. It coordinates
+The workflow engine connects these activities across iterations. **It coordinates
 execution through artifact dependencies and links checking conclusions to
 artifact versions, identifying work that needs reassessment while retaining
-passing results that still apply. Artifacts and run records persist in the
+passing results that still apply.** Artifacts and run records persist in the
 module workspace, allowing development to continue across sessions.
 
-Deliverables include specifications, RTL, UVM testbenches, constraints,
-synthesized netlists, and verification and analysis reports.
+**Deliverables include specifications, RTL, UVM testbenches, constraints,
+synthesized netlists, and verification and analysis reports.**
 
 ## Requirements
 
 The agent's execution environment needs:
 
 - Python 3.10 or later, with the packages in [requirements.txt](requirements.txt).
-- For the full flow, Synopsys SpyGlass, VCS with UVM, Verdi waveform tools,
+- **For the full flow, Synopsys SpyGlass, VCS with UVM, Verdi waveform tools,
   Design Compiler and PrimeTime, with the corresponding licenses and cell
-  libraries. See [EDA Tool Environment](docs/eda-env.md) for configuration.
+  libraries.** See [EDA Tool Environment](docs/eda-env.md) for configuration.
 
 You can check tool availability and license readiness with the `env-precheck`
 skill in a separate session before starting development.
@@ -82,7 +82,7 @@ skill in a separate session before starting development.
    need discussion, use the `brainstorm` skill in a separate session and review
    the resulting document before starting the flow.
 
-3. **Start a new session** with VeriPower enabled and ask:
+3. **Start a new session with VeriPower enabled and ask:**
 
     > Run the design-flow skill for {module_dir}.
 
@@ -98,4 +98,4 @@ module workspace.
   and coordination across iterations.
 - [Contributing](CONTRIBUTING.md): development principles and validation.
 
-**Version:** v0.2.9 · [MIT License](LICENSE) · [Issues](https://github.com/chipweaver/veripower/issues)
+Version: v0.2.10 · [MIT License](LICENSE) · [Issues](https://github.com/chipweaver/veripower/issues)
