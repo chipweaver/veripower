@@ -39,7 +39,7 @@ VERIPOWER_OPENCODE_TESTS=1 python -m pytest -q tests/unit/test_platform_runtime.
 
 Set `VERIPOWER_OPENCODE_BIN` when using a separate OpenCode 2 binary. These checks
 cover installed skills, fresh child context, background completion, scheduling reminders
-and host command refusal. DeepSeek native checks use published 0.2.1-alpha.2 packages;
+and host command refusal. DeepSeek native checks use published 0.2.1-rc.2 packages;
 set `VERIPOWER_DSH_NODE_MODULES` to their `node_modules` directory and run the same
 file with `-k dsh`. They cover skill registration, scoped prompt assembly and native
 post-execution decisions. Neither check measures model reasoning or EDA quality.

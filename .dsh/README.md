@@ -5,9 +5,7 @@ the shared skills through the native provider.
 
 ## Install
 
-Use DeepSeek Harness 0.2.1-alpha.2 or later in the 0.2.1 release line. With
-[DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) installed,
-add VeriPower to the profile you will run:
+Validated with DeepSeek Harness 0.2.1-rc.2. Install VeriPower into the profile you run:
 
 ```bash
 dsh plugin --profile web add "veripower@git+https://github.com/chipweaver/veripower.git"
@@ -21,9 +19,8 @@ dsh plugin --profile web add /path/to/veripower
 dsh web
 ```
 
-Use the long-lived `web` profile for the design flow: it keeps the session
-available for stage completions and human approval prompts. `headless` is a
-one-shot task runner.
+Use `web` for interactive design work. For SDK sessions, see the
+[native SDK guide](https://github.com/deepseek-ai/deepseek-harness/blob/dsh-v0.2.1-rc.2/packages/sdk/server/README.md).
 
 Ask the agent to list the VeriPower skills, then run `brainstorm` and
 `design-flow`. Python and EDA prerequisites are in the
@@ -33,24 +30,13 @@ explains profile installation and layer ordering.
 
 ## Runtime behavior
 
-The root [package.json](../package.json) declares the bundle patch at
-[cordis.patch.yml](cordis.patch.yml), which loads
-[plugins/veripower.js](plugins/veripower.js).
-
-The adapter locates this installation's `skills/` directory and registers it
-through an isolated filesystem skill provider. No global skill symlink or
-manually configured skill path is needed.
-
-The adapter loads bare skill names through `skill`. Background executors use native
-`subagent` activations, which return `subagentId` immediately and deliver completion
-notices to the parent. The host's system prompt supplies these native operations to
-both parent and child agents.
-
-The adapter supplies post-dispatch scheduling context. The profile supplies execution tools
-and permissions. The shared design-flow skill coordinates
-execution and collection; the kernel owns stage routing and validity.
+The [adapter](plugins/veripower.js) registers the installed skills, supplies native
+tool mappings and adds scheduling context after background dispatch. Skill loading,
+subagents, completion notifications and permissions use DSH's native mechanisms.
 
 ## Update or remove
+
+Web and Desktop provide native plugin management for updates, removal and enablement.
 
 To update:
 
@@ -64,23 +50,21 @@ To remove:
 dsh plugin --profile web remove veripower
 ```
 
-Restart the profile after either operation. Plugin management forwards to pnpm
-in that profile and updates its bundle layers.
+Hot reload applies changes to the running profile. Follow the host's restart prompt;
+restart profiles without hot reload after changes.
 
 Collect active stage runs before uninstalling. Removal can delete the CLI files
 that an executor or its parent still needs. Restore the bundle and resume the
 session before collecting work interrupted by removal.
 
-To disable the installed adapter, add this entry to the profile's `cordis.patch.yml`:
+To disable the adapter through a profile's `cordis.patch.yml`, add:
 
 ```yaml
 - id: veripower-dsh
   disabled: true
 ```
 
-Remove the entry to re-enable it and restart the profile. After removal, the profile
-should contain neither the `veripower` dependency nor its bundle layer, and a fresh
-runtime should expose neither its skills nor its tool mapping.
+Remove that patch entry to re-enable it.
 
 ## Check the integration
 
@@ -88,9 +72,9 @@ runtime should expose neither its skills nor its tool mapping.
 dsh --profile web --dump-config
 ```
 
-The composed configuration should include the `veripower-dsh` layer entry. In the
-web session, check that skills are available, task completions return to the
-parent, and host permissions remain effective.
+The composed configuration should include `veripower-dsh`. In a running session,
+check skill loading, background completion and host permissions. After uninstalling,
+a new session should expose neither VeriPower skills nor its tool mapping.
 
 From a VeriPower checkout, `node --check .dsh/plugins/veripower.js` checks adapter
 syntax. Shared tests and the distinction between runtime, model and EDA checks

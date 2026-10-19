@@ -1,6 +1,6 @@
 {
   "name": "veripower",
-  "version": "0.2.8",
+  "version": "0.2.9",
   "description": "Host-neutral IC design workflow with native coding-agent adapters",
   "type": "module",
   "license": "MIT",

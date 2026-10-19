@@ -87,7 +87,7 @@ See [opencode setup and runtime behavior](.opencode/README.md).
 <details>
 <summary><strong>DeepSeek Harness</strong></summary>
 
-The adapter targets DeepSeek Harness 0.2.1-alpha.2.
+The adapter is validated with DeepSeek Harness 0.2.1-rc.2.
 
 Install into the profile you run:
 
@@ -95,7 +95,7 @@ Install into the profile you run:
 dsh plugin --profile web add "veripower@git+https://github.com/chipweaver/veripower.git"
 ```
 
-Run the `web` profile (`dsh web`), not the one-shot `headless` profile.
+Run `dsh web` for an interactive design-flow session.
 
 See [DeepSeek Harness setup and runtime behavior](.dsh/README.md).
 
@@ -142,4 +142,4 @@ Paper forthcoming.
 ```
 -->
 
-**Version:** v0.2.8. [MIT License](LICENSE). [Contributing](CONTRIBUTING.md). [Issues](https://github.com/chipweaver/veripower/issues).
+**Version:** v0.2.9. [MIT License](LICENSE). [Contributing](CONTRIBUTING.md). [Issues](https://github.com/chipweaver/veripower/issues).
