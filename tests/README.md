@@ -26,10 +26,10 @@ Native Codex runtime checks are opt-in:
 VERIPOWER_CODEX_TESTS=1 python -m pytest -q tests/unit/test_codex_runtime.py
 ```
 
-These use a local Codex app-server with scripted responses. They test host mechanics,
-not model reasoning or EDA quality. See [Codex setup](../.codex-plugin/README.md) for the
-adapter's verification scope. Other tests may also require optional local tools;
-inspect skips when interpreting a run.
+These use a local Codex app-server with scripted responses to test host mechanics.
+See [Codex setup](../.codex-plugin/README.md) for the adapter's verification scope.
+Other tests may also require optional local tools; inspect skips when interpreting
+a run.
 
 OpenCode 2 native checks use a packed plugin and a scripted localhost provider:
 
@@ -42,7 +42,7 @@ cover installed skills, fresh child context, background completion, scheduling r
 and host command refusal. DeepSeek native checks use published 0.2.1-rc.2 packages;
 set `VERIPOWER_DSH_NODE_MODULES` to their `node_modules` directory and run the same
 file with `-k dsh`. They cover skill registration, scoped prompt assembly and native
-post-execution decisions. Neither check measures model reasoning or EDA quality.
+post-execution decisions.
 
 Claude Code parent/child skill loading and background completion use a scripted
 localhost Messages endpoint:
@@ -55,18 +55,19 @@ Model scenarios and EDA experiments are manual checks outside the default pytest
 Run `npm ci` first for the JavaScript adapter dependencies.
 Use the target platform for platform claims, and report unrun checks explicitly.
 
-Lifecycle checks inspect fresh registrations and actual installed revisions after
-installation, update, disable, removal and reinstallation. Installed execution checks
-exercise concurrency, delegated review, in-flight lifecycle operations, restart recovery
-and controlled failures. The native DeepSeek test sends the adapter's deferred context
-through the current session-format writer.
+The opt-in tests above cover the listed host mechanics. Add targeted checks for
+behavior affected by a change that existing tests do not exercise. Lifecycle checks
+verify registrations and actual installed revisions after relevant operations,
+such as update, disable, removal and reinstallation. Execution and recovery checks
+may involve concurrent tasks, delegated review, restart recovery or controlled
+failures. The native DeepSeek test sends the adapter's deferred context through
+the current session-format writer.
 
 Shared helpers live in `skills_source.py`; fixtures live beside the tests that use them.
 
 Report parser fixtures isolate tool syntax and measurement semantics. They do not
 encode a benchmark design or set acceptance thresholds from its measurements.
 
-Use controlled tool responses to test entrypoint routing and error propagation.
-Those tests exercise the shipped scripts; they do not claim the tool ran or the
-hardware passed. Keep native report fragments needed for syntax and unit handling;
-archive full design experiments separately.
+Use controlled tool responses to test routing and error propagation through the
+shipped entrypoints. Keep native report fragments needed for syntax and unit
+handling; archive full design experiments separately.

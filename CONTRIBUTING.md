@@ -35,6 +35,7 @@ For a stage change, follow its inputs through the skill, scripts and outputs. Ke
 commands, callers and result readers consistent. A new stage also needs registration
 in [rules.py](framework/scripts/rules.py); dependencies are derived from its inputs.
 See [ARCHITECTURE.md](docs/ARCHITECTURE.md) for the current scheduling and provenance model.
+The [framework guide](framework/README.md) maps its files and consumers.
 
 Skills may link to references and scripts. They should be usable from an installed
 plugin without relying on repository instructions or the author's session memory.
@@ -47,7 +48,8 @@ Formatting a model's judgment as JSON does not establish its correctness.
 
 ## Development and validation
 
-Use Python 3.10 or later:
+Use Python 3.10 or later, with Node.js and npm for the JavaScript adapters and their
+tests. CI uses Node.js 24.
 
 ```bash
 python3 -m venv .venv
@@ -87,6 +89,9 @@ reproduce the result. EDA prerequisites are in [docs/eda-env.md](docs/eda-env.md
 Use `X.Y.Z`. Routine releases increment `Z`; capability milestones increment `Y`
 and reset `Z`; a new product generation increments `X` and resets `Y` and `Z`.
 Default to a routine release. All platforms share one VeriPower version.
+When releasing, keep `package.json`, `package-lock.json`, the Claude plugin and
+marketplace manifests, the Codex plugin manifest, and the version shown in both
+root READMEs consistent.
 
 ## Commits and pull requests
 
@@ -96,5 +101,6 @@ non-obvious decision. Include relevant validation and what remains unverified;
 scale the detail to the change. Link an issue when applicable.
 
 Write runtime skill instructions in English. User-facing material may follow the
-user's language. Keep prose direct and link to detailed references instead of
-copying them into every document.
+user's language; see the [language conventions](docs/language-posture-design.md)
+for source quotations, machine identifiers and bilingual documentation. Keep prose
+direct and link to detailed references instead of copying them into every document.

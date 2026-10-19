@@ -82,10 +82,9 @@ VERIPOWER_CLAUDE_TESTS=1 python -m pytest -q tests/unit/test_platform_runtime.py
 ```
 
 This probe loads the checkout through `--plugin-dir` and checks adapter context,
-skill loading and background completion. It does not exercise marketplace
-installation or model reasoning. For installation and lifecycle changes, also
-check the registered scope, installed version and actual loaded copy in an
-isolated installation. See [testing](../tests/README.md) for verification scope.
+skill loading and background completion. To check installation and lifecycle
+behavior, inspect the registered scope, installed version and actual loaded copy
+in an isolated installation. See [testing](../tests/README.md) for verification scope.
 
 `hooks.json` configures installed plugin execution. `settings.json`, `CLAUDE.md` and
 `hooks/` configure development sessions in this repository; installing the plugin does

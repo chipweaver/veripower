@@ -16,13 +16,13 @@
 
 环境配置应通过 `PATH` 提供所需命令，加载许可证设置，并使所选资源可访问。Synopsys 工具通常使用 `SNPSLMD_LICENSE_FILE` 或 `LM_LICENSE_FILE`；具体值以已有许可证配置或管理员提供的信息为准。
 
-通过 agent 的执行工具检查配置是否生效。交互终端中能运行某个命令，并不代表另行启动的进程具有相同环境。子进程继承已导出的环境变量；Bash 读取哪些启动文件取决于调用方式，不能统一依赖 `~/.bashrc`。相关规则见 Bash 的[环境继承说明](https://www.gnu.org/software/bash/manual/html_node/Environment.html)和[启动文件说明](https://www.gnu.org/software/bash/manual/html_node/Bash-Startup-Files.html)。
+通过 agent 的执行工具检查配置是否生效。子进程继承已导出的环境变量，Bash 按调用方式读取启动文件。相关规则见 Bash 的[环境继承说明](https://www.gnu.org/software/bash/manual/html_node/Environment.html)和[启动文件说明](https://www.gnu.org/software/bash/manual/html_node/Bash-Startup-Files.html)。
 
 采用容器、远程执行或工具包装脚本时，应在工具实际运行的位置检查路径、权限、许可证访问及输出是否可见。这类集成需要保持阶段使用的命令接口，等待工具结束，并返回退出状态和输出。
 
 ## 2. 按工作准备工具
 
-将 [requirements.txt](../requirements.txt) 中的 Python 依赖安装到阶段脚本使用的环境中。下表列出各类工作需要的工具能力。许可证应覆盖实际使用的功能，不能只确认工具能够启动。
+将 [requirements.txt](../requirements.txt) 中的 Python 依赖安装到阶段脚本使用的环境中。下表列出各类工作需要的工具能力。许可证应覆盖实际使用的功能。
 
 | 工作 | 所需工具或能力 |
 |---|---|
@@ -56,7 +56,7 @@ UVM 仿真中的 `UVM_HOME` 应指向构建所用的 UVM 发行目录，其中�
 
 修改已导出的变量不会更新已有 `config.tcl`。复用工作目录或更换资源时，应检查阶段实际生效的配置。
 
-当前综合和时序模板将 `LIB_DB` 配置为单个 `.db` 路径。任务若需要额外链接库、宏单元或工作条件设置，需要相应调整阶段的工具配置；仅导出一个库列表不会改变这些模板的行为。功耗模板已经按 Tcl 列表读取 `LIB_DB`。例如，将下列路径替换为真实库后，可用于一次功耗计算：
+当前综合和时序模板将 `LIB_DB` 配置为单个 `.db` 路径。任务若需要额外链接库、宏单元或工作条件设置，需要相应调整阶段的工具配置。功耗模板按 Tcl 列表读取 `LIB_DB`。例如，将下列路径替换为真实库后，可用于一次功耗计算：
 
 ```bash
 export LIB_DB='{/path/to/cell-library.db} {/path/to/macro-library.db}'
@@ -76,9 +76,9 @@ export LIB_DB='{/path/to/cell-library.db} {/path/to/macro-library.db}'
 
 说明计划运行的阶段或计算，并提供所选资源的位置。预检查先探测工具与配置，再在临时目录中运行小型任务，检查相关许可证和执行过程。探测需要设置超时，避免许可证服务不可用时一直等待。
 
-阅读报告时，关注实际执行了什么、产生了哪些输出，例如映射后的网表、时序报告、仿真输出、覆盖率报告或功耗报告。版本信息、许可证列表中的功能名称或零退出码，本身都不能证明环境已经可用。具体检查由 [env-precheck skill](../skills/env-precheck/SKILL.md) 规定。
+阅读报告时，核对测试使用的配置、实际执行的工作及其输出，例如映射后的网表、时序报告、仿真输出、覆盖率报告或功耗报告。具体检查由 [env-precheck skill](../skills/env-precheck/SKILL.md) 规定。
 
-解决环境问题后，重新检查受影响的部分。被跳过或未测试的项目仍未得到验证。工具版本、资源位置或执行环境变化后，应重新检查相关能力，并让 agent 重新评估受影响的已有测量结果。预检查只说明已测试配置的可运行性；实际任务及其结果仍需由相应阶段评价。预检查会报告问题并给出环境设置建议，不修改 shell 配置或模块文件。
+解决环境问题后，重新检查受影响的部分。工具版本、资源位置或执行环境变化后，应重新检查相关能力，并让 agent 重新评估受影响的已有测量结果。预检查会报告问题并给出环境设置建议，不修改 shell 配置或模块文件。
 
 ## 5. 定位环境问题
 
@@ -88,13 +88,13 @@ export LIB_DB='{/path/to/cell-library.db} {/path/to/macro-library.db}'
 |---|---|
 | 找不到命令，或 agent 中的行为与终端不同 | 检查 `PATH`、所选 Python 环境，以及实际执行进程加载的配置。 |
 | 许可证检出失败或长时间等待 | 检查许可证配置、服务是否可访问，以及是否有权使用所需功能；重新执行有超时限制、会实际使用该功能的检查。 |
-| 工具尚未读取设计就启动失败 | 检查安装版本的启动脚本解释器及支持的运行环境，采用适合该安装环境的配置方式；全局修改 `/bin/sh` 不是 VeriPower 的通用前提。 |
+| 工具尚未读取设计就启动失败 | 检查安装版本的启动脚本解释器及支持的运行环境，采用适合该安装环境的配置方式。 |
 | VCS 在 C/C++ 编译或链接时失败 | 核对该 VCS 版本与编译器、链接器的兼容性；需要显式选择编译器时设置 `VCS_CC`、`VCS_CPP`。 |
 | 找不到库、单元或模型 | 检查文件是否可见、实际生效的 `config.tcl` 或 `env.sh`，以及链接库和仿真文件清单是否覆盖实际设计。 |
 | 工具已结束，但覆盖率或功耗报告不可用 | 先检查报告生成选项、插桩和分析范围，再解释结果；查看阶段的原始报告和日志。 |
 
-结构覆盖率方面，随附脚本使用 `urg -format text`，并通过 `--cov-dir` 将报告目录传给解析器。解析器需要 `dashboard.txt` 和 `modinfo.txt`。检查所需覆盖指标是否在编译时启用，配置的 DUT 实例是否与设计一致。不支持的报告格式或缺失的测量不能满足覆盖率目标。解析细节见 [parse_coverage.py](../skills/simulation/templates/infra/scripts/parse_coverage.py)。
+结构覆盖率方面，随附脚本使用 `urg -format text`，并通过 `--cov-dir` 将报告目录传给解析器。解析器需要 `dashboard.txt` 和 `modinfo.txt`。检查所需覆盖指标是否在编译时启用，配置的 DUT 实例是否与设计一致。解析细节见 [parse_coverage.py](../skills/simulation/templates/infra/scripts/parse_coverage.py)。
 
-功耗方面，检查所选网表、库和约束是否与实验匹配，SAIF 是否覆盖预期活动与测量区间，以及 `STRIP_PATH` 是否对应采集的层次。报告包含数值，本身并不能证明测量有效。
+功耗方面，检查所选网表、库和约束是否与实验匹配，SAIF 是否覆盖预期活动与测量区间，以及 `STRIP_PATH` 是否对应采集的层次。
 
 设计任务的启动、复核和恢复见[用户指南](USER-MANUAL.zh.md)。

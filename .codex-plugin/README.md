@@ -1,7 +1,7 @@
 # VeriPower on Codex
 
 The adapter supplies installed paths and translates the shared skills' tool calls to native
-subagents and shell execution. Host permissions remain under the user's control.
+subagents and shell execution.
 The command and lifecycle behavior described here was checked with Codex CLI 0.163.0.
 
 ## Install
@@ -63,13 +63,12 @@ marketplace itself is a separate `codex plugin marketplace remove chipweaver` op
 ## Responsibilities
 
 The shared design-flow skill applies the task's actual authorization to engineering decisions.
-The kernel records decisions and checks artifact validity. Codex controls whether tool execution
-is allowed; a task delegation does not override a host refusal.
+The kernel records decisions and checks artifact validity. Codex controls tool
+execution permissions.
 
 The [manifest](plugin.json) declares skills and hooks relative to the plugin root.
 The [adapter](adapter.py) supplies execution mappings through SessionStart and
-SubagentStart. Plugin discovery, hook trust and execution permissions are separate
-checks. See the official [plugin packaging](https://developers.openai.com/plugins/build/plugins)
+SubagentStart. See the official [plugin packaging](https://developers.openai.com/plugins/build/plugins)
 and [hooks](https://learn.chatgpt.com/docs/hooks) documentation for those interfaces.
 
 ## Verification
@@ -82,11 +81,9 @@ VERIPOWER_CODEX_TESTS=1 pytest -q tests/unit/test_codex_runtime.py
 The native tests use Codex App Server and a scripted localhost Responses endpoint. They check
 host permission acceptance/rejection, ordinary help/execution without plugin prompts, and fresh
 subagent context with parent waiting. The probe loads its own fixture hooks with
-marketplace plugin loading disabled; it does not test plugin installation or the
-interactive hook-trust flow.
+marketplace plugin loading disabled.
 
-For installation or lifecycle changes, use an isolated Codex configuration to
+For installation and lifecycle checks, use an isolated Codex configuration to
 check the registered source, installed files and version, discovered hooks and
-their trust status, and the effects of update, disable and removal. Scripted
-runtime checks do not measure model reasoning or hardware quality. See
+their trust status, and the effects of update, disable and removal. See
 [testing](../tests/README.md) for verification scope.

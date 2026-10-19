@@ -86,6 +86,6 @@ localhost provider to check skill loading, fresh child context, background
 completion, scheduling reminders and host command refusal. Set
 `VERIPOWER_OPENCODE_BIN` to select another OpenCode 2 executable.
 
-Package lifecycle changes also need an isolated installation check of the
+For package lifecycle checks, use an isolated installation to inspect the
 configured target, active plugin, loaded revision and disable/removal behavior.
-These are separate from model reasoning and EDA experiments; see [testing](../tests/README.md).
+See [testing](../tests/README.md) for verification scope.

@@ -59,8 +59,7 @@ dsh plugin --profile web remove veripower
 
 Profiles with hot reload enabled apply watched configuration changes while
 running. Follow the host's restart prompt; restart profiles without hot reload
-after changes. Configuration reload does not establish that an already running
-stage has finished using the previous installation's files.
+after changes.
 
 Collect active stage runs before uninstalling. Removal can delete the CLI files
 that an executor or its parent still needs. Restore the bundle and resume the
@@ -95,7 +94,7 @@ VERIPOWER_DSH_NODE_MODULES=/path/to/dsh/node_modules \
 
 Use the package directory for the DSH release being checked. This probe verifies
 skill registration, scoped prompt assembly, native tool decisions and deferred
-context encoding. It does not boot a full profile or run a real background agent.
-Profile installation, reload and lifecycle changes require their own checks of
-the composed configuration and running profile. See [testing](../tests/README.md)
-for the distinction between runtime, model and EDA evidence.
+context encoding in native components. Check profile installation, reload and
+background execution through the composed configuration and a running profile.
+See [testing](../tests/README.md) for the distinction between runtime, model and
+EDA evidence.

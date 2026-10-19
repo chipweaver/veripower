@@ -29,11 +29,9 @@ the site's license settings, and provide access to the selected resources.
 Synopsys installations commonly use `SNPSLMD_LICENSE_FILE` or `LM_LICENSE_FILE`.
 Use the values from your existing license configuration or license administrator.
 
-Check the environment through the agent's execution tools. A command working in
-your interactive terminal does not establish that a separately launched process
-has the same setup. Exported variables are inherited by child processes, and
-Bash's startup files depend on how it is invoked; `~/.bashrc` alone is not a
-universal entry point. See the Bash documentation on
+Check the environment through the agent's execution tools. Child processes inherit
+exported variables, and Bash reads startup files according to how it is invoked.
+See the Bash documentation on
 [environment inheritance](https://www.gnu.org/software/bash/manual/html_node/Environment.html)
 and [startup files](https://www.gnu.org/software/bash/manual/html_node/Bash-Startup-Files.html).
 
@@ -47,7 +45,7 @@ tool completion and return its exit status and outputs.
 Install the Python dependencies in [requirements.txt](../requirements.txt) in
 the environment used by the stage scripts. The table identifies the additional
 capabilities needed for each kind of work. Ensure that the available licenses
-cover the features used by the work; successful tool startup alone is insufficient.
+cover the features used by the work.
 
 | Work | Required tools or capabilities |
 |---|---|
@@ -99,10 +97,9 @@ the effective stage configuration when reusing a workdir or changing resources.
 
 The supplied synthesis and timing templates configure `LIB_DB` as a single
 `.db` path. Tasks needing additional link libraries, macros or operating-condition
-setup require corresponding changes to the stage's tool configuration. Exporting
-a list alone does not change these templates. The power template already reads
-`LIB_DB` as a Tcl list. For example, after replacing each path with the actual
-library, a power calculation can use:
+setup require corresponding changes to the stage's tool configuration. The power
+template reads `LIB_DB` as a Tcl list. For example, after replacing each path with
+the actual library, a power calculation can use:
 
 ```bash
 export LIB_DB='{/path/to/cell-library.db} {/path/to/macro-library.db}'
@@ -134,19 +131,16 @@ jobs in temporary directories to exercise the relevant licenses and execution
 paths. Probes need timeouts so an unavailable license service cannot leave a
 check waiting indefinitely.
 
-Read the report for the actual work performed and the outputs produced: for
-example, a mapped netlist, a timing report, simulation output, a coverage report
-or a power report. A version banner, a listed license feature or a zero exit code
-alone does not establish readiness. The
+Read the report for the tested setup, the work performed and the outputs produced:
+for example, a mapped netlist, a timing report, simulation output, a coverage report
+or a power report. The
 [env-precheck skill](../skills/env-precheck/SKILL.md) defines the checks.
 
-Resolve missing prerequisites and repeat the affected checks. A skipped or
-untested item remains unverified. Recheck affected capabilities after changing
-tool versions, resource locations or execution environments, and have the agent
-reassess affected measurements from earlier work. Prechecks establish readiness
-for the tested setup; the actual task and its results still require assessment
-by the responsible stages. The precheck reports findings and suggested
-environment settings without changing your shell configuration or module files.
+Resolve missing prerequisites and repeat the affected checks. Recheck affected
+capabilities after changing tool versions, resource locations or execution
+environments, and have the agent reassess affected measurements from earlier work.
+The precheck reports findings and suggested environment settings without changing
+your shell configuration or module files.
 
 ## 5. Diagnose environment failures
 
@@ -157,7 +151,7 @@ to identify the cause.
 |---|---|
 | Command not found, or different behavior inside the agent | Check `PATH`, the selected Python environment and the setup loaded by the actual execution process. |
 | License checkout fails or waits indefinitely | Check the site's license settings, server reachability and entitlement for the requested feature. Repeat a bounded check that exercises that feature. |
-| Tool launcher fails before reading the design | Check the installed launcher's interpreter and the release's supported operating environment. Apply the site's supported setup; a system-wide `/bin/sh` change is not a universal VeriPower prerequisite. |
+| Tool launcher fails before reading the design | Check the installed launcher's interpreter and the release's supported operating environment. Apply the site's supported setup. |
 | VCS fails during C/C++ compilation or linking | Check the compiler and linker compatibility for that VCS release. Set `VCS_CC` and `VCS_CPP` when explicit compiler selection is needed. |
 | Library, cell or model cannot be found | Check file visibility, the effective `config.tcl` or `env.sh`, and whether the linked libraries and simulation file list cover the actual design. |
 | Tools finish but coverage or power reports are unusable | Check the report-generation options, instrumentation and analysis scope before interpreting the result. Inspect the stage's raw reports and logs. |
@@ -166,14 +160,12 @@ For structural coverage, the supplied runner requests `urg -format text` and
 passes its report directory to the parser through `--cov-dir`. The parser needs
 `dashboard.txt` and `modinfo.txt`. Check that the requested metrics were enabled
 during compilation and that the configured DUT instance matches the design.
-An unsupported report layout or an absent measurement cannot satisfy a coverage
-target. Parser details are in
+Parser details are in
 [parse_coverage.py](../skills/simulation/templates/infra/scripts/parse_coverage.py).
 
 For power, check that the selected netlist, libraries and constraints match the
 experiment, that the SAIF covers the intended activity and measurement interval,
-and that `STRIP_PATH` matches the captured hierarchy. A numeric report alone does
-not establish a valid measurement.
+and that `STRIP_PATH` matches the captured hierarchy.
 
 For starting, reviewing or resuming a design task, see the
 [User Guide](USER-MANUAL.md).

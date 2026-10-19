@@ -139,8 +139,6 @@ When the task calls for an acceptance record, the orchestrator uses
 `decide --closing` to check that the required stages' published files are covered
 by their latest output records, excluding run history. It then records the
 authorized acceptance through `signoff`, binding the decision to that evidence.
-Ordinary completion does not automatically perform this additional check or
-record acceptance.
 
 ## Integration and implementation
 

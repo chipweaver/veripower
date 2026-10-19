@@ -42,8 +42,7 @@ To check readiness, use a separate session and ask:
 The check probes tool availability and runs small license and execution checks.
 It reports which stages can run and what needs attention. Resolve missing
 prerequisites before running the affected work. You can prepare requirements
-while configuring the tools; completing implementation checks and the full flow
-requires the corresponding tools to be available.
+while configuring the tools.
 
 ## 2. Define the task
 
@@ -111,7 +110,6 @@ If work stops, ask for the affected stage, the relevant evidence and the propose
 next action. For missing tools or licenses, use the environment guide and
 `env-precheck`. For a design or verification finding, provide any requested
 requirements clarification and let the agent investigate and repair it.
-A failed check alone does not identify which artifact needs changing.
 
 ## 4. Review and save results
 
@@ -158,8 +156,7 @@ conclusions and confirm that the required stages' published files are covered by
 their latest output records. It then records the authorized acceptance through
 `signoff`. If you have reserved that decision, the agent presents the evidence
 and waits for your confirmation. The acceptance record is tied to that evidence;
-new stage conclusions need a new acceptance when that is in scope. Ordinary
-completion does not automatically record acceptance.
+new stage conclusions need a new acceptance when that is in scope.
 
 ### Save the project
 
@@ -192,8 +189,7 @@ existing measurements to produce a new stage conclusion.
 ### Change the requirements
 
 First have the agent finish or stop active work and collect its results. Update
-the original requirements in `intent/brainstorm.md` and any affected references,
-rather than changing only the derived design description.
+the original requirements in `intent/brainstorm.md` and any affected references.
 
 `intent/` is kept read-only by the flow. Ask the agent to restore write access
 for the files and directories being revised. You can use `brainstorm` again in
@@ -209,9 +205,9 @@ Keep the module workspace and open a new session with VeriPower enabled:
 
 The agent checks the project history and current files, establishes whether
 previously started work is still running, and collects finished runs before
-continuing. Missing or unusable results are handled as `blocked`; they are not
-assumed to have passed. Previously passing results remain reusable when their
-recorded inputs and outputs still match.
+continuing. Missing or unusable results are handled as `blocked`.
+Previously passing results remain reusable when their recorded inputs and outputs
+still match.
 
 For the method and coordination mechanisms behind these operations, see
 [Architecture](ARCHITECTURE.md).
