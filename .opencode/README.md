@@ -1,11 +1,11 @@
 # VeriPower on OpenCode
 
-The adapter uses OpenCode's native plugin API, skills, background subagents and
-completion notifications. It targets OpenCode 2.0.26; OpenCode 1 is no longer supported.
+The adapter uses OpenCode 2's native plugin API, skills, background subagents and
+completion notifications. The native checks below were exercised with OpenCode 2.0.27.
 
 ## Install
 
-Install through the native plugin CLI:
+Install a package plugin into OpenCode's global configuration through its CLI:
 
 ```bash
 opencode plugin add git+https://github.com/chipweaver/veripower.git
@@ -16,8 +16,13 @@ discovers `.opencode/plugins/veripower/server.js`. Use either the package instal
 or the project plugin for a session, as described in the
 [native plugin guide](https://opencode.ai/v2/docs/plugins).
 
-Ask the agent to list VeriPower skills, then run `brainstorm` and `design-flow`.
-Python and EDA prerequisites are in the [user manual](../docs/USER-MANUAL.md).
+In a session where the plugin has loaded, ask the agent to list VeriPower skills.
+With reviewed requirements at `{module_dir}/intent/brainstorm.md`, run `design-flow`
+for the module's absolute path. Use `brainstorm` in a separate session first when
+requirements need discussion.
+
+See the [User Guide](../docs/USER-MANUAL.md) for task preparation and continuation,
+and the [EDA environment guide](../docs/eda-env.md) for Python, tools, licenses and libraries.
 
 ## Runtime behavior
 
@@ -25,7 +30,7 @@ The adapter registers shared skills through `ctx.skill.transform`, with IDs
 such as `veripower:synthesis`. Each skill retains its installed file location
 and references. Session context supplies native tool mappings to parents and
 children: `skill` loads an ID, `subagent` with `background: true` starts an
-executor, and `shell` runs commands. OpenCode 2 needs no experimental background flag.
+executor, and `shell` runs commands.
 
 The dispatch reminder is reconstructed from native conversation history. It
 survives executor launch and ends at the next kernel action. The adapter leaves
@@ -33,15 +38,22 @@ host permissions unchanged; the shared kernel and skills own routing and evidenc
 
 ## Update, disable or remove
 
-With the plugin active in a running OpenCode session:
+Use the CLI to check and update installed package plugins:
 
 ```bash
 opencode plugin check
 opencode plugin update git+https://github.com/chipweaver/veripower.git
 ```
 
-Start a new session after updating. A working copy loads its local changes after
-restarting OpenCode.
+The package target identifies the configured installation. Local directory
+plugins are maintained by updating their source files, not through the package
+update command.
+
+OpenCode reloads changes under watched configuration directories. Changes to
+unwatched local dependencies can require restarting OpenCode. After changing
+the adapter, check the active plugin and its skills in a fresh session so the
+loaded paths and context correspond to the intended revision. See the native
+[reload rules](https://opencode.ai/v2/docs/plugins#reload).
 
 To disable an installed plugin, append `"-veripower"` to the `plugins` array.
 Remove that entry to re-enable it. To uninstall the package:
@@ -50,8 +62,10 @@ Remove that entry to re-enable it. To uninstall the package:
 opencode plugin remove git+https://github.com/chipweaver/veripower.git
 ```
 
-For a local project plugin, remove its directory. Start a new session and check
-that VeriPower skills are absent. OpenCode may retain downloaded package files.
+For a local plugin, remove its configured path or remove it from the discovery
+directory, according to how it was loaded. Check a fresh session after disabling
+or removing the plugin: VeriPower skills should be absent. Downloaded package
+files can remain cached after removal.
 
 ## Check
 
@@ -61,8 +75,17 @@ node --check .opencode/plugins/veripower/server.js
 python -m pytest tests/unit/ tests/contracts/
 ```
 
-These check syntax and adapter behavior. Native checks must also establish skill
-loading in parent and child sessions, background completion and host permissions.
-See [testing](../tests/README.md) for the difference between runtime, model and EDA checks.
-Lifecycle checks cover installation, update, disable, removal and reinstallation;
-inspect fresh registrations and actual installed revisions.
+These check syntax and shared code behavior. Run the opt-in native checks with:
+
+```bash
+VERIPOWER_OPENCODE_TESTS=1 python -m pytest -q tests/unit/test_platform_runtime.py -k opencode
+```
+
+They pack the plugin, load it in an isolated OpenCode server and use a scripted
+localhost provider to check skill loading, fresh child context, background
+completion, scheduling reminders and host command refusal. Set
+`VERIPOWER_OPENCODE_BIN` to select another OpenCode 2 executable.
+
+Package lifecycle changes also need an isolated installation check of the
+configured target, active plugin, loaded revision and disable/removal behavior.
+These are separate from model reasoning and EDA experiments; see [testing](../tests/README.md).

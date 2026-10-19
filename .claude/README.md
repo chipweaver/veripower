@@ -10,19 +10,25 @@ claude plugin marketplace add chipweaver/veripower
 claude plugin install veripower@chipweaver
 ```
 
-For a working copy:
+The install command uses user scope by default. Use `--scope project` or
+`--scope local` when that is the intended scope. Select the matching scope when
+enabling, disabling or uninstalling the plugin. See Claude Code's
+[plugin guide](https://code.claude.com/docs/en/discover-plugins) for scope and loading rules.
+
+To load a working copy for one session:
 
 ```bash
 claude --plugin-dir /path/to/veripower
 ```
 
-Start a session with the plugin enabled and ask it to list the VeriPower skills.
-Run `veripower:brainstorm` to settle requirements, then `veripower:design-flow`
-for the module directory. Python and EDA prerequisites are in the
-[user manual](../docs/USER-MANUAL.md).
+Start a fresh session with the plugin enabled and ask it to list the VeriPower
+skills. With reviewed requirements at `{module_dir}/intent/brainstorm.md`, run
+`veripower:design-flow` for the module's absolute path. If requirements need
+discussion, use `veripower:brainstorm` in a separate session first.
 
-Claude Code's [plugin guide](https://code.claude.com/docs/en/discover-plugins)
-describes installation scopes and plugin management.
+Task preparation and continuation are covered in the [User Guide](../docs/USER-MANUAL.md).
+Python, EDA tools, licenses and libraries are covered in the
+[EDA environment guide](../docs/eda-env.md).
 
 ## Runtime behavior
 
@@ -37,12 +43,18 @@ their artifacts; the kernel owns routing and validity. Native execution permissi
 
 ## Update or remove
 
+Refresh the marketplace catalog, then update the installed plugin:
+
 ```bash
 claude plugin marketplace update chipweaver
 claude plugin update veripower@chipweaver
 ```
 
-Start a new session to load the updated plugin. To remove it:
+Claude Code also supports plugin reload operations. A fresh session loads the
+updated plugin and runs VeriPower's SessionStart hook with its current installed
+paths. For `--plugin-dir`, update the checkout and start a new session with that path.
+
+To remove the user-scope installation:
 
 ```bash
 claude plugin uninstall veripower@chipweaver
@@ -62,8 +74,18 @@ claude plugin validate .claude-plugin/plugin.json --strict
 python -m pytest -q tests/unit/test_host_context.py tests/unit/test_dispatch_context.py
 ```
 
-These check plugin structure and adapter behavior. In a running session, check skill discovery
-and background stage dispatch. See [testing](../tests/README.md) for verification scope.
+These check plugin structure and adapter logic. To exercise the native parent
+and child sessions with a scripted localhost Messages endpoint:
+
+```bash
+VERIPOWER_CLAUDE_TESTS=1 python -m pytest -q tests/unit/test_platform_runtime.py -k claude
+```
+
+This probe loads the checkout through `--plugin-dir` and checks adapter context,
+skill loading and background completion. It does not exercise marketplace
+installation or model reasoning. For installation and lifecycle changes, also
+check the registered scope, installed version and actual loaded copy in an
+isolated installation. See [testing](../tests/README.md) for verification scope.
 
 `hooks.json` configures installed plugin execution. `settings.json`, `CLAUDE.md` and
 `hooks/` configure development sessions in this repository; installing the plugin does
