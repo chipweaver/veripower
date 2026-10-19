@@ -1,272 +1,217 @@
-# VeriPower User Manual
+# VeriPower User Guide
 
 [中文版](USER-MANUAL.zh.md)
 
-This guide covers preparing a design task, running the flow, reviewing its
-outputs, and continuing after changes or interruptions. `{module_dir}` means
-the directory containing the whole design workspace. Use its absolute path
-when asking the agent to work on it.
+This guide is for engineers using a coding agent for chip front-end development.
+It covers preparing a task, running the flow, reviewing results and continuing
+after changes or interruptions. In the prompts below, replace `{module_dir}`
+with the absolute path to your module workspace: the
+directory containing its requirements, generated artifacts and run history.
 
 ## 1. Prepare the environment
 
-Install VeriPower using the [README quickstart](../README.md#quickstart).
-Host-specific setup is documented for [Claude Code](../.claude/README.md),
-[opencode](../.opencode/README.md), [DeepSeek Harness](../.dsh/README.md), and
-[Codex](../.codex-plugin/README.md).
+Choose an agent harness, such as Claude Code, OpenCode, DeepSeek Harness or Codex,
+and follow its installation guide:
 
-The Python scripts require Python 3.10 or later and the packages listed in
-`requirements.txt`. From a source checkout, install them with:
+[Claude Code](../.claude/README.md) · [OpenCode](../.opencode/README.md) ·
+[DeepSeek Harness](../.dsh/README.md) · [Codex](../.codex-plugin/README.md)
+
+These guides cover installation, enablement, updates and platform-specific
+settings. Start a session with the plugin enabled and ask the agent to list its
+VeriPower skills to check that it loaded.
+
+The flow's scripts require Python 3.10 or later and the packages in
+[requirements.txt](../requirements.txt), installed in the Python environment
+available to the agent. From a source checkout, install them with:
 
 ```bash
 python3 -m pip install -r requirements.txt
 ```
 
-The full flow uses SpyGlass, Design Compiler, PrimeTime, and VCS with UVM.
-The specification, verification planning, and RTL design stages can run
-without these EDA tools. Tool paths, licenses, libraries, and environment
-variables are described in [EDA Tool Environment](eda-env.md). Export the
-settings in the environment used to launch the coding agent.
+The supplied full flow uses Synopsys SpyGlass, VCS with UVM, Verdi waveform tools,
+Design Compiler and PrimeTime for timing and power analysis. Provide the tools,
+licenses and cell libraries, and make their configuration available in the
+environment used to launch the agent harness. See
+[EDA Tool Environment](eda-env.md) for the required settings and tool-specific
+troubleshooting.
 
-To check readiness before a design run, ask in a separate session:
+To check readiness, use a separate session and ask:
 
-> Run the env-precheck skill.
+> Run the env-precheck skill for all stages of the VeriPower flow.
 
-The check inspects tools and environment settings, then runs small tool jobs
-for the stages you select. It reports which stages can run and suggests
-settings for missing variables. It does not edit your shell configuration.
-Resolve the reported environment issues before launching the affected stages.
+The check probes tool availability and runs small license and execution checks.
+It reports which stages can run and what needs attention. Resolve missing
+prerequisites before running the affected work. You can prepare requirements
+while configuring the tools; completing implementation checks and the full flow
+requires the corresponding tools to be available.
 
-## 2. Prepare the design input
+## 2. Define the task
 
-The flow starts from `{module_dir}/intent/brainstorm.md`. The filename is fixed,
-but the document can use your existing specification format. Keep referenced
-material in the same `intent/` tree.
+Choose a module workspace and put the original requirements and reference
+material under `intent/`:
 
 ```text
 module_dir/
 └── intent/
     ├── brainstorm.md
-    └── ...                 Reference models, register maps, standards, or other sources
+    └── ...                 Reference models, register maps or other reference materials
 ```
 
-### Use an existing specification
+The input filename `intent/brainstorm.md` is fixed. You can place an existing
+specification there using its own format. Include:
 
-Save your specification as `intent/brainstorm.md` and include the material
-needed to interpret it. Describe the required behavior, interfaces, clocks,
-resets, and any timing, area, power, or coverage targets. State the conditions
-under which a target applies, such as the operating scenario for a power bound.
-Mark open questions and choices you want the agent to make.
+- Required behavior, interfaces, clocks and resets.
+- Timing, area, power and coverage targets, with units and applicable conditions.
+- The role of each reference, including any existing RTL or tests.
+- Open design choices, decisions you delegate, and targets intentionally left unconstrained.
 
-Copy authoritative reference files into `intent/` so their content is tracked
-with the specification. A file outside this tree is not automatically included
-as intent. A symbolic link records where it points, rather than changes to the
-target's content.
+Copy the reference files into `intent/` and cite them from the requirements.
+Files elsewhere are not automatically included as original input. A symbolic
+link does not track changes to its target's contents, so copy authoritative
+material rather than relying on a link to an external file.
 
-Existing RTL or tests can be supplied as reference material. Explain their role
-in the specification. The flow creates and records its own stage deliveries.
-Putting files in the module directory does not register a completed stage.
+If you need help establishing the requirements, use the `brainstorm` skill in a
+separate session:
 
-### Develop requirements with the agent
+> Run the brainstorm skill for {module_dir}. Use the supplied requirements and references to establish the design task.
 
-If the requirements need discussion, use a separate session:
+Review the resulting `intent/brainstorm.md` and its referenced material before
+starting the flow. An existing suitable specification can be used directly;
+`brainstorm` is one way to prepare it. Existing RTL and tests can be supplied as
+references, but placing them in the workspace does not register completed stages.
 
-> Run the brainstorm skill for {module_dir}.
+## 3. Run and follow the work
 
-The skill works through the requirements and unresolved choices, then writes
-`intent/brainstorm.md`. It returns the path and a short description of what it
-covered or changed. Review the document before starting the flow. When you
-already have a suitable specification, you can start directly from that file.
-
-## 3. Start and monitor the flow
-
-Start a separate session and ask:
+Start a new session with VeriPower enabled and ask:
 
 > Run the design-flow skill for {module_dir}.
 
-The agent coordinates stage execution and repairs. It continues within your
-authorization and brings back decisions that need your input, along with the
-relevant evidence. Review deliveries whenever useful. Reading a report does
-not itself require the flow to pause.
-
-<p align="center">
-  <img src="../assets/pipeline-dag.png" alt="Main artifact dependencies across the design and verification stages" width="760" />
-</p>
-
-The diagram shows the main artifact dependencies. RTL design and verification
-planning both start from specification. Ready work can run in parallel, and
-the scheduler also accounts for ongoing work and repairs. The flow can revisit
-earlier stages when a later check finds a problem.
+The agent develops the specification and RTL, plans and implements verification,
+and coordinates tool analyses and rework. State any decisions you reserve and
+whether the task requires a recorded acceptance. The agent can proceed within your
+existing authorization and brings back questions that need your input. Tool
+execution remains subject to the agent harness's permissions.
 
 To check progress, ask:
 
-> Show the current status of {module_dir}, including any failed checks and unfinished runs.
+> Report the current status of {module_dir}, including unfinished work, failed checks and any decision needed from me.
 
-| State | Meaning | What to do |
+The status view uses these labels:
+
+| Status | Meaning and next step |
+|---|---|
+| `missing` | No result has been collected yet; the flow schedules the required work. |
+| `in-flight` | A dispatched run has not been collected. The agent confirms executor exit before collecting its result. |
+| `valid` | The latest result passes and still matches the recorded files. |
+| `stale` | A recorded input or output changed after a pass; the affected work needs reassessment. |
+| `failed` | The latest stage assessment failed; the agent investigates the cause and arranges repair. |
+| `blocked` | Collection could not obtain a usable stage result; the agent must resolve the reported cause. |
+
+If work stops, ask for the affected stage, the relevant evidence and the proposed
+next action. For missing tools or licenses, use the environment guide and
+`env-precheck`. For a design or verification finding, provide any requested
+requirements clarification and let the agent investigate and repair it.
+A failed check alone does not identify which artifact needs changing.
+
+## 4. Review and save results
+
+You can review published results as work progresses. Ask for a summary tied to
+the original requirements:
+
+> Summarize the results for {module_dir} against the original requirements. Include the verdict and technical evidence for each requirement, measurement conditions, unresolved findings and any requirements that need assessment outside the flow.
+
+Start with the files below. Directories are relative to `{module_dir}`; filenames
+are relative to the directory in their row. Each stage's `result.json` records
+its verdict and the artifacts actually published.
+
+| Review area | Directory | Files to start with |
 |---|---|---|
-| `missing` | No result has been collected for this stage | Let the flow schedule the required work |
-| `in-flight` | A dispatched run has not been collected | Let the agent check its executor and collect it when it exits |
-| `valid` | The latest result passes and its recorded files still match | Review the result as needed |
-| `stale` | The latest result passed, but a recorded input or output changed | Ask the flow to reassess the affected work |
-| `failed` | The latest result reports a failure | Inspect the finding and follow the repair work |
-| `blocked` | The latest collection could not establish a pass/fail result | Resolve the reported cause, such as a missing or malformed result |
+| Design description and requirements ledger | `Design/specification/` | `design.md`, `requirements.json` |
+| Verification planning | `Verification/simulation-plan/` | `verification-plan.md` |
+| RTL implementation | `Design/rtl-design/` | `src/`, `rtl-files.json` |
+| Functional simulation | `Verification/simulation/` | `case-results-summary.md`, `structural-coverage.json`, `check-review.md` |
+| Lint / CDC | `Design/lint-cdc/` | `lint-report.txt`, `cdc-report.txt` |
+| Logic synthesis | `Design/synthesis/` | `out/`, `reports/` |
+| Timing analysis | `Design/timing-analysis/` | `timing-report.txt` |
+| Power analysis | `Verification/power-analysis/` | `analysis.md`, `reports_ptpx/` |
 
-`in-flight` describes an uncollected run. The executor may already have exited.
-A `blocked` result identifies incomplete execution or collection, while
-`failed` carries a stage's technical failure conclusion.
+Use the requirement identifiers in the ledger to trace design decisions,
+testpoints and stage verdicts back to the original requirements. Check that
+requirements have not been omitted or weakened. Then check the following:
 
-## 4. Review the results
+- Compare the test plan with actual execution results and identify
+  requirements that remain unchecked. Expected behavior should be derived from
+  requirements and independent reference materials.
+- Check units, conditions and analysis scope. Power results are
+  averages over the measurement interval for the executed scenarios.
+- Review the grounds for waivers, unresolved findings and
+  requirements whose assessment is assigned outside the flow.
 
-Each stage publishes files below `Design/` or `Verification/`. Its
-`result.json` records the verdict and delivered artifact list. The tables
-below identify the files most useful for review, relative to `{module_dir}`.
+### Completion and acceptance
 
-### Requirements and verification plan
+The flow completes when every required stage has a passing result applicable to
+the current artifacts and all dispatched runs have been collected. Ask the agent
+to explain any remaining limits in its delivery summary.
 
-| Directory | Files to start with | Review focus |
-|---|---|---|
-| `Design/specification/` | `design.md`, `requirements.json`, `spec-review/findings/`, `spec-review/decisions.md` | Required behavior, unresolved requirements, numerical targets, interface and clock decisions |
-| `Verification/simulation-plan/` | `verification-plan.md`, `plan-review/findings.md`, `plan-review/decisions.md` | Whether the planned tests cover the requirements and how review findings were resolved |
+When the task calls for an acceptance record, ask the agent to review the current
+conclusions and confirm that the required stages' published files are covered by
+their latest output records. It then records the authorized acceptance through
+`signoff`. If you have reserved that decision, the agent presents the evidence
+and waits for your confirmation. The acceptance record is tied to that evidence;
+new stage conclusions need a new acceptance when that is in scope. Ordinary
+completion does not automatically record acceptance.
 
-The requirements ledger preserves source wording and names who judges each
-entry. Review open items, decisions, external responsibilities, and numerical
-bounds. `unassignable` entries must be resolved before specification passes.
-Other specification outputs include `manifest.json`, `clocks.json`,
-`top-io.json`, `check-hints.json`, and `constraints/`.
+### Save the project
 
-The verification plan is supported by `tb-scaffold.json`, `sequences.json`,
-and `power-scenarios.json`. The power scenarios describe the measurements the
-power stage needs to perform.
+Keep the requirements, design and verification sources, constraints and evidence
+needed to review the delivery. The published RTL, UVM sources, constraints,
+netlist and reports can be used outside VeriPower with their required files,
+libraries and environment settings.
 
-### RTL and static analysis
+To preserve a project you can resume, wait for active work to end and save an
+independent copy of the entire module directory, including `events.jsonl`, the
+published results and `runs/`. Retain the tool and library configuration too.
+Published and run files can share content through hard links, so the archive
+must be independent of the working copy.
 
-| Directory | Files to start with | Review focus |
-|---|---|---|
-| `Design/rtl-design/` | `src/`, `rtl-files.json`, `constraint-annotations.json`, `semantic-review/` | Implementation, source layout, timing annotations, and design review findings |
-| `Design/lint-cdc/` | `lint-report.txt`, `cdc-report.txt`, `scripts/waiver.tcl` | Reported violations and the technical basis for each waiver |
-| `Design/synthesis/` | `reports/timing_setup.rpt`, `reports/area.rpt`, `reports/qor.rpt`, `out/` | Setup slack, cell area, report consistency, and the synthesized design |
-| `Design/timing-analysis/` | `timing-report.txt` | Setup/hold results, analysis coverage, and timing exceptions |
+## 5. Revise or resume a project
 
-RTL sources are under `Design/rtl-design/src/`. Use `rtl-files.json` for the
-source list and associated compilation inputs. Constraint annotations supply
-RTL-specific information to lint/CDC and synthesis. Stage-local constraint
-files include `scripts/local.sgdc` for lint/CDC and `constraints.local.sdc`
-for synthesis.
+### Change the design or verification
 
-Synthesis measures setup slack from `timing_setup.rpt` and cell area from
-`area.rpt`, using `qor.rpt` to cross-check setup violations. Numerical judgments
-are recorded under `stage_specific.requirements` in `result.json`.
-The `out/` directory contains the netlist, exported SDC, SDF, and any support
-files used downstream. A new stage run can reuse applicable measurements when
-the change only requires reassessing the existing evidence.
+Describe the intended change and what must remain true. For example:
 
-### Simulation and power
+> Diagnose and resolve this timing issue in {module_dir}, then run the affected checks. Preserve the required functionality and interfaces.
 
-| Directory | Files to start with | Review focus |
-|---|---|---|
-| `Verification/simulation/` | `case-results-summary.md`, `structural-coverage.json`, `check-review.md`, `tb/uvm/refmodel/` | Executed tests, DUT coverage, checking logic, and expected behavior |
-| `Verification/power-analysis/` | `analysis.md`, `experiment/`, `reports_ptpx/<id>/` | Measurement conditions, experiment checks, switching activity, and power for each scenario |
+If you made edits yourself, identify the files and keep the changes in version
+control. Ask the flow to reassess them and state which edits must be preserved.
+The agent analyzes the actual impact of the change to determine which evidence
+can be reused and which checks must be repeated. Depending on the implementation,
+analysis conditions and measurement scope, it may repeat tool runs or reassess
+existing measurements to produce a new stage conclusion.
 
-For a failed simulation case, inspect `regression-log.txt` and the case logs
-under `logs/`. `tests/testlist.json` lists declared tests and `case-results.json`
-records their counts. The compilation environment is described by `env.sh`,
-`filelist.f`, and `rtl_filelist.f`. When the cause is unclear, the flow can run
-`simulation-triage` and publish its analysis under `Verification/simulation-triage/`.
+### Change the requirements
 
-For power, begin with the measured conditions and conclusions in `analysis.md`.
-Each scenario has a `power_flat.rpt` total, a `power_hier.rpt` breakdown, and a
-`switching_activity.rpt` describing activity annotation. Its SAIF data is under
-`saif/<id>.saif`. These are interval-average measurements for the executed
-scenario, so compare them with the matching requirement and conditions.
+First have the agent finish or stop active work and collect its results. Update
+the original requirements in `intent/brainstorm.md` and any affected references,
+rather than changing only the derived design description.
 
-## 5. Make changes and resume work
-
-### Change a design or test
-
-Tell the agent what needs to change and what behavior must be preserved. For
-example:
-
-> Update the RTL in {module_dir} to address this timing finding, then run the affected checks.
-
-If you edited a file yourself, identify the file and the purpose of the edit.
-The next status query compares recorded versions with the current files.
-The producing stage and consumers that recorded the changed artifact may
-become `stale`. Later analyses are reassessed against their own inputs, such
-as the netlist delivered by synthesis.
-
-A new run copies the stage's selected existing artifacts into a fresh work
-directory. Those files are a starting point for the agent's work, and the
-agent may revise them to satisfy the task. Keep changes you want to preserve
-in version control and state that requirement when continuing.
-
-### Revise the requirements
-
-The kernel keeps `intent/` read-only, including between runs. Finish or stop active
-work and restore write permission on the files and directories being revised.
-Ask the agent to update the specification, or use the
-brainstorm skill again in a separate session to discuss the revision.
-Then resume the flow with the updated input. Every stage records the intent
-tree, so a content change there causes the flow to reassess all eight stages.
+`intent/` is kept read-only by the flow. Ask the agent to restore write access
+for the files and directories being revised. You can use `brainstorm` again in
+a separate session to resolve the change, with the existing document as input.
+Review the revised requirements, then resume `design-flow`. Changes to the
+original requirements or reference contents cause reassessment across the flow.
 
 ### Continue after an interruption
 
-Keep the module directory and ask in a new session:
+Keep the module workspace and open a new session with VeriPower enabled:
 
-> Continue the design flow for {module_dir}. Check any unfinished executors before collecting their results.
+> Continue the design flow for {module_dir}. Check any outstanding executors before collecting results, then resume the unfinished work.
 
-The agent checks the event history and files, and determines whether previously
-launched jobs are still running. It waits for or stops those jobs as appropriate
-to the task, confirms exit, and collects the run. A run without a usable result
-can be collected as `blocked`, after which the reported cause can be addressed.
-Existing passing results remain reusable when their recorded versions match.
+The agent checks the project history and current files, establishes whether
+previously started work is still running, and collects finished runs before
+continuing. Missing or unusable results are handled as `blocked`; they are not
+assumed to have passed. Previously passing results remain reusable when their
+recorded inputs and outputs still match.
 
-### Resolve a blocker
-
-Ask the agent for the failing stage, run, relevant report, and proposed repair.
-A stage may repair its own work or route a change to an input-producing stage.
-If more information or a decision is needed, provide it and ask the flow to
-continue. Later diagnosis can correct an earlier repair attribution.
-
-## 6. Complete and keep the delivery
-
-The flow finishes when all required stages have current passing results and
-all dispatched runs have been collected. Ask for a delivery summary identifying
-the requirements checked, key reports, and any external responsibilities.
-
-If the task includes a recorded acceptance, ask the agent to prepare signoff.
-It checks current results and whether published files are covered by the stage
-records, then presents the acceptance evidence. Decisions follow your existing
-authorization. The record includes the decision maker and basis.
-
-Signoff applies to the accepted stage evidence. Changes that invalidate that
-evidence invalidate its acceptance, and results from a new stage run need a
-new acceptance when that is in scope. Ordinary completion does not require
-an additional signoff.
-
-For source control, keep the intent, specification, RTL source tree and file
-lists, constraint annotations, verification plan, testbench sources, experiment
-sources, and reports needed for review. The stage's `result.json` identifies
-its published artifacts.
-
-For a resumable snapshot, retain the whole module directory, including
-`events.jsonl`, published results, and `runs/`, together with the tool and
-library configuration. Archive the module directory as an independent copy,
-since run and published paths can share file content through hard links.
-
-The delivered RTL, UVM sources, SDC/SGDC constraints, netlists, and reports use
-the EDA tools' normal formats. They can be used outside VeriPower with their
-required files and environment settings.
-
-## 7. Troubleshooting
-
-| Symptom | Next step |
-|---|---|
-| Module directory or `intent/brainstorm.md` is missing | Check the absolute module path and place the input document in its `intent/` directory |
-| An EDA tool cannot run or obtain a license | Check the launch environment and the affected stage with `env-precheck` |
-| A run remains `in-flight` after the session ends | Have the agent inspect the executor, confirm exit, and collect the run |
-| Collection reports a missing or invalid result | Inspect the run's logs and result error, then let the stage complete its work and write a new result |
-| Coverage cannot be read | Check the URG text reports and DUT instance scope against [EDA Tool Environment](eda-env.md#coverage-report-urg-text-layout) |
-| VCS compilation fails during C/C++ linking | Check compiler compatibility with the installed VCS and the `VCS_CC` / `VCS_CPP` settings in [EDA Tool Environment](eda-env.md#optional) |
-| Signoff reports an invalid stage | Resume the flow to resolve its missing, failed, or stale result |
-| Signoff reports unrecorded files | Review whether those files belong in the delivery, then have the stage record the intended artifacts or remove the extras |
-
-For the execution and data model, see [Architecture](ARCHITECTURE.md).
+For the method and coordination mechanisms behind these operations, see
+[Architecture](ARCHITECTURE.md).

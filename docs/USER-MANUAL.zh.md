@@ -1,175 +1,141 @@
-# VeriPower 用户手册
+# VeriPower 用户指南
 
 [English](USER-MANUAL.md)
 
-本指南介绍如何准备设计任务、运行流程、复核产物，以及在修改或中断后继续工作。`{module_dir}` 表示完整设计工作区所在的目录。让 agent 操作时，请提供它的绝对路径。
+本指南面向使用 coding agent 开展芯片前端开发的工程师，介绍如何准备任务、运行流程、复核成果，以及在修改或中断后继续工作。下文提示语中的 `{module_dir}` 请替换为模块工作目录的绝对路径；该目录保存原始需求、生成的成果和运行历史。
 
 ## 1. 准备环境
 
-按 [README 快速开始](../README.md#quickstart)安装 VeriPower。各宿主的配置说明分别见 [Claude Code](../.claude/README.md)、[opencode](../.opencode/README.md)、[DeepSeek Harness](../.dsh/README.md) 和 [Codex](../.codex-plugin/README.md)。
+选择 agent harness，例如 Claude Code、OpenCode、DeepSeek Harness 或 Codex，按对应的平台指南安装：
 
-Python 脚本需要 Python 3.10 或更高版本，以及 `requirements.txt` 中的依赖。在源码仓库目录下执行：
+[Claude Code](../.claude/README.md) · [OpenCode](../.opencode/README.md) · [DeepSeek Harness](../.dsh/README.md) · [Codex](../.codex-plugin/README.md)
+
+平台指南说明安装、启用、更新及专用配置。启用插件后开启会话，让 agent 列出可用的 VeriPower skills，确认已加载。
+
+流程脚本需要 Python 3.10 或更高版本，以及 [requirements.txt](../requirements.txt) 中列出的依赖。将依赖安装到 agent 使用的 Python 环境中。在源码仓库目录下可执行：
 
 ```bash
 python3 -m pip install -r requirements.txt
 ```
 
-完整流程使用 SpyGlass、Design Compiler、PrimeTime 和 VCS/UVM。规格、验证规划和 RTL 设计阶段可以不依赖这些 EDA 工具运行。工具路径、许可证、库文件和环境变量见 [EDA 环境说明](eda-env.md)。这些设置应导出到启动 coding agent 的环境中。
+随插件提供的完整流程使用 Synopsys SpyGlass、VCS/UVM、Verdi 波形工具、Design Compiler，以及用于时序和功耗分析的 PrimeTime。准备相应工具、许可证和单元库，并在启动 agent harness 的环境中提供相关配置。具体设置与工具排障见 [EDA 环境说明](eda-env.md)。
 
-开始设计前，可在独立会话中提出：
+可在独立会话中检查环境是否就绪：
 
-> 运行 env-precheck skill。
+> 使用 env-precheck skill，检查 VeriPower 全部阶段所需的环境。
 
-该检查会查看工具和环境设置，再针对你选择的阶段运行小型工具任务。它报告哪些阶段可以运行，并为缺失的变量建议设置值，不修改你的 shell 配置。在启动受影响的阶段前，先处理报告的环境问题。
+该检查确认工具是否可用，并通过小型任务检查许可证与实际执行情况，报告哪些阶段可以运行、哪些问题需要处理。运行相关阶段前，先解决报告中的环境问题。配置工具期间可以先准备需求；完成实现检查和完整流程需要相应工具可用。
 
-## 2. 准备设计输入
+## 2. 明确任务
 
-流程从 `{module_dir}/intent/brainstorm.md` 开始。文件名固定，内容可以沿用现有规格文档的格式。引用材料放在同一棵 `intent/` 目录树中。
+选定模块工作目录，将原始需求和参考材料放入 `intent/`：
 
 ```text
 module_dir/
 └── intent/
     ├── brainstorm.md
-    └── ...                 参考模型、寄存器表、标准或其他依据
+    └── ...                 参考模型、寄存器表或其他依据
 ```
 
-### 使用已有规格
+输入文件名固定为 `intent/brainstorm.md`，内容可以沿用已有规格文档的格式。请说明：
 
-将规格保存为 `intent/brainstorm.md`，并附上理解它所需的材料。写明要求的行为、接口、时钟、复位，以及适用的时序、面积、功耗或覆盖率目标。目标需要带上适用条件，例如功耗上限对应的运行场景。标明尚未解决的问题，以及希望由 agent 作出的选择。
+- 要求的行为、接口、时钟与复位。
+- 时序、面积、功耗和覆盖率目标，以及单位和适用条件。
+- 各项参考材料的用途，包括已有 RTL 或测试。
+- 尚未确定的设计选择、委托 agent 作出的决定，以及明确不设限制的指标。
 
-将权威参考文件复制到 `intent/` 中，使其内容与规格一起被跟踪。目录树外的文件不会自动成为意图输入。符号链接记录的是目标路径，不会跟踪目标内容的变化。
+将参考文件复制到 `intent/`，并在需求中引用。其他位置的文件不会自动纳入原始输入。符号链接不会跟踪目标文件内容的变化，因此应复制作为依据的材料，避免仅链接到外部文件。
 
-已有 RTL 或测试可以作为参考材料提供，并在规格中说明它们的用途。流程会生成并记录自己的阶段交付物，将文件放进模块目录本身不会登记一个已完成的阶段。
+如果需要讨论和梳理需求，可在独立会话中使用 `brainstorm`：
 
-### 与 agent 讨论需求
+> 为 {module_dir} 运行 brainstorm skill，依据提供的需求和参考材料明确设计任务。
 
-如果需求还需要讨论，在独立会话中提出：
+开始流程前，复核生成的 `intent/brainstorm.md` 及其引用材料。已有合适规格时可以直接使用；`brainstorm` 是准备输入的一种方式。已有 RTL 和测试可以作为参考提供，但仅将文件放入工作目录不会登记已完成的阶段。
 
-> 为 {module_dir} 运行 brainstorm skill。
+## 3. 启动并跟进工作
 
-该 skill 会梳理需求和未决选择，再写入 `intent/brainstorm.md`。完成后返回路径，并简要说明覆盖或修改的内容。开始流程前先阅读文档。已有合适规格时，可以直接从该文件启动。
-
-## 3. 启动与查看进度
-
-开启独立会话，提出：
+开启已启用 VeriPower 的新会话，提出：
 
 > 为 {module_dir} 运行 design-flow skill。
 
-Agent 负责协调阶段执行和返工。它在你的授权范围内继续工作，需要你决定时，会带上相关依据。你可以按需复核交付物，阅读报告本身不要求流程暂停。
-
-<p align="center">
-  <img src="../assets/pipeline-dag.png" alt="设计与验证阶段之间的主要产物依赖" width="760" />
-</p>
-
-图中展示主要产物依赖。RTL 设计与验证规划都从规格阶段出发。具备条件的工作可以并行执行，调度器还会考虑正在运行的任务和返工。后续检查发现问题时，流程可以返回先前阶段处理。
+Agent 负责规格形成、RTL 实现和验证工作，并协调工具分析与返工。请说明哪些决定需要由你作出，以及任务是否需要形成接受记录。Agent 在已有授权范围内继续工作，遇到需要你补充信息或作出决定的问题时再提出。工具执行仍受 agent harness 的权限控制。
 
 查看进度时，可以问：
 
-> 查看 {module_dir} 的当前状态，包括失败的检查和未完成的运行。
+> 报告 {module_dir} 的当前状态，包括未完成的工作、失败的检查，以及需要我决定的事项。
 
-| 状态 | 含义 | 如何处理 |
+状态视图使用以下标记：
+
+| 状态 | 含义与后续处理 |
+|---|---|
+| `missing` | 尚未收取过结果，由流程安排所需工作。 |
+| `in-flight` | 已派发运行尚未收取；agent 确认执行者结束后收取结果。 |
+| `valid` | 最新结果通过，且当前文件仍与记录一致。 |
+| `stale` | 通过后，记录的输入或输出发生变化，需要重新评估受影响的工作。 |
+| `failed` | 最新阶段判定失败，由 agent 调查原因并安排修复。 |
+| `blocked` | 收取时未能取得可用的阶段结果，需要处理报告的原因。 |
+
+工作停住时，让 agent 说明涉及的阶段、相关证据和下一步建议。缺少工具或许可证时，参照环境说明并使用 `env-precheck` 检查。设计或验证发现问题时，按需补充需求说明，由 agent 调查并修复。单凭检查失败，还不能确定应修改哪个成果。
+
+## 4. 复核与保存成果
+
+工作进行期间即可查看已发布的结果。可以要求 agent 对照原始需求汇总交付情况：
+
+> 对照原始需求汇总 {module_dir} 的成果，列出每项需求的判定与技术证据，并说明测量条件、未解决的问题，以及需要在流程外另行判定的需求。
+
+下表提供主要复核入口。目录相对于 `{module_dir}`，文件名相对于所在行的目录。各阶段的 `result.json` 记录判定和实际发布的成果清单。
+
+| 复核内容 | 目录 | 优先查看 |
 |---|---|---|
-| `missing` | 该阶段尚未收取过结果 | 让流程安排所需工作 |
-| `in-flight` | 已派发的运行尚未收取 | 让 agent 检查执行者，退出后收取结果 |
-| `valid` | 最新结果通过，记录的文件版本仍然一致 | 按需复核结果 |
-| `stale` | 最新结果曾通过，但记录的输入或输出发生变化 | 让流程重新评估受影响的工作 |
-| `failed` | 最新结果报告失败 | 查看发现并跟进返工 |
-| `blocked` | 最新一次收取未能建立通过或失败结论 | 处理报告的原因，例如结果缺失或格式错误 |
+| 方案说明与需求台账 | `Design/specification/` | `design.md`、`requirements.json` |
+| 验证规划 | `Verification/simulation-plan/` | `verification-plan.md` |
+| RTL 实现 | `Design/rtl-design/` | `src/`、`rtl-files.json` |
+| 功能仿真 | `Verification/simulation/` | `case-results-summary.md`、`structural-coverage.json`、`check-review.md` |
+| Lint / CDC | `Design/lint-cdc/` | `lint-report.txt`、`cdc-report.txt` |
+| 逻辑综合 | `Design/synthesis/` | `out/`、`reports/` |
+| 时序分析 | `Design/timing-analysis/` | `timing-report.txt` |
+| 功耗分析 | `Verification/power-analysis/` | `analysis.md`、`reports_ptpx/` |
 
-`in-flight` 表示运行尚未收取，执行者也可能已经退出。`blocked` 表示执行或收取未能完成，`failed` 则包含阶段作出的技术失败结论。
+从需求台账中的需求标识出发，核对设计决定、测试点和阶段判定是否对应原始要求，有无遗漏或放宽。再检查以下内容：
 
-## 4. 复核结果
+- 对照测试计划与实际执行结果，检查尚未验证的要求。预期行为应依据需求和独立参考材料建立。
+- 核对单位、条件和分析范围。功耗结果是已执行场景在测量区间内的平均功耗。
+- 查看豁免的技术依据、尚未解决的问题，以及由流程外部负责判定的需求。
 
-各阶段将文件发布到 `Design/` 或 `Verification/` 下。阶段的 `result.json` 记录结论和交付产物清单。下表列出适合从哪里开始复核，目录均相对于 `{module_dir}`。
+### 完成与接受
 
-### 需求与验证计划
+所有必需阶段都有适用于当前成果的通过结果，且全部已派发运行均已收取时，流程完成。让 agent 在交付摘要中说明仍然存在的限制。
 
-| 目录 | 优先查看的文件 | 复核重点 |
-|---|---|---|
-| `Design/specification/` | `design.md`、`requirements.json`、`spec-review/findings/`、`spec-review/decisions.md` | 行为要求、未决需求、数值目标、接口与时钟决定 |
-| `Verification/simulation-plan/` | `verification-plan.md`、`plan-review/findings.md`、`plan-review/decisions.md` | 计划中的测试是否覆盖需求，评审发现如何处理 |
+任务要求形成接受记录时，让 agent 核查当前结论，以及必需阶段的发布文件是否被最新输出记录覆盖，再按授权通过 `signoff` 记录接受决定。如果这一决定需要由你作出，agent 会提供技术依据并等待你确认。接受记录绑定当时的证据；产生新的阶段结论后，按任务要求重新接受。普通完成不会自动记录接受。
 
-需求台账保留原文，并注明每个条目由谁判定。复核时关注未决条目、决策、外部责任和数值界限。`unassignable` 条目必须解决后，规格阶段才能通过。其他规格产物包括 `manifest.json`、`clocks.json`、`top-io.json`、`check-hints.json` 和 `constraints/`。
+### 保存工程
 
-验证计划还配有 `tb-scaffold.json`、`sequences.json` 和 `power-scenarios.json`。功耗场景说明功耗阶段需要执行哪些测量。
+保留原始需求、设计与验证源码、约束，以及复核交付所需的证据。发布的 RTL、UVM 源码、约束、网表和报告，配齐所需文件、库和环境配置后，可以在 VeriPower 之外使用。
 
-### RTL 与静态分析
+需要保存可继续工作的工程时，先等待正在执行的工作结束，再为整个模块目录保存独立副本，包括 `events.jsonl`、已发布结果和 `runs/`，同时保存工具与库的配置。发布文件与运行文件可能通过硬链接共享内容，因此归档副本必须独立于工作中的原件。
 
-| 目录 | 优先查看的文件 | 复核重点 |
-|---|---|---|
-| `Design/rtl-design/` | `src/`、`rtl-files.json`、`constraint-annotations.json`、`semantic-review/` | 实现、源文件组织、时序标注和设计评审发现 |
-| `Design/lint-cdc/` | `lint-report.txt`、`cdc-report.txt`、`scripts/waiver.tcl` | 报告的违规，以及每项豁免的技术依据 |
-| `Design/synthesis/` | `reports/timing_setup.rpt`、`reports/area.rpt`、`reports/qor.rpt`、`out/` | 建立时间裕量、单元面积、报告一致性和综合后的设计 |
-| `Design/timing-analysis/` | `timing-report.txt` | 建立与保持时间结果、分析覆盖范围和时序例外 |
+## 5. 修订与恢复
 
-RTL 源码位于 `Design/rtl-design/src/`，源文件清单及相关编译输入见 `rtl-files.json`。约束标注向 lint/CDC 和综合提供与 RTL 有关的信息。阶段本地约束包括 lint/CDC 的 `scripts/local.sgdc` 和综合的 `constraints.local.sdc`。
+### 修改设计或验证
 
-综合从 `timing_setup.rpt` 读取建立时间裕量，从 `area.rpt` 读取单元面积，并用 `qor.rpt` 交叉检查建立时间违例。数值判定记录在 `result.json` 的 `stage_specific.requirements` 中。`out/` 包含网表、导出的 SDC、SDF 和下游使用的支持文件。如果变化只要求重新判断已有证据，新的阶段运行可以复用仍然适用的测量结果。
+说明修改目的以及必须保留的要求。例如：
 
-### 仿真与功耗
+> 分析并解决 {module_dir} 中这项时序问题，再执行受影响的检查，保持要求的功能和接口。
 
-| 目录 | 优先查看的文件 | 复核重点 |
-|---|---|---|
-| `Verification/simulation/` | `case-results-summary.md`、`structural-coverage.json`、`check-review.md`、`tb/uvm/refmodel/` | 实际执行的测试、DUT 覆盖率、检查逻辑和预期行为 |
-| `Verification/power-analysis/` | `analysis.md`、`experiment/`、`reports_ptpx/<id>/` | 各场景的测量条件、实验检查、开关活动和功耗 |
-
-调查失败的仿真用例时，查看 `regression-log.txt` 和 `logs/` 下的用例日志。`tests/testlist.json` 列出声明的测试，`case-results.json` 记录测试计数。编译环境见 `env.sh`、`filelist.f` 和 `rtl_filelist.f`。原因不明确时，流程可以运行 `simulation-triage`，并将分析发布到 `Verification/simulation-triage/`。
-
-复核功耗时，先看 `analysis.md` 中的测量条件和结论。各场景的 `power_flat.rpt` 提供功耗总数，`power_hier.rpt` 提供层次明细，`switching_activity.rpt` 说明活动标注情况。SAIF 数据位于 `saif/<id>.saif`。这些结果是已执行场景的区间平均值，应与对应的需求和条件比较。
-
-## 5. 修改与恢复
-
-### 修改设计或测试
-
-告诉 agent 需要修改什么，以及哪些行为必须保留。例如：
-
-> 修改 {module_dir} 的 RTL，解决这项时序问题，然后执行受影响的检查。
-
-如果你已经手工修改了文件，请说明文件位置和修改目的。下一次状态查询会比较记录版本与当前文件。产出该文件的阶段，以及记录了该产物的使用方，可能因此变为 `stale`。后续分析依据各自的输入重新判断，例如综合交付的网表。
-
-新的运行会把本阶段选定的现有产物复制到新工作目录，作为 agent 开始工作的依据。Agent 可以为满足任务要求继续修改它们。将需要保留的修改纳入版本管理，并在继续工作时说明保留要求。
+如果已经手工修改文件，请说明位置，将修改纳入版本管理，并让流程重新评估，同时说明哪些修改必须保留。Agent 会分析修改的实际影响，确定可复用的证据和需要重新开展的检验，再根据实现、分析条件和测量范围，选择重新运行工具或重新评价已有测量，形成新的阶段结论。
 
 ### 修订需求
 
-Kernel 将 `intent/` 保持为只读，包括两次运行之间。修订前先完成或停止正在执行的工作，并恢复待修改文件和目录的写权限。可以让 agent 更新规格，也可以在独立会话中重新使用 brainstorm skill 讨论修订。随后使用更新后的输入继续流程。所有阶段都记录了意图目录树，因此其中的内容变化会使流程重新评估全部八个阶段。
+先让 agent 完成或停止正在执行的工作，并收取结果。更新 `intent/brainstorm.md` 中的原始需求及受影响的参考材料，不能只修改派生的设计说明。
+
+流程将 `intent/` 保持为只读。让 agent 恢复待修订文件和目录的写权限后再修改。需要讨论修订时，可以在独立会话中再次使用 `brainstorm`，以现有文档为输入。复核修订后的需求，再继续 `design-flow`。原始需求或参考材料内容的变化会引起整个流程的重新评估。
 
 ### 中断后继续
 
-保留模块目录，在新会话中提出：
+保留模块工作目录，在启用 VeriPower 的新会话中提出：
 
-> 继续 {module_dir} 的设计流程。收取结果前，先检查尚未结束的执行者。
+> 继续 {module_dir} 的设计流程。先检查尚未收取的运行，确认执行者结束后收取结果，再继续未完成的工作。
 
-Agent 会检查事件历史和文件，确认先前启动的任务是否还在运行。它按任务需要等待或停止这些任务，确认退出后收取运行结果。没有可用结果的运行可以被收取为 `blocked`，再处理报告的原因。已有通过结果在记录版本仍然一致时可以继续复用。
+Agent 会检查工程历史和当前文件，确认先前启动的工作是否仍在运行，收取已结束运行的结果后继续。缺失或不可用的结果按 `blocked` 处理，不视为通过。已有通过结果在记录的输入和输出仍然一致时可以继续复用。
 
-### 处理阻塞
-
-让 agent 说明失败阶段、运行编号、相关报告和建议的返工方式。阶段可以修复自身，也可以将修改交给提供输入的阶段。需要更多信息或决定时，补充后让流程继续。后续诊断可以修正先前的返工归属。
-
-## 6. 完成与保存交付物
-
-所有必需阶段都有当前有效的通过结果，且所有已派发的运行都已收取时，流程结束。可以要求 agent 提供交付摘要，说明已检查的需求、关键报告和保留的外部责任。
-
-如果任务包含接受记录，让 agent 准备 signoff。它会检查当前结果，以及已发布文件是否被阶段记录覆盖，再提供接受决定所需的证据。决定按已有授权作出，记录包括决定者和依据。
-
-Signoff 绑定已接受的阶段证据。证据变化使结果失效时，对应接受记录也失效。新的阶段运行所得结果，在任务要求时需要重新接受。正常完成不要求额外 signoff。
-
-版本管理中可保留原始需求、规格、RTL 源码树与文件清单、约束标注、验证计划、testbench 源码、实验源码和复核所需的报告。阶段的 `result.json` 列出了它发布的产物。
-
-需要保存可继续工作的快照时，保留整个模块目录，包括 `events.jsonl`、已发布结果和 `runs/`，同时保存工具与库的配置。归档时保存独立副本，因为运行路径和发布路径可能通过硬链接共享文件内容。
-
-交付的 RTL、UVM 源码、SDC/SGDC 约束、网表和报告采用 EDA 工具的常规格式。配齐所需文件与环境设置后，可以在 VeriPower 之外使用。
-
-## 7. 常见问题
-
-| 现象 | 下一步 |
-|---|---|
-| 模块目录或 `intent/brainstorm.md` 缺失 | 核对模块的绝对路径，将输入文档放入它的 `intent/` 目录 |
-| EDA 工具无法运行或获取许可证 | 检查启动环境，使用 `env-precheck` 核查受影响的阶段 |
-| 会话结束后运行仍为 `in-flight` | 让 agent 检查执行者，确认退出后收取运行结果 |
-| 收取报告结果缺失或无效 | 查看运行日志与结果错误，让阶段完成工作并写出新的结果 |
-| 无法读取覆盖率 | 按 [EDA 环境说明](eda-env.md#coverage-report-urg-text-layout)核对 URG 文本报告和 DUT 实例范围 |
-| VCS 编译在 C/C++ 链接阶段失败 | 检查编译器与所装 VCS 的兼容性，以及 [EDA 环境说明](eda-env.md#optional)中的 `VCS_CC` / `VCS_CPP` 设置 |
-| Signoff 报告阶段无效 | 继续流程，处理缺失、失败或过期的结果 |
-| Signoff 报告存在未记录文件 | 判断文件是否属于交付，让阶段记录需要的产物或移除多余文件 |
-
-执行与数据模型见[架构文档](ARCHITECTURE.zh.md)。
+上述操作背后的方法与协调机制见[架构文档](ARCHITECTURE.zh.md)。
