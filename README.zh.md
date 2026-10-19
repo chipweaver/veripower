@@ -38,7 +38,7 @@ VeriPower 接入 Claude Code、OpenCode、DeepSeek Harness、Codex 等 agent har
 Agent 使用的执行环境需要具备：
 
 - Python 3.10 或更高版本，以及 [requirements.txt](requirements.txt) 中列出的依赖。
-- 完整流程所需的 Synopsys SpyGlass、VCS/UVM、Verdi 波形工具、Design Compiler 和 PrimeTime，以及相应许可证和单元库。具体配置见 [EDA 环境说明](docs/eda-env.md)。
+- 完整流程所需的 Synopsys SpyGlass、VCS/UVM、Verdi 波形工具、Design Compiler 和 PrimeTime，以及相应许可证和单元库。具体配置见 [EDA 环境说明](docs/eda-env.zh.md)。
 
 开始开发前，可以在独立会话中使用 `env-precheck` skill，检查工具和许可证是否可用。
 

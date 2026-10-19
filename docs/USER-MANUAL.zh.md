@@ -18,7 +18,7 @@
 python3 -m pip install -r requirements.txt
 ```
 
-随插件提供的完整流程使用 Synopsys SpyGlass、VCS/UVM、Verdi 波形工具、Design Compiler，以及用于时序和功耗分析的 PrimeTime。准备相应工具、许可证和单元库，并在启动 agent harness 的环境中提供相关配置。具体设置与工具排障见 [EDA 环境说明](eda-env.md)。
+随插件提供的完整流程使用 Synopsys SpyGlass、VCS/UVM、Verdi 波形工具、Design Compiler，以及用于时序和功耗分析的 PrimeTime。准备相应工具、许可证和单元库，并在启动 agent harness 的环境中提供相关配置。具体设置与工具排障见 [EDA 环境说明](eda-env.zh.md)。
 
 可在独立会话中检查环境是否就绪：
 
