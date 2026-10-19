@@ -7,139 +7,95 @@
 
 <h3 align="center">Chip front-end design and verification with coding agents</h3>
 
-<!-- <p align="center"><a href="">Paper</a></p> -->
+<p align="center">English | <a href="README.zh.md">中文</a></p>
 
 ---
 
-VeriPower is an open-source plugin for chip front-end design and verification. Working from your specification, a coding agent develops RTL and a UVM testbench, runs EDA tools, and revises the design based on their results. VeriPower manages the work across stages, keeping track of what has passed and what needs to run again.
+VeriPower helps coding agents develop chip front-end designs from original
+requirements through implementation, verification and power, performance and
+area (PPA) evaluation. Its goal is a complete delivery in which the implementation
+and its checking artifacts jointly meet the task requirements.
 
-The shared workflow is host-neutral, with native adapters for [Claude Code](.claude/README.md), [opencode](.opencode/README.md), [DeepSeek Harness](.dsh/README.md), and [Codex](.codex-plugin/README.md).
-
-## How it works
-
-Each stage has a skill containing instructions and supporting scripts. The agent follows the skill to carry out the work, while a workflow engine records the result and selects what should run next. When a check fails, the agent investigates the cause and the engine schedules the repair.
-
-<p align="center">
-  <img src="assets/plugin-architecture.png" alt="VeriPower plugin, coding agent, EDA tools, and engineer interactions" width="680" />
-</p>
-
-Each run records the versions of its input and output files. The engine compares these with the current files to determine which results still apply and which checks need to be repeated. An RTL edit requires simulation, lint/CDC, and synthesis to run again, while a testbench edit leaves lint/CDC results intact. The files and execution history are stored on disk, allowing work to resume in a new session.
-
-The verification plan and reference model are based on the specification. Stage scripts verify that every planned test ran and passed, and check coverage, timing, and power against the specified targets. Independent model reviews examine whether the test stimulus and checking logic can detect incorrect behavior. Together, these checks and reviews determine whether a stage passes.
-
-Before the flow completes, the engine checks that all required stages have passed and their results still apply. The generated RTL, testbench, constraints, and reports are available in the project directory.
-
-More in the [architecture guide](docs/ARCHITECTURE.md) ([中文](docs/ARCHITECTURE.zh.md)).
-
-## Design flow
-
-The flow covers eight stages, from specification to power analysis. Simulation triage is a separate task that investigates simulation failures when the cause is unclear.
+Implemented as an open-source plugin for agent harnesses such as Claude Code,
+OpenCode, DeepSeek Harness and Codex, VeriPower combines professional guidance
+from domain-specific skills with a workflow engine. Design and checking evolve together
+through continuing feedback and coordinated revisions under shared requirements.
 
 <p align="center">
-  <img src="assets/pipeline-dag.png" alt="Pipeline dependency graph" width="660" />
+  <a href="assets/veripower-methodology-and-mechanisms.png">
+    <img src="assets/veripower-methodology-and-mechanisms.png" alt="Design and checking evolve under shared requirements; an orchestrating agent and workflow engine coordinate task execution across iterations" width="960">
+  </a>
+  <br>
+  <sub>Development method and execution mechanisms · <a href="assets/veripower-methodology-and-mechanisms.png">View full size</a></sub>
 </p>
 
-The included skills use Synopsys SpyGlass for lint and CDC, Design Compiler for synthesis, PrimeTime for timing and power analysis, and VCS with UVM for simulation.
+## What it provides
 
-## Results
+- **Design reasoning and early feedback.** Functional requirements and PPA
+  targets guide specification and RTL design. Top-down requirements refinement
+  and bottom-up feasibility analysis inform structural choices and resource
+  trade-offs. Verification planning and independent reviews provide early
+  feedback to assess and refine those choices as the design evolves.
+- **Requirements-driven verification.** Original requirements and independent
+  references guide testpoints, reference models and assessment criteria.
+  Functional simulation, lint/CDC, synthesis, timing and power analysis check
+  behavior and engineering targets. Independent reviews assess whether stimuli,
+  observations and checking logic can detect violations and trigger test failure.
+- **Diagnosis and coordinated revision.** Executors combine diagnosis with
+  change-impact analysis to identify the task responsible for a repair and assess
+  its effects on other requirements and artifact consistency. The responsible
+  task performs the revision in coordination with affected work.
 
-Three front-end design tasks, bare Claude Code vs. Claude Code + VeriPower. Same LLM, same spec, same EDA tools.
+The workflow engine connects these activities across iterations. It coordinates
+execution through artifact dependencies and links checking conclusions to
+artifact versions, identifying work that needs reassessment while retaining
+passing results that still apply. Artifacts and run records persist in the
+module workspace, allowing development to continue across sessions.
 
-| Benchmark | Scale | Baseline | + VeriPower |
-|---|---|---|---|
-| gateGPT — fixed-point GPT inference | 346K gates | 3 of 4 coverage metrics below 90% | **pass** |
-| FSA — FlashAttention accelerator | 32K gates | 2 unresolved CDC violations | **pass** |
-| Coral-NPU — RISC-V ML accelerator | 3.4M gates | 6/19 tests | **19/19** |
+Deliverables include specifications, RTL, UVM testbenches, constraints,
+synthesized netlists, and verification and analysis reports.
 
-Across these tasks, VeriPower closes verification gaps in coverage, CDC and test execution.
+## Requirements
+
+The agent's execution environment needs:
+
+- Python 3.10 or later, with the packages in [requirements.txt](requirements.txt).
+- For the full flow, Synopsys SpyGlass, VCS with UVM, Verdi waveform tools,
+  Design Compiler and PrimeTime, with the corresponding licenses and cell
+  libraries. See [EDA Tool Environment](docs/eda-env.md) for configuration.
+
+You can check tool availability and license readiness with the `env-precheck`
+skill in a separate session before starting development.
 
 ## Quickstart
 
-<details>
-<summary><strong>Claude Code</strong></summary>
+1. **Install and enable VeriPower** using your platform's guide:
+   [Claude Code](.claude/README.md), [OpenCode](.opencode/README.md),
+   [DeepSeek Harness](.dsh/README.md) or [Codex](.codex-plugin/README.md).
+   Start a session and ask the agent to list the VeriPower skills to confirm
+   that the plugin loaded.
 
-```bash
-claude plugin marketplace add chipweaver/veripower
-claude plugin install veripower@chipweaver
-```
+2. **Prepare the original requirements** at `{module_dir}/intent/brainstorm.md`
+   and copy referenced material into `{module_dir}/intent/`. Replace
+   `{module_dir}` with the absolute path to your module workspace.
+   An existing suitable specification can be used directly. If the requirements
+   need discussion, use the `brainstorm` skill in a separate session and review
+   the resulting document before starting the flow.
 
-Or point at a working copy: `claude --plugin-dir /path/to/veripower`.
+3. **Start a new session** with VeriPower enabled and ask:
 
-See [Claude Code setup and runtime behavior](.claude/README.md).
+    > Run the design-flow skill for {module_dir}.
 
-</details>
+The agent proceeds within your authorization and brings back questions that need
+your input. Published artifacts are under `Design/` and `Verification/` in the
+module workspace.
 
-<details>
-<summary><strong>opencode</strong></summary>
+## Documentation
 
-Use OpenCode 2 (validated on 2.0.26) and install with its native plugin CLI:
+- [User Guide](docs/USER-MANUAL.md): prepare inputs, follow progress, review
+  results, revise requirements and resume interrupted work.
+- [Architecture](docs/ARCHITECTURE.md): development method, task responsibilities
+  and coordination across iterations.
+- [Contributing](CONTRIBUTING.md): development principles and validation.
 
-```bash
-opencode plugin add git+https://github.com/chipweaver/veripower.git
-```
-
-The adapter uses native skills, background subagents and completion notifications.
-
-See [opencode setup and runtime behavior](.opencode/README.md).
-
-</details>
-
-<details>
-<summary><strong>DeepSeek Harness</strong></summary>
-
-The adapter is validated with DeepSeek Harness 0.2.1-rc.2.
-
-Install into the profile you run:
-
-```bash
-dsh plugin --profile web add "veripower@git+https://github.com/chipweaver/veripower.git"
-```
-
-Run `dsh web` for an interactive design-flow session.
-
-See [DeepSeek Harness setup and runtime behavior](.dsh/README.md).
-
-</details>
-
-<details>
-<summary><strong>Codex</strong></summary>
-
-Native plugin and subagents (validated with CLI 0.162.1 on Linux):
-
-```bash
-codex plugin marketplace add chipweaver/veripower
-codex plugin add veripower@chipweaver --json
-```
-
-Launch with `codex --enable hooks --enable multi_agent`, review the two VeriPower hooks in
-`/hooks`, and start a new session. The plugin uses native subagents and preserves the host's
-permission configuration. See [Codex setup and runtime behavior](.codex-plugin/README.md).
-
-</details>
-
-Ask it to list its skills — the twelve VeriPower ones confirm the install.
-
-Run the `brainstorm` skill to settle requirements first, then tell the agent:
-
-> Run the design flow for {module_dir}
-
-Full walkthrough in the [user manual](docs/USER-MANUAL.md) ([中文](docs/USER-MANUAL.zh.md)).
-
-**Requirements.** Python 3.10+, `jsonschema` >= 4.18, `referencing`, `PyYAML`. Synopsys EDA tools, swappable per skill.
-
-## Citation
-
-Paper forthcoming.
-
-<!--
-```bibtex
-@article{veripower2026,
-  title   = {VeriPower: Agent-Driven Chip Design and Verification},
-  author  = {TODO},
-  journal = {arXiv preprint arXiv:TODO},
-  year    = {2026}
-}
-```
--->
-
-**Version:** v0.2.9. [MIT License](LICENSE). [Contributing](CONTRIBUTING.md). [Issues](https://github.com/chipweaver/veripower/issues).
+**Version:** v0.2.9 · [MIT License](LICENSE) · [Issues](https://github.com/chipweaver/veripower/issues)
