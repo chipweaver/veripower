@@ -70,7 +70,8 @@ skill in a separate session before starting development.
 ## Quickstart
 
 1. **Install and enable VeriPower** using your platform's guide:
-   [Claude Code](.claude/README.md), [OpenCode](.opencode/README.md),
+   [Claude Code](.claude/README.md), [OpenCode v2](.opencode/README.md),
+   [OpenCode v1.19.0](https://github.com/chipweaver/veripower/blob/opencode-v1/.opencode/README.md),
    [DeepSeek Harness](.dsh/README.md) or [Codex](.codex-plugin/README.md).
    Start a session and ask the agent to list the VeriPower skills to confirm
    that the plugin loaded.
