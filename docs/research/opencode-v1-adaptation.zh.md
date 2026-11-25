@@ -141,8 +141,13 @@ VeriPower 历史上的技能软链接已在 `5b99815` 移除；命令审批规�
 显式恢复、关闭后台能力、本地发现、更新来源及移除后的原生验证。
 真实 DeepSeek 模型完成了 specification 交付、独立后台审查、修复与 kernel 收集，
 两个并发后台检查、权限拒绝、普通 CLI 执行，以及更新安装来源和重启后的原会话续接；
-环境技能还执行了
-实际 EDA smoke。完整 IC 流程未作为这些实验的验收目标。
+环境技能还执行了实际 EDA smoke。
+
+此前分项实验没有建立完整 IC 流程通过的证据。用户要求补充的小模块完整真实实验已在
+`/home/mhc/veripower-opencode-v1-e2e/counter4` 完成，包含全部阶段、真实 EDA 运行、
+独立审查、发现修复、后台收集及实验接受。独立复查为八个 proofs 全部 valid，
+`decide --closing` 返回 DONE，`signed_off: true`。证据和问题处理见
+[完整流程实验](../experiments/opencode-v1-full-flow-2026-11-25.zh.md)。
 
 详细方法、观察、实际问题和证据范围记录在 `opencode-v1` 分支的
 `docs/experiments/opencode-v1-2026-11-25.zh.md`。发布操作在实际需要时确定。

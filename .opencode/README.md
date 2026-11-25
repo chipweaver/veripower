@@ -95,5 +95,8 @@ host-confirmed cancellation.
 Real model and EDA experiments are recorded separately from these scripted checks.
 See [testing](../tests/README.md) and the
 [adaptation anchor](../docs/research/opencode-v1-adaptation.zh.md). The
-[experiment report](../docs/experiments/opencode-v1-2026-11-25.zh.md) records real
-model tasks, EDA probes and installation lifecycle observations.
+[complete counter experiment](../docs/experiments/opencode-v1-full-flow-2026-11-25.zh.md)
+records a real model running all eight stages with EDA tools, independent reviews,
+background collection and kernel closing/signoff. The
+[component report](../docs/experiments/opencode-v1-2026-11-25.zh.md) records runtime,
+CLI, recovery and installation lifecycle checks.
