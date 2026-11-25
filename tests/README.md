@@ -30,15 +30,16 @@ See [Codex setup](../.codex-plugin/README.md) for the adapter's verification sco
 Other tests may also require optional local tools; inspect skips when interpreting
 a run.
 
-OpenCode 2 native checks use a packed plugin and a scripted localhost provider:
+OpenCode 1.19.0 native checks use a packed plugin and a scripted localhost provider:
 
 ```bash
 VERIPOWER_OPENCODE_TESTS=1 python -m pytest -q tests/unit/test_platform_runtime.py -k opencode
 ```
 
-Set `VERIPOWER_OPENCODE_BIN` when using a separate OpenCode 2 binary. These checks
+Set `VERIPOWER_OPENCODE_BIN` when using a separate OpenCode 1.19.0 binary. These checks
 cover installed skills, fresh child context, background completion, scheduling reminders
-and host command refusal. DeepSeek native checks use published 0.2.1-rc.2 packages;
+and host command acceptance, denial and rejected approval. They also exercise disabled
+background capability and explicit resumption after child cancellation. DeepSeek native checks use published 0.2.1-rc.2 packages;
 set `VERIPOWER_DSH_NODE_MODULES` to their `node_modules` directory and run the same
 file with `-k dsh`. They cover skill registration, scoped prompt assembly and native
 post-execution decisions.
@@ -49,6 +50,10 @@ localhost Messages endpoint:
 ```bash
 VERIPOWER_CLAUDE_TESTS=1 python -m pytest -q tests/unit/test_platform_runtime.py -k claude
 ```
+
+The [OpenCode 1.19.0 experiment report](../docs/experiments/opencode-v1-2026-11-25.zh.md)
+records real model specification delivery, background review, concurrency, EDA probes
+and installation lifecycle checks.
 
 Model and EDA experiments are manual checks outside the default pytest run.
 Run `npm ci` first for the JavaScript adapter dependencies.

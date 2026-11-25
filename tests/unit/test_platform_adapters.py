@@ -14,25 +14,34 @@ ROOT = Path(__file__).resolve().parents[2]
 def test_opencode_registers_skills_without_changing_permissions(policy):
     program = r"""
 import assert from 'node:assert/strict';
+import {fileURLToPath} from 'node:url';
 const {default: plugin} = await import(process.argv[1]);
 const policy = process.argv[2];
-const permission = {shell: policy, external_directory: 'deny'};
-const original = structuredClone(permission);
-const skills = [];
-const hooks = {};
-await plugin.setup({
-  permission,
-  skill: {async transform(editor) { editor({add(skill) { skills.push(skill); }}); }},
-  session: {async hook(name, callback) { hooks[name] = callback; }},
-});
-assert.deepEqual(permission, original);
-assert.equal(skills.length, 12);
-for (const skill of skills) {
-  assert.equal(skill.id, `veripower:${skill.name}`);
-  assert.ok(skill.path.endsWith(`/skills/${skill.name}/SKILL.md`));
-  assert.ok(skill.content.trim().length > 0);
+const config = {
+  permission: {bash: policy, external_directory: 'deny'},
+  agent: {general: {permission: {bash: policy}}},
+  skills: {paths: ['/existing/skills']},
+};
+const original = structuredClone(config);
+const hooks = await plugin.server({client: {session: {async messages({path,throwOnError}) {
+  assert.equal(throwOnError,true);
+  assert.ok(['parent','child'].includes(path.id));
+  return {data:[]};
+}}}});
+await hooks.config(config);
+await hooks.config(config);
+assert.deepEqual(config.permission,original.permission);
+assert.deepEqual(config.agent,original.agent);
+assert.deepEqual(config.skills.paths,[...original.skills.paths,
+  fileURLToPath(new URL('../../skills',process.argv[1]))]);
+for (const sessionID of ['parent','child',undefined]) {
+  const output={system:['host instructions']};
+  await hooks['experimental.chat.system.transform']({sessionID},output);
+  assert.equal(output.system[0],'host instructions');
+  assert.equal(output.system.length,2);
+  assert.ok(output.system[1].includes('VeriPower on OpenCode 1'));
+  assert.ok(output.system[1].includes('{ name: X }'));
 }
-assert.ok(hooks.context);
 
 """
     subprocess.run(
@@ -41,7 +50,7 @@ assert.ok(hooks.context);
             "--input-type=module",
             "-e",
             program,
-            (ROOT / ".opencode/plugins/veripower/server.js").as_uri(),
+            (ROOT / ".opencode/plugins/veripower.js").as_uri(),
             policy,
         ],
         check=True,

@@ -13,13 +13,15 @@ ROOT = Path(__file__).resolve().parents[2]
 
 @pytest.mark.skipif(
     os.environ.get("VERIPOWER_OPENCODE_TESTS") != "1",
-    reason="opt-in OpenCode 2 runtime probe",
+    reason="opt-in OpenCode 1.19.0 runtime probe",
 )
-@pytest.mark.parametrize("policy", ["allow", "deny"])
-def test_opencode_package_background_completion_and_permissions(tmp_path, policy):
+@pytest.mark.parametrize(
+    "scenario", ["allow", "deny", "ask", "abort", "background-off"]
+)
+def test_opencode_package_background_completion_and_permissions(tmp_path, scenario):
     binary = os.environ.get("VERIPOWER_OPENCODE_BIN", "opencode")
     version = subprocess.check_output([binary, "--version"], text=True)
-    assert "v2." in version, version
+    assert version.strip() == "1.19.0", version
     packed = subprocess.run(
         ["npm", "pack", "--pack-destination", str(tmp_path), "--json"],
         cwd=ROOT,
@@ -35,7 +37,7 @@ def test_opencode_package_background_completion_and_permissions(tmp_path, policy
             binary,
             str(package),
             str(tmp_path / "workspace"),
-            policy,
+            scenario,
         ],
         text=True,
         capture_output=True,

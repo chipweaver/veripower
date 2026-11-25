@@ -10,13 +10,16 @@ import time
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-BINARY, PACKAGE, WORKDIR, POLICY = sys.argv[1:]
+BINARY, PACKAGE, WORKDIR, SCENARIO = sys.argv[1:]
+POLICY = SCENARIO if SCENARIO in {"allow", "deny", "ask"} else "allow"
 ROOT = pathlib.Path(WORKDIR)
 ROOT.mkdir(exist_ok=True)
 requests = []
 phase = {"parent": 0, "child": 0}
 child_done = threading.Event()
 child_requests = []
+child_started = threading.Event()
+child_aborted = threading.Event()
 (ROOT / "kernel.py").write_text(
     "import json,sys\nfrom pathlib import Path\nPath('executed').write_text('yes')\nprint(json.dumps({'execution':'task','rule':'synthesis','run':3} if sys.argv[1]=='dispatch' else {'action':'YIELD'}))\n"
 )
@@ -41,11 +44,15 @@ class Handler(BaseHTTPRequestHandler):
             answer = "fixture title"
         elif child:
             child_requests.append(b)
+            child_started.set()
+            if SCENARIO == "abort":
+                child_aborted.wait(timeout=20)
+                return
             n = phase[role]
             phase[role] += 1
             if n == 0:
                 name = "skill"
-                args = {"id": "veripower:lint-cdc"}
+                args = {"name": "lint-cdc"}
                 answer = None
             else:
                 time.sleep(0.4)
@@ -57,18 +64,30 @@ class Handler(BaseHTTPRequestHandler):
             n = phase[role]
             phase[role] += 1
             choices = [
-                ("skill", {"id": "veripower:design-flow"}),
-                ("shell", {"command": f"python3 {ROOT}/kernel.py dispatch"}),
+                ("skill", {"name": "design-flow"}),
                 (
-                    "subagent",
+                    "bash",
                     {
-                        "agent": "general",
+                        "command": f"python3 {ROOT}/kernel.py dispatch",
+                        "description": "Dispatch fixture",
+                    },
+                ),
+                (
+                    "task",
+                    {
+                        "subagent_type": "general",
                         "description": "native background fixture",
                         "background": True,
                         "prompt": "VERIPOWER_CHILD: load the lint-cdc skill and finish.",
                     },
                 ),
-                ("shell", {"command": f"python3 {ROOT}/kernel.py decide"}),
+                (
+                    "bash",
+                    {
+                        "command": f"python3 {ROOT}/kernel.py decide",
+                        "description": "Schedule fixture",
+                    },
+                ),
             ]
             if n < len(choices):
                 name, args = choices[n]
@@ -117,31 +136,35 @@ for k in ["XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_CACHE_HOME", "XDG_STATE_HOME"
     pathlib.Path(env[k]).mkdir(exist_ok=True)
 env["OPENCODE_CONFIG_DIR"] = str(ROOT / "config")
 pathlib.Path(env["OPENCODE_CONFIG_DIR"]).mkdir(exist_ok=True)
-env["OPENCODE_CONFIG_PROJECT_DISABLE"] = "true"
-env["OPENCODE_PASSWORD"] = "local-runtime-test"
+env["OPENCODE_DISABLE_PROJECT_CONFIG"] = "true"
+env["OPENCODE_SERVER_PASSWORD"] = "local-runtime-test"
 env["OPENCODE_DISABLE_MODELS_FETCH"] = "true"
 env["PROBE_API_KEY"] = "fixture"
+env["OPENCODE_SERVER_USERNAME"] = "opencode"
+env["OPENCODE_TEST_HOME"] = str(ROOT / "home")
+env["OPENCODE_DISABLE_EXTERNAL_SKILLS"] = "true"
+env["OPENCODE_DISABLE_DEFAULT_PLUGINS"] = "true"
+env["OPENCODE_EXPERIMENTAL_BACKGROUND_SUBAGENTS"] = (
+    "false" if SCENARIO == "background-off" else "true"
+)
 config = {
-    "plugins": ["veripower@file:" + PACKAGE],
+    "plugin": ["veripower@file:" + PACKAGE],
     "model": "fixture/probe",
-    "providers": {
+    "provider": {
         "fixture": {
             "env": ["PROBE_API_KEY"],
-            "package": "@opencode/ai/providers/openai-compatible",
-            "settings": {"baseURL": f"http://127.0.0.1:{model.server_port}/v1"},
+            "npm": "@ai-sdk/openai-compatible",
+            "options": {"baseURL": f"http://127.0.0.1:{model.server_port}/v1"},
             "models": {
                 "probe": {
                     "name": "probe",
                     "limit": {"context": 65536, "output": 4096},
-                    "capabilities": {"tools": True},
+                    "tool_call": True,
                 }
             },
         }
     },
-    "permissions": [
-        {"action": "*", "resource": "*", "effect": "allow"},
-        {"action": "shell", "resource": "*", "effect": POLICY},
-    ],
+    "permission": {"*": "allow", "bash": POLICY},
 }
 env["OPENCODE_CONFIG_CONTENT"] = json.dumps(config)
 s = socket.socket()
@@ -168,45 +191,89 @@ def req(ep, data=None):
             "Content-Type": "application/json",
         },
     )
-    with urllib.request.urlopen(request, timeout=20) as res:
+    with urllib.request.build_opener(urllib.request.ProxyHandler({})).open(
+        request, timeout=20
+    ) as res:
         text = res.read().decode()
         return json.loads(text) if text else None
 
 
 try:
-    deadline = time.monotonic() + 30
-    while True:
-        try:
-            plugins = req("/api/plugin")
-            v = [x for x in plugins["data"] if x.get("id") == "veripower"]
-            if v:
-                break
-        except urllib.error.URLError:
-            pass
-        if time.monotonic() > deadline:
-            raise RuntimeError("plugin activation timeout")
+    deadline = time.monotonic() + 45
+    while "opencode server listening" not in (ROOT / "server.log").read_text():
+        if p.poll() is not None or time.monotonic() > deadline:
+            raise RuntimeError((ROOT / "server.log").read_text())
         time.sleep(0.1)
-    print("packed plugin", v, flush=True)
-    assert v[0]["state"]["status"] == "active"
-    skill = req("/api/skill")
-    assert len([x for x in skill["data"] if x["id"].startswith("veripower:")]) == 12
-    sess = req(
-        "/api/session",
+    req("/global/health")
+    skill = req("/skill")
+    installed = [x for x in skill if "/skills/" in x["location"]]
+    assert len(installed) == 12, installed
+    print("packed plugin: 12 installed skills", flush=True)
+    sess = req("/session", {})["id"]
+    req(
+        "/session/" + sess + "/prompt_async",
         {
             "agent": "build",
-            "model": {"providerID": "fixture", "id": "probe"},
-            "location": {"directory": str(ROOT)},
+            "model": {"providerID": "fixture", "modelID": "probe"},
+            "parts": [
+                {
+                    "type": "text",
+                    "text": "VERIPOWER_PARENT: run the fixture background test.",
+                }
+            ],
         },
-    )["data"]["id"]
-    print("session created", flush=True)
-    req(
-        "/api/session/" + sess + "/prompt",
-        {"text": "VERIPOWER_PARENT: run the fixture background test."},
     )
-    deadline = time.monotonic() + 25
-    while not child_done.is_set() and time.monotonic() < deadline:
+    refusals = 0
+    resumed_after_abort = False
+    parent_requests_before_resume = 0
+    deadline = time.monotonic() + 35
+    while time.monotonic() < deadline:
+        for pending in req("/permission"):
+            assert POLICY == "ask", pending
+            req("/permission/" + pending["id"] + "/reply", {"reply": "reject"})
+            refusals += 1
+        if (
+            SCENARIO == "abort"
+            and child_started.is_set()
+            and not child_aborted.is_set()
+        ):
+            children = req("/session/" + sess + "/children")
+            assert len(children) == 1, children
+            req("/session/" + children[0]["id"] + "/abort", {})
+            child_aborted.set()
+        parent = [b for b in requests if "VERIPOWER_PARENT" in json.dumps(b)]
+        if SCENARIO == "abort" and child_aborted.is_set() and phase["parent"] >= 5:
+            status = req("/session/status")
+            if children[0]["id"] not in status and sess not in status:
+                if not resumed_after_abort:
+                    parent_requests_before_resume = len(parent)
+                    req(
+                        "/session/" + sess + "/prompt_async",
+                        {
+                            "agent": "build",
+                            "model": {"providerID": "fixture", "modelID": "probe"},
+                            "parts": [
+                                {
+                                    "type": "text",
+                                    "text": "The host confirms the child was cancelled and has exited. Resume the parent.",
+                                }
+                            ],
+                        },
+                    )
+                    resumed_after_abort = True
+                elif len(parent) > parent_requests_before_resume:
+                    break
+        if (
+            SCENARIO == "background-off"
+            and phase["parent"] >= 5
+            and sess not in req("/session/status")
+        ):
+            break
+        if any("VERIPOWER_CHILD_DONE" in json.dumps(b) for b in parent):
+            break
+        if POLICY == "ask" and refusals and sess not in req("/session/status"):
+            break
         time.sleep(0.1)
-    time.sleep(0.5)
     print(
         "phases",
         phase,
@@ -216,12 +283,65 @@ try:
         len(requests),
         flush=True,
     )
+    assert (refusals > 0) == (POLICY == "ask")
+    if POLICY == "ask":
+        assert not child_done.is_set()
+        assert not (ROOT / "executed").exists()
+        assert phase["parent"] == 2
+        print(
+            "PASS: host approval rejection prevents execution and stops the turn",
+            flush=True,
+        )
+        sys.exit(0)
+    if SCENARIO == "abort":
+        assert child_aborted.is_set()
+        assert not child_done.is_set()
+        child_messages = req("/session/" + children[0]["id"] + "/message")
+        assert any(
+            m["info"].get("error", {}).get("name") == "MessageAbortedError"
+            for m in child_messages
+        )
+        assert resumed_after_abort and len(parent) > parent_requests_before_resume
+        assert any(
+            m["role"] == "system" and "VeriPower on OpenCode 1" in str(m.get("content"))
+            for m in parent[-1]["messages"]
+        )
+        print(
+            "PASS: host-confirmed child cancellation and explicit parent resumption",
+            flush=True,
+        )
+        sys.exit(0)
+    if SCENARIO == "background-off":
+        assert not child_started.is_set()
+        durable = req("/session/" + sess + "/message")
+        assert (
+            "Background subagents require OPENCODE_EXPERIMENTAL_BACKGROUND_SUBAGENTS=true"
+            in json.dumps(durable)
+        )
+        assert not any(
+            "background" in t["function"].get("parameters", {}).get("properties", {})
+            for b in parent
+            for t in b.get("tools", [])
+            if t["function"]["name"] == "task"
+        )
+        print(
+            "PASS: background capability is absent and rejected when disabled",
+            flush=True,
+        )
+        sys.exit(0)
     assert child_done.is_set()
-    assert child_requests and "VeriPower on OpenCode" in json.dumps(child_requests[0])
-    assert "VERIPOWER_PARENT" not in json.dumps(child_requests[0])
-    expected = next(
-        s["content"].strip() for s in skill["data"] if s["id"] == "veripower:lint-cdc"
+    assert child_requests and any(
+        m["role"] == "system" and "VeriPower on OpenCode 1" in str(m["content"])
+        for m in child_requests[0]["messages"]
     )
+    assert all(
+        "VeriPower on OpenCode 1" not in str(m.get("content"))
+        for b in requests
+        for m in b["messages"]
+        if m["role"] == "user"
+    )
+    assert "VERIPOWER_PARENT" not in json.dumps(child_requests[0])
+    expected = next(s["content"].strip() for s in skill if s["name"] == "lint-cdc")
     assert any(
         expected in m["content"]
         for b in child_requests
@@ -234,6 +354,9 @@ try:
     )
     assert (ROOT / "executed").exists() == (POLICY == "allow")
     assert any("VERIPOWER_CHILD_DONE" in json.dumps(b) for b in parent)
+    durable = req("/session/" + sess + "/message")
+    assert "veripower loop:" not in json.dumps(durable)
+    assert "VeriPower on OpenCode 1" not in json.dumps(durable)
     print(
         "PASS: package activation, 12 skills, fresh child mapping, background completion and parent reminder",
         flush=True,

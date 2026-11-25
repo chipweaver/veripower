@@ -43,38 +43,45 @@ def test_opencode_keeps_context_until_the_next_kernel_action(
     program = r"""
 import assert from 'node:assert/strict';
 const {default: plugin} = await import(process.argv[1]);
-let context;
-await plugin.setup({
- skill: {async transform(editor) { editor({add() {}}); }},
- session: {async hook(name, callback) { if(name === 'context') context = callback; }},
+const histories={parent:[],child:[]};
+async function restore() {
+  return plugin.server({client:{session:{async messages({path,throwOnError}) {
+    assert.equal(throwOnError,true);
+    return {data:histories[path.id]};
+  }}}});
+}
+let hooks=await restore();
+const response=JSON.stringify({ok:true,execution:'task',rule:'synthesis',run:3});
+const tool=(command,output=response,status='completed') => ({
+  info:{role:'assistant'},parts:[{type:'tool',tool:'bash',
+    state:{status,input:{command},output}}],
 });
-const response = JSON.stringify({ok:true,execution:'task',rule:'synthesis',run:3});
-let id = 0;
-const tool = (command, output=response) => {
- const callID = String(id++);
- return [{role:'assistant',content:[{type:'tool-call',id:callID,name:'shell',input:{command}}]},
- {role:'tool',content:[{type:'tool-result',id:callID,name:'shell',result:{type:'text',value:output}}]}];
-};
-const messages=[{role:'user',content:[{type:'text',text:'Continue the design task'}]},
- ...tool(`python3 ${process.argv[2]} dispatch --module example`)];
-const original=structuredClone(messages);
-async function inspect(input,expected) {
- const event={sessionID:'parent',system:[],messages:structuredClone(input)};
- await context(event);
- const notices=event.system.filter(p=>p.text.startsWith('veripower loop:'));
- assert.equal(notices.length,expected);
- if(expected) assert.ok(notices[0].text.includes('synthesis') && notices[0].text.includes('3'));
- assert.deepEqual(event.messages,input);
+const messages=[{info:{role:'user'},parts:[{type:'text',text:'Continue the design task'}]},
+  tool(`python3 ${process.argv[2]} dispatch --module example`)];
+async function inspect(input,expected,sessionID='parent') {
+  histories[sessionID]=input;
+  const original=structuredClone(input);
+  const output={system:[]};
+  await hooks['experimental.chat.system.transform']({sessionID},output);
+  const notices=output.system.filter(text=>text.startsWith('veripower loop:'));
+  assert.equal(notices.length,expected);
+  if(expected) assert.ok(notices[0].includes('synthesis') && notices[0].includes('3'));
+  assert.deepEqual(input,original);
 }
 await inspect(messages,1);
-messages.push({role:'tool',content:[{type:'tool-result',id:'launch',name:'subagent',
- result:{type:'text',value:'executor started'}}]});
+messages.push({info:{role:'assistant'},parts:[{type:'tool',tool:'task',
+  state:{status:'completed',input:{background:true},output:'executor started'}}]});
 await inspect(messages,1);
+hooks=await restore();
 await inspect(messages,1);
-await inspect([{role:'user',content:[{type:'text',text:'child task'}]}],0);
-messages.push(...tool(`python3 ${process.argv[3]} decide --module example`,'{"action":"YIELD"}'));
-await inspect(messages,0);
-assert.deepEqual(messages.slice(0,3),original);
+await inspect([{info:{role:'user'},parts:[{type:'text',text:'child task'}]}],0,'child');
+const decide=`python3 ${process.argv[3]} decide --module example`;
+await inspect([...messages,tool(decide,'{"action":"YIELD"}')],0);
+await inspect([...messages,tool(decide,'refused','error')],0);
+for (const output of ['help text','not JSON',JSON.stringify({execution:'main-thread'}),JSON.stringify({ok:false})]) {
+  await inspect([tool(`python3 ${process.argv[2]} dispatch --module example`,output)],0);
+}
+await inspect([tool(`python3 ${process.argv[2]} dispatch --module example`,response,'error')],0);
 
 """
     subprocess.run(
@@ -83,7 +90,7 @@ assert.deepEqual(messages.slice(0,3),original);
             "--input-type=module",
             "-e",
             program,
-            (ROOT / ".opencode/plugins/veripower/server.js").as_uri(),
+            (ROOT / ".opencode/plugins/veripower.js").as_uri(),
             dispatch_kernel,
             next_kernel,
         ],
