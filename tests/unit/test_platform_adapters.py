@@ -23,11 +23,7 @@ const config = {
   skills: {paths: ['/existing/skills']},
 };
 const original = structuredClone(config);
-const hooks = await plugin.server({client: {session: {async messages({path,throwOnError}) {
-  assert.equal(throwOnError,true);
-  assert.ok(['parent','child'].includes(path.id));
-  return {data:[]};
-}}}});
+const hooks = await plugin.server();
 await hooks.config(config);
 await hooks.config(config);
 assert.deepEqual(config.permission,original.permission);

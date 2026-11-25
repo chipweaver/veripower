@@ -1,4 +1,4 @@
-"""Dispatch context survives executor launch and ends at the next kernel action."""
+"""Native adapters provide scheduling context around background execution."""
 
 import json
 import shutil
@@ -35,54 +35,33 @@ def test_claude_reports_only_background_dispatch_context(execution, kernel):
 
 
 @pytest.mark.skipif(not shutil.which("node"), reason="node is unavailable")
-@pytest.mark.parametrize("dispatch_kernel", KERNEL_PATHS)
-@pytest.mark.parametrize("next_kernel", KERNEL_PATHS)
-def test_opencode_keeps_context_until_the_next_kernel_action(
-    dispatch_kernel, next_kernel
-):
+def test_opencode_reminds_at_native_background_launch():
     program = r"""
 import assert from 'node:assert/strict';
 const {default: plugin} = await import(process.argv[1]);
-const histories={parent:[],child:[]};
-async function restore() {
-  return plugin.server({client:{session:{async messages({path,throwOnError}) {
-    assert.equal(throwOnError,true);
-    return {data:histories[path.id]};
-  }}}});
+const hooks = await plugin.server();
+const after = hooks['tool.execute.after'];
+// The native subtask error path can call this hook without a result.
+await after({tool:'task'},undefined);
+for (const [tool,metadata,expected] of [
+  ['task',{background:true,sessionId:'child',jobId:'child'},true],
+  ['task',{sessionId:'child'},false],
+  ['task',{background:false},false],
+  ['bash',{background:true},false],
+  ['skill',undefined,false],
+]) {
+  const input={tool,sessionID:'parent',callID:'call',args:{prompt:'self-contained task'}};
+  const originalInput=structuredClone(input);
+  const output={title:'host title',metadata,output:'<task state="running">host result</task>'};
+  const original=structuredClone(output);
+  await after(input,output);
+  assert.deepEqual(input,originalInput);
+  assert.deepEqual(output.metadata,original.metadata);
+  assert.equal(output.title,original.title);
+  assert.equal(output.output.startsWith(original.output),true);
+  assert.equal(output.output.includes('kernel.py decide'),expected);
+  if(!expected) assert.deepEqual(output,original);
 }
-let hooks=await restore();
-const response=JSON.stringify({ok:true,execution:'task',rule:'synthesis',run:3});
-const tool=(command,output=response,status='completed') => ({
-  info:{role:'assistant'},parts:[{type:'tool',tool:'bash',
-    state:{status,input:{command},output}}],
-});
-const messages=[{info:{role:'user'},parts:[{type:'text',text:'Continue the design task'}]},
-  tool(`python3 ${process.argv[2]} dispatch --module example`)];
-async function inspect(input,expected,sessionID='parent') {
-  histories[sessionID]=input;
-  const original=structuredClone(input);
-  const output={system:[]};
-  await hooks['experimental.chat.system.transform']({sessionID},output);
-  const notices=output.system.filter(text=>text.startsWith('veripower loop:'));
-  assert.equal(notices.length,expected);
-  if(expected) assert.ok(notices[0].includes('synthesis') && notices[0].includes('3'));
-  assert.deepEqual(input,original);
-}
-await inspect(messages,1);
-messages.push({info:{role:'assistant'},parts:[{type:'tool',tool:'task',
-  state:{status:'completed',input:{background:true},output:'executor started'}}]});
-await inspect(messages,1);
-hooks=await restore();
-await inspect(messages,1);
-await inspect([{info:{role:'user'},parts:[{type:'text',text:'child task'}]}],0,'child');
-const decide=`python3 ${process.argv[3]} decide --module example`;
-await inspect([...messages,tool(decide,'{"action":"YIELD"}')],0);
-await inspect([...messages,tool(decide,'refused','error')],0);
-for (const output of ['help text','not JSON',JSON.stringify({execution:'main-thread'}),JSON.stringify({ok:false})]) {
-  await inspect([tool(`python3 ${process.argv[2]} dispatch --module example`,output)],0);
-}
-await inspect([tool(`python3 ${process.argv[2]} dispatch --module example`,response,'error')],0);
-
 """
     subprocess.run(
         [
@@ -91,8 +70,6 @@ await inspect([tool(`python3 ${process.argv[2]} dispatch --module example`,respo
             "-e",
             program,
             (ROOT / ".opencode/plugins/veripower.js").as_uri(),
-            dispatch_kernel,
-            next_kernel,
         ],
         check=True,
         capture_output=True,

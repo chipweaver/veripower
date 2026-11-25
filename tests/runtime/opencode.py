@@ -11,7 +11,13 @@ import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 BINARY, PACKAGE, WORKDIR, SCENARIO = sys.argv[1:]
-POLICY = SCENARIO if SCENARIO in {"allow", "deny", "ask"} else "allow"
+POLICY = {
+    "allow": "allow",
+    "deny": "deny",
+    "ask": "ask",
+    "abort": "allow",
+    "background-off": "allow",
+}[SCENARIO]
 ROOT = pathlib.Path(WORKDIR)
 ROOT.mkdir(exist_ok=True)
 requests = []
@@ -20,8 +26,8 @@ child_done = threading.Event()
 child_requests = []
 child_started = threading.Event()
 child_aborted = threading.Event()
-(ROOT / "kernel.py").write_text(
-    "import json,sys\nfrom pathlib import Path\nPath('executed').write_text('yes')\nprint(json.dumps({'execution':'task','rule':'synthesis','run':3} if sys.argv[1]=='dispatch' else {'action':'YIELD'}))\n"
+(ROOT / "command.py").write_text(
+    "from pathlib import Path\nPath('executed').write_text('yes')\nprint('command completed')\n"
 )
 
 
@@ -68,8 +74,8 @@ class Handler(BaseHTTPRequestHandler):
                 (
                     "bash",
                     {
-                        "command": f"python3 {ROOT}/kernel.py dispatch",
-                        "description": "Dispatch fixture",
+                        "command": f"python3 {ROOT}/command.py",
+                        "description": "Execute fixture",
                     },
                 ),
                 (
@@ -79,13 +85,6 @@ class Handler(BaseHTTPRequestHandler):
                         "description": "native background fixture",
                         "background": True,
                         "prompt": "VERIPOWER_CHILD: load the lint-cdc skill and finish.",
-                    },
-                ),
-                (
-                    "bash",
-                    {
-                        "command": f"python3 {ROOT}/kernel.py decide",
-                        "description": "Schedule fixture",
                     },
                 ),
             ]
@@ -242,7 +241,7 @@ try:
             req("/session/" + children[0]["id"] + "/abort", {})
             child_aborted.set()
         parent = [b for b in requests if "VERIPOWER_PARENT" in json.dumps(b)]
-        if SCENARIO == "abort" and child_aborted.is_set() and phase["parent"] >= 5:
+        if SCENARIO == "abort" and child_aborted.is_set() and phase["parent"] >= 4:
             status = req("/session/status")
             if children[0]["id"] not in status and sess not in status:
                 if not resumed_after_abort:
@@ -265,7 +264,7 @@ try:
                     break
         if (
             SCENARIO == "background-off"
-            and phase["parent"] >= 5
+            and phase["parent"] >= 4
             and sess not in req("/session/status")
         ):
             break
@@ -349,16 +348,22 @@ try:
         if m["role"] == "tool" and isinstance(m["content"], str)
     )
     parent = [b for b in requests if "VERIPOWER_PARENT" in json.dumps(b)]
-    assert any("veripower loop:" in json.dumps(b) for b in parent) == (
-        POLICY == "allow"
-    )
+    assert any("VeriPower orchestration:" in json.dumps(b) for b in parent)
     assert (ROOT / "executed").exists() == (POLICY == "allow")
     assert any("VERIPOWER_CHILD_DONE" in json.dumps(b) for b in parent)
     durable = req("/session/" + sess + "/message")
-    assert "veripower loop:" not in json.dumps(durable)
+    launches = [
+        p
+        for m in durable
+        for p in m.get("parts", [])
+        if p.get("tool") == "task" and p["state"]["status"] == "completed"
+    ]
+    assert len(launches) == 1
+    assert launches[0]["state"]["metadata"]["background"] is True
+    assert "VeriPower orchestration:" in launches[0]["state"]["output"]
     assert "VeriPower on OpenCode 1" not in json.dumps(durable)
     print(
-        "PASS: package activation, 12 skills, fresh child mapping, background completion and parent reminder",
+        "PASS: package activation, native background launch reminder, completion and host permissions",
         flush=True,
     )
 finally:
