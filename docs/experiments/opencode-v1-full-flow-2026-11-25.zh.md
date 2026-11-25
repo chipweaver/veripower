@@ -1,142 +1,120 @@
-# OpenCode 1.19.0 小模块完整流程实验
+# OpenCode 1.19.0 完整流程与调度提醒复验
 
-日期：2026-11-25。结论：**完整流程通过**。独立核对结果为八个 stage proofs 全部
-`valid`，`decide --closing` 返回 `DONE`，`signed_off: true`；原生宿主没有仍在执行的会话。
+日期：2026-11-25。初版 `2ed6c4a` 完成八阶段流程，但没有触发调度提醒；这不能证明
+提醒有效。修正版 `6023c9f` 改用原生后台 task 事件，并进行了新的完整模块实验。
+独立核查确认：**八项 proof 全部 valid、closing DONE、signed_off true**。
 
-本实验补齐[此前分项验证](opencode-v1-2026-11-25.zh.md)没有建立的完整流程证据。
-全部阶段由真实模型通过安装后的 OpenCode v1.19.0 适配执行，使用实际设计、验证和
-EDA 工具产物；没有把环境 smoke 或脚本化模型响应作为阶段结果。
+## 适配缺陷与修正
 
-## 实验输入与环境
+初版完整实验中，模型用 shell 变量调用 kernel，并在复合命令中输出多段内容。
+旧实现按命令正则识别 dispatch，再把整个 stdout 当作 JSON，未能生成提醒。
 
-- VeriPower 分支 `opencode-v1`，运行代码提交 `2ed6c4a`，通过 `npm pack` 产物安装。
-  本次没有修改共享 kernel、skills 或适配运行代码。
-- 平台 OpenCode `1.19.0`；真实模型请求 `deepseek/deepseek-flash`。
-- 原生父会话 `ses_dee4431b5ffeROeAr2n55pJ3ch`，从新会话开始，不继承此前调研和局部实验讨论。
-- 工作区 `/home/mhc/veripower-opencode-v1-e2e`，模块 `counter4/`。EDA 容器已直接验证能
-  读取该模块；所有阶段工作目录处于容器挂载的 `/home/mhc` 下。
-- 原始输入是 `counter4/intent/brainstorm.md` 和 `eda-resources.md`，没有预制 RTL、TB 或
-  成功结果。输入指纹为
+修正后的 `tool.execute.after` 读取宿主 task 结果的 `metadata.background`，在后台
+启动结果后给 VeriPower 编排者追加继续调度的提醒。取消命令解析、历史扫描和适配
+状态；没有增加 kernel 字段、schema、兼容路径或权限配置。
+
+提醒的作用是让编排者在启动执行器后查询其他 ready 工作，依据为共享 design-flow
+及历史提交 `aa86ba6`。对照 Claude、Codex、DSH 和 OpenCode v2 的组件审视见
+[需求与事实](../research/opencode-v1-adaptation.zh.md)。
+
+## 实验条件
+
+- 平台 OpenCode **1.19.0**，真实模型 **deepseek/deepseek-flash**，通过 npm 包安装。
+  没有脚本化阶段回答或预制 RTL、TB、成功结果。
+- 新实验根目录 `/home/mhc/veripower-opencode-v1-task-hook-e2e`，模块 `counter4/`，
+  父会话 `ses_dedf946e2fferZ0x5rQ9xi31fQ`。EDA 可读取整个模块路径。
+- 与初版完整实验使用相同的 `intent/brainstorm.md` 和 `eda-resources.md`，输入指纹为
   `merkle:75b4396d8829c7cd64b5684713070c0f84373e93f3e9b7be257cababae20fa3d`。
+- 模块为单时钟 4 位使能计数器，异步低有效复位；验证初始化、异步复位、复位优先、
+  保持、递增、全部计数值、回卷、运行中重复复位。
+- 10 ns 时钟，en 输入时延 max/min 0.5/0.2 ns，count 输出时延 0.2/0 ns；uncertainty
+  0.05 ns，clock/input transition 0.1 ns，输出负载 0.01 pF。slow、0.90 V、125°C，
+  无 wire-load model；setup/hold 须满足约束，面积和功耗无数值预算。
+- 使用实际 DC L-2016.03-SP1、PT/PX M-2016.12-SP1、VCS/URG L-2016.06、UVM 1.1、
+  SpyGlass vL-2016.06，以及已有 `slow.db`、`tsmc090.v`。
 
-模块是单时钟、4 位、带使能、异步低有效复位的模 16 计数器。功能要求包含初始化、
-异步复位、复位优先、保持、递增、全部计数值、回卷和运行中重复复位。
+## 原生行为核查
 
-时序合同：10 ns 时钟；en 输入时延 max/min 为 0.5/0.2 ns，count 输出时延 max/min 为
-0.2/0 ns；clock uncertainty 0.05 ns，时钟/输入 transition 0.1 ns，输出负载 0.01 pF。
-采用 slow 标准单元库、无 wire-load model，setup/hold 必须满足约束。面积和功耗实际
-测量，没有数值预算。功耗要求门级实现、匹配的模型和 SDF、真实 SAIF 与 PT-PX，idle
-与 active 各在 warm-up 后捕获至少 200 个完整周期。
+lint/CDC、synthesis、timing-analysis、power-analysis 四个后台阶段启动结果均带原生
+background 标志，且实际模型可见的工具返回中均有提醒。后续 power run 2 的后台返修
+也收到提醒，合计五次。lint、timing、power 启动后的下一条 kernel 命令是 decide；synthesis 后因控制侧提出了规划归属审计，先直接
+派发 simulation-plan 返修。
 
-使用站点已有的 DC L-2016.03-SP1、PT/PX M-2016.12-SP1、VCS/URG L-2016.06、
-UVM 1.1、Verdi/FSDB L-2016.06、SpyGlass vL-2016.06 包装器及工具兼容环境。
-库和模型为已有 `slow.db`、`tsmc090.v`。没有修改部署配置或安装软件。
+父会话在后台阶段运行时推进其他工作，依据原生完成信息收集结果。shell 变量和复合
+命令继续正常使用，提醒不再依赖这些写法。
 
-## 各阶段的实际结果
+另一个真实会话仅要求两个后台算术任务。工具结果中也有条件性提醒，父会话收齐
+338350 和 168 两个正确结果，没有调用 kernel；其工具调用仅为两个 task。
+会话为 `ses_dedf88691ffeyU9brIQmHXjISP`。
 
-以下路径均相对模块根目录；每个阶段的 run 均为 1。修复发生在对应 run 的关闭和
-收集之前，保留了独立审查、决定记录及原始日志。
+## 新实验的产物审计
 
-| 阶段 | 结果与关键证据 |
+以下问题发生在模型生成的实验工件中；处理通过原有阶段负责人和 kernel 完成，
+没有为它们修改 VeriPower 共享运行代码：
+
+- simulation 阶段直接改过已发布规划的硬链接，导致规划 proof 过期。重新派发规划
+  run 2，由负责人修订和独立审查，随后 simulation run 2 重新验证。
+- 两个独立初始化的测试各做一次运行中复位，不能证明连续运行中的重复复位。
+  规划 run 3 经独立审查后，simulation run 3 实测两种 en 测试各有两次运行中复位，
+  混合测试有三次，均从非零值发起；修正新测试注册遗漏后重新编译、完整回归，
+  独立检查复核确认没有 blocking finding。
+- 功耗分析把四条 SDF 警告误称为 conditional arc 不匹配。实际警告对应 U16/XNOR2XL
+  的额外 posedge/negedge IOPATH（SDF 第 58、59、62、63 行）；模型声明的是四条
+  conditional pin path。PT 的活动注解覆盖率不能替代 SDF timing arc 注解证据。
+  power run 2 已按实际行号纠正说明，并重新执行
+  compile、simulate、calculate 后关闭和收集。
+
+## 完整流程结果
+
+最终当前运行是 specification 1、simulation-plan 3、rtl-design 1、lint-cdc 1、
+synthesis 1、timing-analysis 1、simulation 3、power-analysis 2。
+**13 dispatch、13 pass outcome、2 signoff，共 28 条事件**；所有派发均已收集。
+第一次 signoff 后发现的产物缺陷经返修关闭，第二次 signoff 绑定修订后的当前证据。
+控制侧重新执行真实 kernel 查询，独立保存 `final-status.json` 与 `final-closing.json`，
+确认八项 valid、DONE、signed_off true；原生宿主无活动会话，原始 intent 字节未改。
+
+## 实际测量
+
+| 项目 | 结果与证据（模块内路径） |
 |---|---|
-| specification | pass；完成需求账本、边界、时钟和检查提示，独立审查后修复账本遗漏及追溯问题，并取得复核。`Design/specification/spec-review/` |
-| simulation-plan | pass；补充真正的 between-edge 异步复位探测、采样约定、功能覆盖收集及功耗窗口语义，独立复核完成。`Verification/simulation-plan/plan-review/` |
-| rtl-design | pass；17 行 SystemVerilog 实现，实际 VCS 编译/展开及独立 RTL 审查。`Design/rtl-design/src/counter4.sv`、`semantic-review/` |
-| lint-cdc | pass；SpyGlass lint 0 errors / 0 warnings / 4 infos，CDC 0 errors / 0 warnings / 14 infos；没有 waiver，时钟/复位树覆盖四个寄存器。`Design/lint-cdc/evidence/` |
-| synthesis | pass；DC 映射为四个时序单元、七个组合单元，总单元面积 **92.4336 µm²**；生成真实网表、SDC 和 SDF。`Design/synthesis/out/`、`reports/area.rpt` |
-| timing-analysis | pass；独立 PT setup worst slack **8.968936920166 ns**，hold **0.2259244322777 ns**，均 MET；同步 setup/hold/out 检查无遗漏或违例。`Design/timing-analysis/timing-report.txt` |
-| simulation | pass；实际完整 UVM/VCS 回归 **6/6**，requirement-derived RM、真实异步复位探测及独立检查审查；DUT 子树 line/branch/toggle **100%**。`Verification/simulation/` |
-| power-analysis | pass；门级 SDF 仿真、两份实际 SAIF、PT-PX 计算和条件分析完成。idle **0.004357 mW**，active **0.007375 mW**。`Verification/power-analysis/` |
+| 功能回归 | 7/7；两种 en 测试各两次复位、混合测试三次，UVM error/fatal 为 0；`Verification/simulation/runs/3/logs/` |
+| DUT 覆盖率 | line/branch/toggle 均 100%，condition/FSM 无对象；`Verification/simulation/runs/3/structural-coverage.json` |
+| 综合面积 | 92.4336 µm²；4 个时序单元、7 个组合单元，`Design/synthesis/reports/area.rpt` |
+| setup / hold | 8.968936920166 / 0.2259244322777 ns，均 MET；`Design/timing-analysis/timing-report.txt` |
+| idle 平均功耗 | 0.004338 mW；`Verification/power-analysis/reports_ptpx/idle/` |
+| active 平均功耗 | 0.007386 mW；`Verification/power-analysis/reports_ptpx/active/` |
 
-物理测量条件为 slow、0.90 V、125°C，pre-layout、无 wire-load model；功耗是捕获窗口
-的平均值。异步复位释放由外部在有效边沿之外提供，STA 的复位例外有原始需求依据。
+功耗来自综合网表、匹配标准单元模型及 SDF 的实际门级 SAIF，再由 PT-PX 计算。
+两场景均 warm-up 20 周期后采集 2196 ns（220 个采样上升沿，超过要求的 200 个完整
+10 ns 周期）。idle 从非零值 11 保持、数据 TC 为 0；active 每周期检查模 16 递增，
+count 位 TC 为 220/110/55/27，覆盖多次回卷。
 
-## 原生调度与完成收集
+SDF 注解日志为 0 errors、4 warnings。clk-to-Q 延迟探针为 8/8；无 SDF 的对照探针
+失败，证明该探针能识别实际注解。PT-PX 活动注解为 14/14 nets、11/11 leaf cells。
+平均功耗的条件为 pre-layout、slow、无 wire-load，不代表瞬时峰值或 IR drop。
 
-真实 kernel 建立 dispatch，阶段通过所属 CLI 关闭，父会话依据原生执行器完成信息
-进行 wake/reap。lint/CDC 后台执行时，主会话进行功能验证；综合后台执行又与功能验证
-及其独立审查重叠。timing-analysis 和 power-analysis 也分别通过原生后台 task 执行。
-没有以结果文件出现代替宿主的执行器完成确认。
+## 自动检查与证据位置
 
-全程保留十二个原生会话（父会话、阶段执行器和独立审查会话）。最终事件历史为：
-**8 dispatch、8 pass outcome、1 signoff，共 17 条**，所有派发运行已收集。
-`signoff` 的 provenance 明确为意图授权的实验验证 agent，并绑定本次证据。
+- 单元与契约：**1156 passed、31 skipped**；pre-commit 全部通过。
+- OpenCode 原生脚本化测试：**5 passed**，覆盖允许、拒绝、审批拒绝、取消后恢复和
+  后台能力关闭。修正后提示在真实 task 结果中持久保存；基础工具映射仍为系统上下文。
+  最新记录 `/tmp/veripower-oc119-native-event-checked/`。
+- 新实验原始事件、阶段产物位于上述模块目录；原生会话导出在实验根目录 `ses_*.json`。
+  最终 kernel status / closing 已在所有返修完成后独立保存。
 
-原始工具与运行产物在模块工作区；原生会话导出和独立复查结果在实验根目录。
-`final-status.json` 记录八个 valid 和 `signed_off: true`，`final-closing.json` 记录
-`action: DONE` 及八项当前 basis。它们由实验控制侧重新执行真实 kernel 查询获得，
-并非复制模型最终回答。
+完整实验启动时的 adapter 与 `6023c9f` 只差空结果访问判定：v1 的 subtask 失败路径可能给
+后置 hook 传入 undefined，最终代码对此不发提醒；五项原生检查使用最终代码。
+正常后台结果的处理相同，没有改动实验运行中的安装文件。全部阶段退出后，改装最终
+代码包、重启服务器并续接同一父会话：12 个 VeriPower 技能均来自新安装路径，实际
+加载的 adapter 与 `6023c9f` 字节相同；新后台一致性检查收到提醒，父会话随后 decide，
+收齐完成信息后确认八项 result 与 outcome 哈希、proof basis 一致，仍为 DONE。
+该恢复检查没有修改文件、派发阶段或重跑 EDA。总计 21 个原生会话，六次后台启动
+均收到提醒；最终独立核查通过后已停止本次实验服务器。
 
-## 实测问题及处理
+初版完整实验仍保留在 `/home/mhc/veripower-opencode-v1-e2e/counter4/`：8 dispatch、
+8 pass outcome、1 signoff，八项 valid、closing DONE。其功耗日志单位错误已由当时的
+power 执行器设置 `$timeformat` 并重跑 compile/simulate/calculate 修正，最终两场景
+均捕获 2560 ns；idle/active 为 0.004357/0.007375 mW。该记录不用于证明旧提醒有效。
+安装、权限和生命周期的其他实测见[分项报告](opencode-v1-2026-11-25.zh.md)。
 
-### 独立审查空返回
-
-首轮规格 reviewer 会话结束但没有报告，原生 task 返回空完成内容。主会话发现缺失
-文件，重新委派审查，没有将空返回当作审查通过。第二轮产生实际报告后才继续修复和
-复核。报告缺失与重试的原生会话记录均保留。
-
-### 规格与规划的实际缺陷
-
-规格审查发现一项 blocking：账本没有完整转录独立审查及处理发现的义务。主会话补齐，
-并修复错误的约束文件名、检查提示关联及数值来源说明，经独立复核后 finalize。
-
-规划审查指出，edge-only RM 不能证明两个时钟边沿之间的复位。修复后的计划和实际 TB
-增加 before-next-edge 的异步清零探测，明确 reset dominance、seen-values 收集和稳定
-采样窗口；不是以运行更久代替该检查。复核后规划通过，最终回归也实际运行该用例。
-
-### 功耗日志单位错误
-
-独立证据审计发现，门级 TB 在 `1ns/1ps` 下用 `%0t` 输出，却把字段标为 ns，导致
-日志出现 `duration_ns=2560000`，与 SAIF 的 `TIMESCALE 1 ns / DURATION 2560` 不一致。
-捕获周期和活动本身没有改变，但测量来源说明有误。
-
-父会话核对后，通过原生 task 续接原 power 执行器，由该阶段负责人修复。TB 设置
-`$timeformat(-9, 3, " ns", 0)` 并输出显式单位，重新执行 **compile、simulate、calculate**，
-更新 analysis 和结果，再进行 kernel 收集及实验接受。最终日志为：
-
-| 场景 | 日志捕获区间 | SAIF | 实际行为 |
-|---|---|---|---|
-| idle | 170.000–2730.000 ns，2560.000 ns，256 cycles | 1 ns × 2560 | count 保持 5；四个 count 位 TC 均为 0，时钟持续切换 |
-| active | 220.000–2780.000 ns，2560.000 ns，256 cycles | 1 ns × 2560 | 每周期递增，16 次回卷；count[0..3] TC 为 256/128/64/32 |
-
-两种场景均在 warm-up 后捕获，状态 PASS 在行为检查及 SAIF 写出后产生。PT-PX 两次均
-注解 14/14 nets、11/11 leaf cells；internal、switching、leakage 与总功耗在报告舍入
-范围内相符。修复没有改动原始输入、时序合同、捕获要求或预算。
-
-### 工具警告与审查建议的评估
-
-SDF 注解为 0 errors、4 warnings，四条均涉及 XNOR2XL/U16 的额外 edge-style IOPATH。
-已独立对照实际 SDF 和 `tsmc090.v`：模型只声明按另一输入 0/1 条件区分的四条路径；
-SDF 中对应 conditional IOPATH 均存在并注解，警告的额外 edge-style 路径没有模型
-声明。其余十个单元无注解警告，没有以“忽略所有 warning”代替分析。
-
-PT-PX `check_power` 报告四个 out-of-range ramps，没有缺表或缺函数；阶段 analysis
-记录了 slew/load 外推对这次平均功耗估计的含义。没有数值功耗预算或 peak-power 结论。
-
-功能覆盖按 DUT 子树判断，没有使用包含 TB 的 aggregate 代替。condition/FSM 无对象
-的原因已在独立审查中对照 RTL 和实际 instrumentation 核对；计数值、递增、保持、复位
-及回卷的功能检查保留在回归日志中。非阻塞追溯/可观察性建议保留了具体评估。
-
-## 与此前分项问题的关系
-
-此前 v2 安装说明遗留和测试辅助代码 URL 编码比较已在适配提交中修复。本次完整流程
-还修复了上述真实阶段工件问题。取消子会话不发送正常完成通知属于 v1.19.0 的宿主
-行为，已验证宿主确认退出后显式恢复的路径，没有修改其取消语义。
-
-本次所有阶段直接使用 `/home/mhc` 下的可见工作区，解决了此前 `/tmp` 不在 EDA
-容器挂载中的实验条件问题；没有靠把 smoke 结果复制成真实阶段结果来完成验收。
-
-## 证据入口
-
-- 模块原始输入、append-only 事件和全部阶段工件：
-  `/home/mhc/veripower-opencode-v1-e2e/counter4/`。
-- 最终独立复查：实验根目录的 `final-status.json`、`final-closing.json`；
-  原生会话导出为同目录的 `ses_*.json`，凭据不进入仓库。
-- 功能回归：`Verification/simulation/case-results.json`、`regression-log.txt`、
-  `structural-coverage.json`、`cov_merge/`、`check-review.md`。
-- 时序：`Design/timing-analysis/timing-report.txt`、`reports/effective_constraints.sdc`。
-- 功耗：`Verification/power-analysis/saif/`、`reports_ptpx/`、`analysis.md`、
-  `evidence/sdf_annotation_excerpt.txt`。
-
-原始工作目录与日志留在实验工作区，不提交到插件仓库。本报告保留了输入条件、真实
-执行路径、实际问题、修复及最终验收结果。
+原始产物与会话保留在本机，不提交到插件仓库。

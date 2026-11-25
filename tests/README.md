@@ -53,9 +53,8 @@ VERIPOWER_CLAUDE_TESTS=1 python -m pytest -q tests/unit/test_platform_runtime.py
 
 The [complete OpenCode 1.19.0 counter experiment](../docs/experiments/opencode-v1-full-flow-2026-11-25.zh.md)
 records all eight stages with a real model and EDA tools, independent reviews, background
-collection and kernel closing/signoff. The
-[component report](../docs/experiments/opencode-v1-2026-11-25.zh.md) records additional
-runtime, CLI, recovery and installation lifecycle checks.
+collection and kernel closing/signoff, plus runtime, CLI, recovery and installation
+lifecycle checks.
 
 Model and EDA experiments are manual checks outside the default pytest run.
 Run `npm ci` first for the JavaScript adapter dependencies.
