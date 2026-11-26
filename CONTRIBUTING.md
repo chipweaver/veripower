@@ -48,6 +48,9 @@ Formatting a model's judgment as JSON does not establish its correctness.
 
 ## Development and validation
 
+For adapter updates or a new host, start with the [platform adaptation map](docs/PLATFORM-ADAPTERS.md)
+for shared responsibilities, implementation entry points and verification choices.
+
 Use Python 3.10 or later, with Node.js and npm for the JavaScript adapters and their
 tests. CI uses Node.js 24.
 

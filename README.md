@@ -99,4 +99,4 @@ module workspace.
   and coordination across iterations.
 - [Contributing](CONTRIBUTING.md): development principles and validation.
 
-Version: v0.2.10 · [MIT License](LICENSE) · [Issues](https://github.com/chipweaver/veripower/issues)
+Version: v0.2.11 · [MIT License](LICENSE) · [Issues](https://github.com/chipweaver/veripower/issues)

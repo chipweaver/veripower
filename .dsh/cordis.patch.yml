@@ -1,4 +1,4 @@
-# Register skills and post-dispatch context.
+# Register skills and native background-launch context.
 - insert:
     - id: veripower-dsh
       name: veripower/dsh

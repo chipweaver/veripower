@@ -2,14 +2,14 @@
 
 The adapter supplies installed paths and translates the shared skills' tool calls to native
 subagents and shell execution.
-The command and lifecycle behavior described here was checked with Codex CLI 0.163.0.
+The command and lifecycle behavior described here was checked with Codex CLI 0.172.0.
 
 ## Install
 
 ```bash
 codex plugin marketplace add chipweaver/veripower
 codex plugin add veripower@chipweaver --json
-codex --enable hooks --enable multi_agent
+codex --enable hooks --enable multi_agent_v2
 ```
 
 For a working copy, use `/path/to/veripower` as the marketplace source. Codex installs
@@ -17,7 +17,7 @@ a copy in its plugin cache; edits to the source checkout need an installation re
 
 VeriPower uses hooks and native subagents; the launch command explicitly enables
 both capabilities. Installation does not automatically trust hooks. In `/hooks`,
-review and trust VeriPower's SessionStart and SubagentStart hooks, then start a
+review and trust VeriPower's hooks, then start a
 new session so its adapter context uses the installed paths. Configure the task's
 execution permissions in Codex; hook trust and command permission are separate.
 
@@ -68,7 +68,8 @@ execution permissions.
 
 The [manifest](plugin.json) declares skills and hooks relative to the plugin root.
 The [adapter](adapter.py) supplies execution mappings through SessionStart and
-SubagentStart. See the official [plugin packaging](https://developers.openai.com/plugins/build/plugins)
+SubagentStart. After a native `spawn_agent` succeeds, PostToolUse adds a scheduling
+reminder for a VeriPower stage executor. See the official [plugin packaging](https://developers.openai.com/plugins/build/plugins)
 and [hooks](https://learn.chatgpt.com/docs/hooks) documentation for those interfaces.
 
 ## Verification
@@ -80,7 +81,7 @@ VERIPOWER_CODEX_TESTS=1 pytest -q tests/unit/test_codex_runtime.py
 
 The native tests use Codex App Server and a scripted localhost Responses endpoint. They check
 host permission acceptance/rejection, ordinary help/execution without plugin prompts, and fresh
-subagent context with parent waiting. The probe loads its own fixture hooks with
+subagent context, post-launch reminders and parent waiting. The probe loads its own fixture hooks with
 marketplace plugin loading disabled.
 
 For installation and lifecycle checks, use an isolated Codex configuration to

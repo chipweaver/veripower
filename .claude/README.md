@@ -2,6 +2,7 @@
 
 VeriPower uses Claude Code's native plugin discovery, skills and subagents. The
 shared design flow lives in `framework/` and `skills/`; Claude Code supplies native execution tools.
+This integration was checked with Claude Code 2.1.332.
 
 ## Install
 
@@ -38,8 +39,14 @@ in the main conversation or a background subagent as requested by the shared
 orchestrator.
 
 The shared design-flow skill coordinates dispatch, execution and collection.
-[The adapter hooks](hooks.json) supply scheduling context. Stage skills own
-their artifacts; the kernel owns routing and validity. Native execution permissions are unchanged.
+[The adapter hooks](hooks.json) add a scheduling reminder when Agent reports a
+background launch. The adapter uses the native result status, preserving tool
+output and permissions. Stage skills own their artifacts; the kernel owns routing
+and validity.
+
+For programmatic runs with long background work, keep a streaming-input session
+open until its executors finish. Closing stdin starts Claude Code's bounded
+background wait; see the native [session lifecycle](https://code.claude.com/docs/en/headless#background-tasks-at-exit).
 
 ## Update or remove
 
@@ -49,6 +56,10 @@ Refresh the marketplace catalog, then update the installed plugin:
 claude plugin marketplace update chipweaver
 claude plugin update veripower@chipweaver
 ```
+
+Marketplace refresh updates the catalog. For a Git installation, plugin update
+installs a newer plugin version; source changes under the same version leave the
+installed copy unchanged.
 
 Claude Code also supports plugin reload operations. A fresh session loads the
 updated plugin and runs VeriPower's SessionStart hook with its current installed
@@ -81,9 +92,11 @@ and child sessions with a scripted localhost Messages endpoint:
 VERIPOWER_CLAUDE_TESTS=1 python -m pytest -q tests/unit/test_platform_runtime.py -k claude
 ```
 
-This probe loads the checkout through `--plugin-dir` and checks adapter context,
-skill loading and background completion. To check installation and lifecycle
-behavior, inspect the registered scope, installed version and actual loaded copy
+These probes load the checkout through `--plugin-dir` and check parent/child
+context, skill loading, explicit and default background launches, foreground
+completion, launch failure, reminders, host command refusal and streaming-session
+lifetime. To check installation and lifecycle behavior, inspect the registered
+scope, installed version and actual loaded copy
 in an isolated installation. See [testing](../tests/README.md) for verification scope.
 
 `hooks.json` configures installed plugin execution. `settings.json`, `CLAUDE.md` and

@@ -17,8 +17,8 @@ requests = []
 phase = {"parent": 0, "child": 0}
 child_done = threading.Event()
 child_requests = []
-(ROOT / "kernel.py").write_text(
-    "import json,sys\nfrom pathlib import Path\nPath('executed').write_text('yes')\nprint(json.dumps({'execution':'task','rule':'synthesis','run':3} if sys.argv[1]=='dispatch' else {'action':'YIELD'}))\n"
+(ROOT / "command.py").write_text(
+    "from pathlib import Path\nPath('executed').write_text('yes')\nprint('command completed')\n"
 )
 
 
@@ -58,17 +58,15 @@ class Handler(BaseHTTPRequestHandler):
             phase[role] += 1
             choices = [
                 ("skill", {"id": "veripower:design-flow"}),
-                ("shell", {"command": f"python3 {ROOT}/kernel.py dispatch"}),
+                ("shell", {"command": f"python3 {ROOT}/command.py"}),
                 (
                     "subagent",
                     {
                         "agent": "general",
                         "description": "native background fixture",
-                        "background": True,
                         "prompt": "VERIPOWER_CHILD: load the lint-cdc skill and finish.",
                     },
                 ),
-                ("shell", {"command": f"python3 {ROOT}/kernel.py decide"}),
             ]
             if n < len(choices):
                 name, args = choices[n]
@@ -229,13 +227,14 @@ try:
         if m["role"] == "tool" and isinstance(m["content"], str)
     )
     parent = [b for b in requests if "VERIPOWER_PARENT" in json.dumps(b)]
-    assert any("veripower loop:" in json.dumps(b) for b in parent) == (
-        POLICY == "allow"
+    assert any(
+        "VeriPower: if you just launched a stage executor" in json.dumps(b)
+        for b in parent
     )
     assert (ROOT / "executed").exists() == (POLICY == "allow")
     assert any("VERIPOWER_CHILD_DONE" in json.dumps(b) for b in parent)
     print(
-        "PASS: package activation, 12 skills, fresh child mapping, background completion and parent reminder",
+        "PASS: package activation, native launch reminder, child completion and host permissions",
         flush=True,
     )
 finally:

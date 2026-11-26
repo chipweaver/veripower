@@ -60,4 +60,4 @@ Agent 在已有授权范围内继续工作，需要你补充信息或作出决�
 - [架构文档](docs/ARCHITECTURE.zh.md)：开发方法、任务职责与多轮开发的协调机制。
 - [Contributing](CONTRIBUTING.md)：开发原则与验证要求。
 
-版本： v0.2.10 · [MIT 许可证](LICENSE) · [问题反馈](https://github.com/chipweaver/veripower/issues)
+版本： v0.2.11 · [MIT 许可证](LICENSE) · [问题反馈](https://github.com/chipweaver/veripower/issues)

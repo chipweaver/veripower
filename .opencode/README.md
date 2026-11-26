@@ -1,7 +1,7 @@
 # VeriPower on OpenCode
 
 The adapter uses OpenCode 2's native plugin API, skills, background subagents and
-completion notifications. The native checks below were exercised with OpenCode 2.0.27.
+completion notifications. The native checks below were exercised with OpenCode 2.4.1.
 
 ## Install
 
@@ -29,12 +29,13 @@ and the [EDA environment guide](../docs/eda-env.md) for Python, tools, licenses 
 The adapter registers shared skills through `ctx.skill.transform`, with IDs
 such as `veripower:synthesis`. Each skill retains its installed file location
 and references. Session context supplies native tool mappings to parents and
-children: `skill` loads an ID, `subagent` with `background: true` starts an
-executor, and `shell` runs commands.
+children: `skill` loads an ID, `subagent` starts an independent background executor, and
+`shell` runs commands.
 
-The dispatch reminder is reconstructed from native conversation history. It
-survives executor launch and ends at the next kernel action. The adapter leaves
-host permissions unchanged; the shared kernel and skills own routing and evidence.
+After a native subagent starts, the adapter adds a scheduling reminder for the
+VeriPower orchestrator. It uses the tool's completion hook; command text and stdout
+are not parsed. Host permissions remain unchanged; shared kernel and skills own
+routing and evidence.
 
 ## Update, disable or remove
 

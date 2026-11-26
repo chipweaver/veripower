@@ -22,6 +22,7 @@ const skills = [];
 const hooks = {};
 await plugin.setup({
   permission,
+  tool: {async hook() {}},
   skill: {async transform(editor) { editor({add(skill) { skills.push(skill); }}); }},
   session: {async hook(name, callback) { hooks[name] = callback; }},
 });

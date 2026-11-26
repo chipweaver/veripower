@@ -1,5 +1,5 @@
 {
-  "description": "Supply Claude Code execution mappings and post-dispatch scheduling context.",
+  "description": "Supply Claude Code execution mappings and background-launch scheduling context.",
   "hooks": {
     "SessionStart": [
       {
@@ -23,11 +23,11 @@
     ],
     "PostToolUse": [
       {
-        "matcher": "Bash",
+        "matcher": "Agent",
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/.claude/loop_after_dispatch.py\""
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/.claude/adapter.py\""
           }
         ]
       }

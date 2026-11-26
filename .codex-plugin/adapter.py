@@ -1,20 +1,27 @@
 #!/usr/bin/env python3
-"""Supply Codex execution instructions to the session and its subagents."""
+"""Supply native execution mappings and post-launch scheduling context."""
 
 import json
 import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+REMINDER = (
+    "VeriPower: if you just launched a stage executor, "
+    "call `kernel.py decide` now to schedule other ready work."
+)
 
 
 def main() -> None:
     event = json.load(sys.stdin)
-    text = (
-        (ROOT / ".codex-plugin/instructions.md")
-        .read_text()
-        .replace("@ROOT@", str(ROOT))
-    )
+    if event["hook_event_name"] == "PostToolUse":
+        text = REMINDER
+    else:
+        text = (
+            (ROOT / ".codex-plugin/instructions.md")
+            .read_text()
+            .replace("@ROOT@", str(ROOT))
+        )
     print(
         json.dumps(
             {
