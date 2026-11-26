@@ -153,13 +153,22 @@ def run_codex(
         "-c",
         "features.hooks=true",
         "-c",
-        "features.multi_agent=true",
+        "features.multi_agent_v2=true",
     ]
     events = []
     inbox = queue.Queue()
+    codex_home = tmp_path / "codex-home"
+    codex_home.mkdir()
+    env = os.environ.copy()
+    env["CODEX_HOME"] = str(codex_home)
     with (tmp_path / "stderr.log").open("w") as log:
         process = subprocess.Popen(
-            args, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=log, text=True
+            args,
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=log,
+            text=True,
+            env=env,
         )
 
         def _receive():
@@ -242,6 +251,8 @@ def run_codex(
                 elif "error" in event:
                     pytest.fail(str(event))
         finally:
+            (tmp_path / "requests.json").write_text(json.dumps(requests, indent=2))
+            (tmp_path / "events.json").write_text(json.dumps(events, indent=2))
             process.terminate()
             process.wait(timeout=5)
             server.shutdown()
@@ -312,7 +323,7 @@ def test_fresh_native_child_receives_adapter_and_parent_waits(tmp_path):
     def _response(body, number, fixture):
         inputs = body.get("input", [])
         is_child = any(
-            item.get("role") == "user"
+            item.get("type") == "agent_message"
             and "VERIPOWER_CHILD_PROBE" in json.dumps(item.get("content"))
             for item in inputs
         )
@@ -342,18 +353,18 @@ def test_fresh_native_child_receives_adapter_and_parent_waits(tmp_path):
                 "spawn_agent",
                 {
                     "message": "VERIPOWER_CHILD_PROBE: read the supplied lint-cdc skill, then finish.",
-                    "fork_context": False,
+                    "task_name": "fixture_child",
+                    "fork_turns": "none",
                 },
                 "spawn_probe",
-                "multi_agent_v1",
+                "collaboration",
             )
         if "wait_probe" not in outputs:
-            spawned = json.loads(outputs["spawn_probe"])
             return call(
                 "wait_agent",
-                {"targets": [spawned["agent_id"]], "timeout_ms": 10000},
+                {"timeout_ms": 10000},
                 "wait_probe",
-                "multi_agent_v1",
+                "collaboration",
             )
         return message("parent resumed after child")
 
@@ -367,4 +378,56 @@ def test_fresh_native_child_receives_adapter_and_parent_waits(tmp_path):
         "child read the stage skill" in json.dumps(request)
         for request in requests
         if request not in child_requests
+    )
+    parent_after_spawn = next(
+        request
+        for request in requests
+        if request not in child_requests
+        and any(
+            item.get("call_id") == "spawn_probe"
+            and item.get("type") == "function_call_output"
+            for item in request.get("input", [])
+        )
+    )
+    assert "VeriPower: if you just launched a stage executor" in json.dumps(
+        parent_after_spawn
+    )
+    assert "VeriPower: if you just launched a stage executor" not in json.dumps(
+        child_requests
+    )
+
+
+def test_failed_spawn_and_ordinary_tools_do_not_remind(tmp_path):
+    def _response(body, number, fixture):
+        if number == 1:
+            return call(
+                "exec_command",
+                {"cmd": "echo ordinary command", "workdir": str(tmp_path)},
+            )
+        if number == 2:
+            return call(
+                "spawn_agent",
+                {
+                    "message": "This invalid role must not start a child.",
+                    "task_name": "invalid_child",
+                    "agent_type": "veripower_nonexistent_fixture_role",
+                    "fork_turns": "none",
+                },
+                "failed_spawn",
+                "collaboration",
+            )
+        return message()
+
+    _, requests = run_codex(tmp_path, _response)
+    assert len(requests) == 3
+    assert "ordinary command" in json.dumps(requests[-1])
+    output = next(
+        item["output"]
+        for item in requests[-1]["input"]
+        if item.get("call_id") == "failed_spawn"
+        and item.get("type") == "function_call_output"
+    )
+    assert "unknown agent_type" in str(output), output
+    assert "VeriPower: if you just launched a stage executor" not in json.dumps(
+        requests
     )

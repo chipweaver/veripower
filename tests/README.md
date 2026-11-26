@@ -2,6 +2,8 @@
 
 Choose tests by the behavior a change could affect. Contribution guidance lives in
 [CONTRIBUTING.md](../CONTRIBUTING.md#development-and-validation).
+The [platform adaptation map](../docs/PLATFORM-ADAPTERS.md) connects these checks
+to the adapter implementations and shared workflow responsibilities.
 
 | Location | Purpose |
 |---|---|
@@ -39,13 +41,16 @@ VERIPOWER_OPENCODE_TESTS=1 python -m pytest -q tests/unit/test_platform_runtime.
 Set `VERIPOWER_OPENCODE_BIN` when using a separate OpenCode 1.19.0 binary. These checks
 cover installed skills, fresh child context, background completion, scheduling reminders
 and host command acceptance, denial and rejected approval. They also exercise disabled
-background capability and explicit resumption after child cancellation. DeepSeek native checks use published 0.2.1-rc.2 packages;
+background capability and explicit resumption after child cancellation. DeepSeek native
+checks use published 0.2.2-rc.5 packages;
 set `VERIPOWER_DSH_NODE_MODULES` to their `node_modules` directory and run the same
 file with `-k dsh`. They cover skill registration, scoped prompt assembly and native
-post-execution decisions.
+post-execution decisions through the native tool executor.
 
-Claude Code parent/child skill loading and background completion use a scripted
-localhost Messages endpoint:
+Claude Code uses a scripted localhost Messages endpoint to check parent/child
+skill loading, explicit/default background launches, foreground completion,
+failed launches, scheduling reminders, host command refusal and streaming-session
+lifetime:
 
 ```bash
 VERIPOWER_CLAUDE_TESTS=1 python -m pytest -q tests/unit/test_platform_runtime.py -k claude

@@ -5,7 +5,7 @@ the shared skills through the native provider.
 
 ## Install
 
-Validated with DeepSeek Harness 0.2.1-rc.2. Installation belongs to a profile;
+Validated with DeepSeek Harness 0.2.2-rc.5. Installation belongs to a profile;
 use the same profile when installing and running VeriPower. The examples use `web`:
 
 ```bash
@@ -21,7 +21,7 @@ dsh web
 ```
 
 `web` provides an interactive entry point. For SDK sessions, see the
-[native SDK guide](https://github.com/deepseek-ai/deepseek-harness/blob/dsh-v0.2.1-rc.2/packages/sdk/server/README.md).
+[native SDK guide](https://github.com/deepseek-ai/deepseek-harness/blob/dsh-v0.2.2-rc.5/packages/sdk/server/README.md).
 
 In the chosen profile, ask the agent to list VeriPower skills. With reviewed
 requirements at `{module_dir}/intent/brainstorm.md`, run `design-flow` for the
@@ -29,15 +29,17 @@ module's absolute path. If requirements need discussion, use `brainstorm` in a
 separate session first. See the [User Guide](../docs/USER-MANUAL.md) for the task
 workflow and the [EDA environment guide](../docs/eda-env.md) for execution prerequisites.
 
-The [bundle guide](https://github.com/deepseek-ai/deepseek-harness/blob/dsh-v0.2.1-rc.2/docs/user/develop/basic/publish.md)
-and [CLI reference](https://github.com/deepseek-ai/deepseek-harness/blob/dsh-v0.2.1-rc.2/apps/cli/README.md)
+The [bundle guide](https://github.com/deepseek-ai/deepseek-harness/blob/dsh-v0.2.2-rc.5/docs/user/develop/basic/publish.md)
+and [CLI reference](https://github.com/deepseek-ai/deepseek-harness/blob/dsh-v0.2.2-rc.5/apps/cli/README.md)
 describe profile installation and layer ordering for this release.
 
 ## Runtime behavior
 
 The [adapter](plugins/veripower.js) registers the installed skills, supplies native
-tool mappings and adds scheduling context after background dispatch. Skill loading,
+tool mappings and adds scheduling context after a native subagent starts. Skill loading,
 subagents, completion notifications and permissions use DSH's native mechanisms.
+Use `wait_agent` while waiting and confirm executor exit from its native finished
+notice; `job_output` waits for background command results.
 
 ## Update or remove
 
@@ -94,7 +96,7 @@ VERIPOWER_DSH_NODE_MODULES=/path/to/dsh/node_modules \
 
 Use the package directory for the DSH release being checked. This probe verifies
 skill registration, scoped prompt assembly, native tool decisions and deferred
-context encoding in native components. Check profile installation, reload and
+context encoding through the native tool executor. Check profile installation, reload and
 background execution through the composed configuration and a running profile.
 See [testing](../tests/README.md) for the distinction between runtime, model and
 EDA evidence.

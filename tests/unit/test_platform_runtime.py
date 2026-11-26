@@ -76,7 +76,10 @@ def test_dsh_native_registration_prompt_and_host_decisions(tmp_path):
     os.environ.get("VERIPOWER_CLAUDE_TESTS") != "1" or not shutil.which("claude"),
     reason="opt-in Claude Code runtime probe",
 )
-def test_claude_native_skill_loading_and_background_completion(tmp_path):
+@pytest.mark.parametrize(
+    "mode", ["background", "default", "foreground", "failure", "deny", "streaming"]
+)
+def test_claude_native_execution_context_and_permissions(tmp_path, mode):
     result = subprocess.run(
         [
             "python3",
@@ -84,6 +87,7 @@ def test_claude_native_skill_loading_and_background_completion(tmp_path):
             "claude",
             str(ROOT),
             str(tmp_path / "workspace"),
+            mode,
         ],
         text=True,
         capture_output=True,

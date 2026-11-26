@@ -1,4 +1,4 @@
-"""Native adapters provide scheduling context around background execution."""
+"""Adapters deliver scheduling context after native background executor launch."""
 
 import json
 import shutil
@@ -9,27 +9,25 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
-KERNEL_PATHS = ["kernel.py", '"/plugin path/kernel.py"', "'/plugin path/kernel.py'"]
 
 
-@pytest.mark.parametrize("execution", ["task", "main-thread", None])
-@pytest.mark.parametrize("kernel", KERNEL_PATHS)
-def test_claude_reports_only_background_dispatch_context(execution, kernel):
-    result = {"ok": True, "rule": "synthesis", "run": 3, "execution": execution}
+@pytest.mark.parametrize("status", ["async_launched", "completed", "remote_launched"])
+def test_claude_reminds_only_after_background_launch(status):
     event = {
-        "tool_input": {"command": f"python3 {kernel} dispatch --module example"},
-        "tool_response": {"stdout": json.dumps(result)},
+        "hook_event_name": "PostToolUse",
+        "tool_response": {"status": status},
     }
     p = subprocess.run(
-        [sys.executable, str(ROOT / ".claude/loop_after_dispatch.py")],
+        [sys.executable, str(ROOT / ".claude/adapter.py")],
         input=json.dumps(event),
         text=True,
         capture_output=True,
         check=True,
     )
-    if execution == "task":
-        context = json.loads(p.stdout)["hookSpecificOutput"]["additionalContext"]
-        assert "synthesis" in context and "3" in context
+    if status in ("async_launched", "remote_launched"):
+        output = json.loads(p.stdout)["hookSpecificOutput"]
+        assert output["hookEventName"] == "PostToolUse"
+        assert "kernel.py decide" in output["additionalContext"]
     else:
         assert not p.stdout
 
@@ -78,7 +76,7 @@ for (const [tool,metadata,expected] of [
 
 
 @pytest.mark.skipif(not shutil.which("node"), reason="node is unavailable")
-def test_deepseek_dispatch_context_preserves_the_host_decision():
+def test_deepseek_launch_context_preserves_the_host_decision():
     # Only the two external imports are substituted. Native SDK integration is
     # checked separately; this test exercises the shipped adapter's callback.
     program = r"""
@@ -110,26 +108,26 @@ adapter.namespace.apply({
   on(name, handler) { handlers[name] = handler; },
 });
 const hook = handlers['tools/post-execute'];
-for (const kernel of JSON.parse(process.argv[2])) {
-  for (const execution of ['task','main-thread']) {
-    for (const kind of ['accept','block']) {
-      const downstream = {kind, feedback:[{type:'text',text:'host policy'}],
-        additionalContexts:[{role:'user',content:[{type:'text',text:'existing context'}]}]};
-      const original = structuredClone(downstream);
-      const result = {content:[{type:'text',text:JSON.stringify({execution,rule:'synthesis',run:3})}]};
-      const output = await hook({name:'bash',arguments:{command:`python3 ${kernel} dispatch --module example`}},
-        result, async () => downstream);
-      assert.equal(output.kind,kind);
-      assert.deepEqual(output.feedback,original.feedback);
-      assert.deepEqual(downstream,original);
-      assert.deepEqual(output.additionalContexts.slice(execution === 'task' ? 1 : 0),original.additionalContexts);
-      if (execution === 'task') {
-        assert.equal(output.additionalContexts.length,2);
-        assert.ok(output.additionalContexts[0].content[0].text.includes('synthesis'));
-      } else assert.equal(output,downstream);
-    }
+for (const kind of ['accept','block']) {
+  for (const [name,result,expected] of [
+    ['subagent',{isError:false,value:{kind:'activation',name:'review'},content:[{type:'text',text:'started subagent review'}]},true],
+    ['subagent',{isError:true,error:{message:'host denied'},content:[{type:'text',text:'host denied'}]},false],
+    ['bash',{isError:false,value:'plain stdout',content:[{type:'text',text:'plain stdout'}]},false],
+  ]) {
+    const downstream={kind,feedback:[{type:'text',text:'host policy'}],additionalContexts:[{role:'user',content:[{type:'text',text:'existing context'}]}]};
+    const original=structuredClone(downstream);
+    const originalResult=structuredClone(result);
+    const output=await hook({name,arguments:{prompt:'self-contained task'}},result,async()=>downstream);
+    assert.equal(output.kind,kind);
+    assert.deepEqual(output.feedback,original.feedback);
+    assert.deepEqual(result,originalResult);
+    assert.deepEqual(downstream,original);
+    assert.deepEqual(output.additionalContexts.slice(expected?1:0),original.additionalContexts);
+    if(expected) assert.ok(output.additionalContexts[0].content[0].text.includes('kernel.py decide'));
+    else assert.equal(output,downstream);
   }
 }
+
 """
     subprocess.run(
         [
@@ -139,7 +137,6 @@ for (const kernel of JSON.parse(process.argv[2])) {
             "-e",
             program,
             (ROOT / ".dsh/plugins/veripower.js").as_uri(),
-            json.dumps(KERNEL_PATHS),
         ],
         check=True,
         capture_output=True,

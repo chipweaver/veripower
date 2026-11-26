@@ -10,6 +10,17 @@
         ]
       }
     ],
+    "PostToolUse": [
+      {
+        "matcher": "^collaborationspawn_agent$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${PLUGIN_ROOT}/.codex-plugin/adapter.py\""
+          }
+        ]
+      }
+    ],
     "SubagentStart": [
       {
         "hooks": [

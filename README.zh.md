@@ -44,7 +44,7 @@ Agent 使用的执行环境需要具备：
 
 ## 快速开始
 
-1. **安装并启用 VeriPower。** 按所用平台的指南操作：[Claude Code](.claude/README.md)、[OpenCode](.opencode/README.md)、[DeepSeek Harness](.dsh/README.md) 或 [Codex](.codex-plugin/README.md)。开启会话，让 agent 列出 VeriPower skills，确认插件已加载。
+1. **安装并启用 VeriPower。** 按所用平台的指南操作：[Claude Code](.claude/README.md)、[OpenCode v1.19.0](.opencode/README.md)、[OpenCode v2](https://github.com/chipweaver/veripower/blob/main/.opencode/README.md)、[DeepSeek Harness](.dsh/README.md) 或 [Codex](.codex-plugin/README.md)。开启会话，让 agent 列出 VeriPower skills，确认插件已加载。
 
 2. **准备原始需求。** 将需求保存为 `{module_dir}/intent/brainstorm.md`，引用材料复制到 `{module_dir}/intent/`。`{module_dir}` 表示模块工作目录的绝对路径。已有合适规格可以直接使用；需要讨论需求时，在独立会话中使用 `brainstorm` skill，并在开始流程前复核生成的文档。
 
@@ -60,4 +60,4 @@ Agent 在已有授权范围内继续工作，需要你补充信息或作出决�
 - [架构文档](docs/ARCHITECTURE.zh.md)：开发方法、任务职责与多轮开发的协调机制。
 - [Contributing](CONTRIBUTING.md)：开发原则与验证要求。
 
-版本： v0.2.10 · [MIT 许可证](LICENSE) · [问题反馈](https://github.com/chipweaver/veripower/issues)
+版本： v0.2.11 · [MIT 许可证](LICENSE) · [问题反馈](https://github.com/chipweaver/veripower/issues)

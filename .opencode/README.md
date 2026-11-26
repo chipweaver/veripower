@@ -7,29 +7,34 @@ with the [EDA environment guide](../docs/eda-env.md).
 
 ## Install
 
-Add the absolute root of a v1 checkout or source archive to your global
-`~/.config/opencode/opencode.json(c)` or project `opencode.json(c)`:
+Install the v1 branch through OpenCode's native CLI:
 
-```json
-{ "plugin": ["/absolute/path/to/veripower-opencode-v1"] }
+```bash
+opencode plugin --global "veripower@git+https://github.com/chipweaver/veripower.git#opencode-v1"
 ```
 
-Once the branch is published upstream, you can obtain that checkout with:
+For a local checkout:
 
 ```bash
 git clone --branch opencode-v1 --single-branch https://github.com/chipweaver/veripower.git veripower-opencode-v1
+opencode plugin --global /absolute/path/to/veripower-opencode-v1
 ```
 
-Or let OpenCode install the published branch as a package:
+Use the checkout's absolute path in the second command. `--global` installs into
+OpenCode's global configuration; omit it for the current project's configuration.
+OpenCode 1.19.0 uses `plugin <module>`, rather than v2's `plugin add`.
+Add `--force` when replacing an existing VeriPower entry with a different target.
+
+You can also add the target directly to the `plugin` array in
+`~/.config/opencode/opencode.json(c)` or a project `opencode.json(c)`:
 
 ```json
 { "plugin": ["veripower@git+https://github.com/chipweaver/veripower.git#opencode-v1"] }
 ```
 
-Merge one entry into your existing configuration. When switching from the v2
-VeriPower installation, replace its entry. Development sessions launched inside
-this checkout discover `.opencode/plugins/veripower.js` automatically; choose
-that discovery or an explicit installation for the session.
+For a local installation, use the absolute checkout path as the entry instead.
+Choose one installation for the session. Running OpenCode inside the checkout
+also discovers `.opencode/plugins/veripower.js` automatically.
 
 ## Use
 
@@ -73,10 +78,10 @@ and kernel own scheduling and collection; native permissions remain unchanged.
 
 ## Update or remove
 
-Update a local checkout at its source. For a Git package, select the intended
-commit or tag in the configured target. After changing the source or plugin
-configuration, restart OpenCode and check a fresh session. A skill's base directory
-identifies the loaded copy.
+Update a local checkout at its source. OpenCode caches Git targets; for a Git
+package update, select a new commit or tag in the configured target. After changing
+the source or plugin configuration, restart OpenCode and check a fresh session.
+A skill's base directory identifies the loaded copy.
 
 Remove the `plugin` entry to disable or uninstall an explicit installation. For
 project discovery, remove the adapter file. Check a fresh session: VeriPower skills

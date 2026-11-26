@@ -70,7 +70,8 @@ skill in a separate session before starting development.
 ## Quickstart
 
 1. **Install and enable VeriPower** using your platform's guide:
-   [Claude Code](.claude/README.md), [OpenCode](.opencode/README.md),
+   [Claude Code](.claude/README.md), [OpenCode v1.19.0](.opencode/README.md),
+   [OpenCode v2](https://github.com/chipweaver/veripower/blob/main/.opencode/README.md),
    [DeepSeek Harness](.dsh/README.md) or [Codex](.codex-plugin/README.md).
    Start a session and ask the agent to list the VeriPower skills to confirm
    that the plugin loaded.
@@ -98,4 +99,4 @@ module workspace.
   and coordination across iterations.
 - [Contributing](CONTRIBUTING.md): development principles and validation.
 
-Version: v0.2.10 · [MIT License](LICENSE) · [Issues](https://github.com/chipweaver/veripower/issues)
+Version: v0.2.11 · [MIT License](LICENSE) · [Issues](https://github.com/chipweaver/veripower/issues)

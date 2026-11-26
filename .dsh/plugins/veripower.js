@@ -1,4 +1,4 @@
-/** Register VeriPower skills and provide post-dispatch scheduling context. */
+/** Register VeriPower skills and remind orchestration after native subagent launch. */
 
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -11,29 +11,8 @@ const SKILLS_ROOT = resolve(ROOT, 'skills')
 
 const SOURCE = { kind: 'veripower-dsh' }
 
-const DISPATCH = /kernel\.py["']?\s+dispatch\b/
-
-const REMINDER = (rule, run) =>
-  `veripower loop: after the executor for \`${rule}\` run ${run} has started, `
-  + 'call `kernel.py decide` to schedule other ready work.'
-
-/** The shell command a bash execution carries. */
-function commandOf(exec) {
-  const command = exec.arguments?.command
-  return typeof command === 'string' ? command : ''
-}
-
-/** The dispatch envelope a settled bash result carries, or undefined. */
-function envelope(result) {
-  const text = (result?.content ?? []).filter(block => block?.type === 'text').map(block => block.text).join('')
-  try {
-    return JSON.parse(text)
-  } catch {
-    // `dispatch --help` prints argparse usage and a non-zero exit appends an exit
-    // marker. Neither is an envelope, and neither is a fault to report.
-    return undefined
-  }
-}
+const REMINDER = 'VeriPower: if you just launched a stage executor, '
+  + 'call `kernel.py decide` now to schedule other ready work.'
 
 export const name = 'veripower-dsh'
 export const inject = ['tools', 'systemPrompt']
@@ -44,7 +23,8 @@ export function apply(ctx) {
     order: 0,
     text: 'VeriPower on DeepSeek Harness: load a bare skill X with skill using { name: X }. '
       + 'Launch a background executor with subagent using { prompt: P, description: "short task label" }; '
-      + 'it returns subagentId immediately and delivers completion to the parent. '
+      + 'It returns immediately. Use wait_agent while waiting; confirm executor exit from the native finished notice. '
+      + 'Run commands through bash and wait for background process results through job_output. '
       + `The kernel is python3 ${ROOT}/framework/scripts/kernel.py.`,
   })
 
@@ -57,11 +37,10 @@ export function apply(ctx) {
   })
 
   ctx.on('tools/post-execute', async (exec, result, next) => {
-    const out = exec.name === 'bash' && DISPATCH.test(commandOf(exec)) ? envelope(result) : undefined
     const downstream = await next()
-    if (out?.execution !== 'task') return downstream
+    if (exec.name !== 'subagent' || result.isError) return downstream
     const context = createUserMessage({
-      content: [{ type: 'text', text: REMINDER(out.rule, out.run) }],
+      content: [{ type: 'text', text: REMINDER }],
       source: SOURCE,
     })
     return { ...downstream, additionalContexts: [context, ...downstream.additionalContexts ?? []] }
